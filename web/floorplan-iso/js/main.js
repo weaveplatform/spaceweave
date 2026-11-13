@@ -184,6 +184,8 @@ window.addEventListener('resize', () => scene?.fit(state));
 // ---- plan picker
 const planBlurb = document.querySelector('#plan-blurb');
 const sourceLink = document.querySelector('#source-link');
+const traceMethod = document.querySelector('#trace-method');
+const HAND_TRACED = traceMethod.textContent;
 const planName = document.querySelector('#plan-name');
 
 // Built-in plans plus the tracer's catalogue, which is re-read while the page
@@ -270,6 +272,9 @@ async function loadPlan(id) {
   });
   sourceLink.href = plan.SOURCE.url;
   sourceLink.textContent = plan.SOURCE.credit;
+  traceMethod.textContent = entry.generated
+    ? 'were traced into metres by a Claude agent (the spaceweave worker), which checked its work against an overlay and the site\'s own validator'
+    : HAND_TRACED;
   planName.textContent = plan.SOURCE.title;
   document.querySelector('#stage').setAttribute('aria-label', `Isometric model of the ${plan.SOURCE.title} floor plan`);
   remember('plan', entry.id);
