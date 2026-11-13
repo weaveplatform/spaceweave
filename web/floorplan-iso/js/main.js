@@ -1,5 +1,7 @@
 import { PRESETS } from './projection.js';
-import { PLANS, DEFAULT_PLAN, READY, loadCatalog } from './plans/index.js';
+import { PLANS, DEFAULT_PLAN, LISTED, READY, loadCatalog } from './plans/index.js';
+import { busy } from './pipeline.js';
+import { initWorkbench } from './workbench.js';
 import { createScene } from './render.js';
 import { SKINS, DEFAULT_SKIN } from './skins.js';
 
@@ -192,10 +194,11 @@ const planName = document.querySelector('#plan-name');
 // is open so a newly traced plan appears without a reload.
 let plans = PLANS;
 let current = null;
+let workbench = null;
 
 function renderPicker() {
   d3.select('#plans').selectAll('label')
-    .data(plans, (p) => p.id)
+    .data(plans.filter((p) => !p.generated || LISTED.has(p.status)), (p) => p.id)
     .join((enter) => {
       const label = enter.append('label');
       label.append('input').attr('type', 'radio').attr('name', 'plan').attr('value', (p) => p.id)
@@ -223,7 +226,11 @@ function renderPicker() {
 function renderBlurb(entry) {
   const blurb = d3.select(planBlurb).text(entry.blurb);
   if (!entry.generated) return;
-  const facts = [entry.status === 'draft' ? 'Draft, not yet reviewed' : 'Auto-traced'];
+  const facts = [{
+    draft: 'Draft, not yet reviewed',
+    queued: 'Sent back; waiting to be traced again',
+    tracing: 'Being traced again',
+  }[entry.status] ?? 'Auto-traced'];
   if (Number.isFinite(entry.confidence)) facts.push(`confidence ${Math.round(entry.confidence * 100)}%`);
   blurb.append('br');
   blurb.append('span').text(`${facts.join(' · ')} · `);
@@ -232,16 +239,28 @@ function renderBlurb(entry) {
   blurb.append('a').attr('href', `${entry.dir}report.json`).attr('target', '_blank').text('report');
 }
 
+// The tracer takes minutes per plan, so a 10 s poll is plenty while it's
+// idle; while it has work, poll faster so the pipeline's turn and cost
+// counters move.
+let poll = 0;
+function schedule() {
+  clearTimeout(poll);
+  poll = setTimeout(() => { if (!document.hidden) refreshCatalog(); else schedule(); }, busy(plans) ? 2_000 : 10_000);
+}
+
 async function refreshCatalog() {
   try {
     plans = [...PLANS, ...(await loadCatalog())];
   } catch (err) {
     console.warn('plan catalogue unavailable:', err);
+    schedule();
     return;
   }
   renderPicker();
   const entry = plans.find((p) => p.id === current);
   if (entry) renderBlurb(entry);
+  workbench?.update();
+  schedule();
 }
 
 let loading = 0;
@@ -251,6 +270,7 @@ async function loadPlan(id) {
   current = entry.id;
   renderPicker();
   renderBlurb(entry);
+  workbench?.update();
   let plan;
   try {
     plan = await entry.load();
@@ -284,11 +304,14 @@ async function loadPlan(id) {
   build();
 }
 syncOutputs();
+workbench = initWorkbench({
+  plans: () => plans,
+  current: () => current,
+  refresh: refreshCatalog,
+  open: (id) => loadPlan(id),
+});
 await refreshCatalog();
 loadPlan(remembered('plan', (id) => plans.some((p) => p.id === id), DEFAULT_PLAN));
-// The tracer takes minutes per plan, so a 10 s poll is plenty; also catch up
-// as soon as the tab is looked at again.
-setInterval(() => { if (!document.hidden) refreshCatalog(); }, 10_000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshCatalog(); });
 
 // Exposed for poking at the scene from the console.
