@@ -178,6 +178,16 @@ func (w *Worker) Process(ctx context.Context, e catalog.Entry) error {
 	defer transcript.Close() //nolint:errcheck // best effort; the report is what matters
 	opts := w.Options
 	opts.Transcript = transcript
+	opts.Progress = func(p trace.Progress) {
+		// Best effort: a missed update only makes the site's view lag.
+		err := w.Store.SetProgress(
+			e.ID,
+			catalog.Progress{Turn: p.Turn, Submits: p.Submits, CostUSD: p.CostUSD},
+		)
+		if err != nil {
+			log.Warn("record progress", "err", err)
+		}
+	}
 	run := w.Trace
 	if run == nil {
 		run = trace.Run

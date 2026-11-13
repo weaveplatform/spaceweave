@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -27,7 +28,7 @@ func TestDefaultsWhenNoFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c != Default() {
+	if !reflect.DeepEqual(c, Default()) {
 		t.Fatalf("got %+v", c)
 	}
 	if _, err := Load(filepath.Join(t.TempDir(), "none.yaml"), true, env(nil)); !errors.Is(err, ErrMissing) {
@@ -40,7 +41,7 @@ func TestDefaultsWhenNoFile(t *testing.T) {
 
 func TestEmptyFileIsAllDefaults(t *testing.T) {
 	c, err := Load(write(t, ""), true, env(nil))
-	if err != nil || c != Default() {
+	if err != nil || !reflect.DeepEqual(c, Default()) {
 		t.Fatalf("%+v %v", c, err)
 	}
 }
@@ -49,6 +50,9 @@ func TestFileThenEnvironment(t *testing.T) {
 	p := write(t, `
 inbox: plans/in
 workers: 2
+serve:
+  site: www
+  hosts: [studio.local]
 effort: xhigh
 limits:
   maxUsd: 4.5
@@ -56,14 +60,15 @@ limits:
 prices:
   input: 3
 `)
-	c, err := Load(p, true, env(map[string]string{"SPACEWEAVE_INBOX": "/drop", "SPACEWEAVE_MAX_USD": "2", "SPACEWEAVE_WORKERS": "3", "SPACEWEAVE_MODEL": "claude-sonnet-5-5"}))
+	c, err := Load(p, true, env(map[string]string{"SPACEWEAVE_INBOX": "/drop", "SPACEWEAVE_MAX_USD": "2", "SPACEWEAVE_WORKERS": "3", "SPACEWEAVE_MODEL": "claude-sonnet-5-5", "SPACEWEAVE_ADDR": ":9000"}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c.Inbox != "/drop" || c.Workers != 3 || c.Limits.MaxUSD != 2 || c.Model != "claude-sonnet-5-5" {
+	if c.Inbox != "/drop" || c.Workers != 3 || c.Limits.MaxUSD != 2 || c.Model != "claude-sonnet-5-5" || c.Serve.Addr != ":9000" {
 		t.Fatalf("environment wins over the file: %+v", c)
 	}
-	if c.Effort != "xhigh" || c.Limits.Timeout != 10*time.Minute || c.Prices.Input != 3 || c.Prices.Output != 20 || c.Limits.MaxTurns != 120 {
+	if c.Effort != "xhigh" || c.Limits.Timeout != 10*time.Minute || c.Prices.Input != 3 || c.Prices.Output != 20 || c.Limits.MaxTurns != 120 ||
+		c.Serve.Site != "www" || len(c.Serve.Hosts) != 1 {
 		t.Fatalf("file values merge over defaults: %+v", c)
 	}
 }
@@ -94,6 +99,7 @@ func TestValidate(t *testing.T) {
 		"limits":       func(c *Config) { c.Limits.MaxUSD = 0 },
 		"prices":       func(c *Config) { c.Prices.CacheRead = -1 },
 		"settle":       func(c *Config) { c.Settle = -time.Second },
+		"serve":        func(c *Config) { c.Serve.Site = "" },
 	}
 	for name, breakIt := range cases {
 		c := Default()
@@ -102,7 +108,7 @@ func TestValidate(t *testing.T) {
 			t.Errorf("%s: %v", name, err)
 		}
 	}
-	if len(Env) != 7 {
+	if len(Env) != 8 {
 		t.Fatal("Env documents every variable applyEnv reads")
 	}
 }
@@ -111,7 +117,7 @@ func TestValidate(t *testing.T) {
 // from drifting when a default changes.
 func TestExampleFileIsTheDefaults(t *testing.T) {
 	c, err := Load(filepath.Join("..", "..", "spaceweave.example.yaml"), true, env(nil))
-	if err != nil || c != Default() {
+	if err != nil || !reflect.DeepEqual(c, Default()) {
 		t.Fatalf("spaceweave.example.yaml: %+v %v", c, err)
 	}
 }

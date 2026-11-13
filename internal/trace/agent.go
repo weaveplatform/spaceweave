@@ -62,6 +62,15 @@ type Options struct {
 	Validator plan.Validator
 	// Transcript, when set, receives one JSON line per turn.
 	Transcript io.Writer
+	// Progress, when set, is called at the end of every turn.
+	Progress func(Progress)
+}
+
+// Progress is the run so far.
+type Progress struct {
+	Turn    int
+	Submits int
+	CostUSD float64
 }
 
 // Job is one image to trace.
@@ -382,10 +391,15 @@ type transcriptLine struct {
 	CostUSD float64  `json:"costUsd"`
 }
 
-// log writes a turn to the transcript: the model's text, the tools it called
-// and the text of their results. Images and full trace inputs are left out;
-// trace.json holds the final trace.
+// log reports the turn to Progress and writes it to the transcript: the
+// model's text, the tools it called and the text of their results. Images
+// and full trace inputs are left out; trace.json holds the final trace.
 func (r *run) log(msg *anthropic.BetaMessage, reply []anthropic.BetaContentBlockParamUnion) {
+	if r.opts.Progress != nil {
+		r.opts.Progress(
+			Progress{Turn: r.result.Turns, Submits: r.result.Submits, CostUSD: r.result.CostUSD},
+		)
+	}
 	if r.opts.Transcript == nil {
 		return
 	}
