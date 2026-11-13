@@ -14,6 +14,10 @@ the Floor plan picker switches between them, and `?plan=` links to one directly.
 The images are linked, not copied, because they belong to their publishers.
 Each plan module's header comment records how its scale was measured.
 
+New plans don't need tracing by hand: drop an image into a folder and the
+`spaceweave` worker traces it with Claude and adds it to the picker as a draft.
+See [Adding plans automatically](#adding-plans-automatically).
+
 This is a static site with no build step and no npm dependencies. D3 7.9.0 loads
 from jsDelivr, pinned with a subresource-integrity hash.
 
@@ -24,6 +28,81 @@ cd web/floorplan-iso
 python3 tools/serve.py           # then open http://localhost:8000 (no-cache dev server)
 node --test 'test/*.test.js'     # projection, geometry, every plan's invariants, skin tokens
 ```
+
+## Adding plans automatically
+
+`spaceweave watch` watches `floorplans/inbox/`. Each PNG, JPEG or WebP dropped
+there is copied into `generated/<id>/`, traced by a Claude agent, checked, and
+listed in `generated/catalog.json`. The site polls that file, so the plan shows
+up in the picker within seconds of the worker finishing, marked **Draft**, with
+its confidence and links to the overlay and the report. Both folders are
+git-ignored.
+
+```sh
+# terminal 1, from the repository root
+export ANTHROPIC_API_KEY=…            # or sign in once with `ant auth login`
+go run ./cmd/spaceweave watch
+
+# terminal 2
+cd web/floorplan-iso && python3 tools/serve.py
+
+# terminal 3
+cp ~/Downloads/some-plan.png floorplans/inbox/
+```
+
+**Uploaded images are sent to the Claude API** (Anthropic) to be traced. Don't
+drop in anything you aren't allowed to share with a third-party service.
+
+The agent works the way the hand tracing did. It views crops with pixel rulers,
+measures wall faces with ink-run scans, and calibrates each axis separately.
+It then submits a trace and reads back two checks: the site's own validator
+(`tools/validate.mjs`, the same invariants as `test/plans.test.js`) and the trace
+drawn over the image. It repeats until both are clean, then reports a
+confidence and the caveats.
+
+Review a draft in the site, then:
+
+```sh
+go run ./cmd/spaceweave plans list
+go run ./cmd/spaceweave plans approve <id>                  # drops the Draft badge
+go run ./cmd/spaceweave plans reject <id> --note "The kitchen is missing"
+go run ./cmd/spaceweave plans retry <id>                    # re-run a failed plan
+go run ./cmd/spaceweave trace plan.png                      # one image, no watcher
+```
+
+A rejected plan goes back in the queue. The next run gets the note and the
+rejected trace, and corrects that trace rather than starting over.
+
+Each `generated/<id>/` folder holds these files:
+
+| File | Contents |
+|---|---|
+| `source.<ext>` | The uploaded image |
+| `plan.json` | The plan in metres, in the same shape as a `js/plans/*.js` module |
+| `trace.json` | The agent's trace, in source pixels |
+| `overlay.png` | The trace drawn over the image |
+| `report.json` | Confidence, caveats, calibration evidence, remaining problems, tokens and cost |
+| `transcript.jsonl` | One line per agent turn: its text, tool calls and the results (no images) |
+
+**Cost.** A trace runs on Claude Opus 5.5 at high effort. Expect a few dollars
+for a simple plan and up to about $15 for a dense floor. Each run stops at
+whichever limit it hits first:
+
+- `limits.maxUsd`, $15 by default, worked out from token usage and `prices`;
+- 120 turns;
+- 12 submissions;
+- 45 minutes.
+
+If the run already has a valid trace when it stops, that trace is still
+published, with the reason in its caveats. Otherwise the plan is marked failed.
+
+**Configuration.** Settings come from the defaults, then `spaceweave.yaml`, then
+`SPACEWEAVE_*` environment variables, then flags. Later sources override earlier
+ones. [`spaceweave.example.yaml`](../../spaceweave.example.yaml) lists every key.
+Unknown keys are rejected, so a misspelt limit can't be silently ignored. The
+API key is never a setting: the Anthropic SDK reads `ANTHROPIC_API_KEY` or an
+`ant auth login` profile. Node must be on the `PATH`, because every submission
+runs `tools/validate.mjs`.
 
 ## What you can do
 
@@ -98,9 +177,10 @@ Corporate floor is about 1,100 prisms at roughly 30 ms.
 
 ## Limits of the trial
 
-- The plans were traced by hand. Turning arbitrary plan images into this data model
-  automatically (vectorising, then detecting walls, doors and symbols) is the real
-  problem behind this trial, and it isn't attempted here.
+- The four built-in plans were traced by hand. The `spaceweave` worker automates
+  the same process with a vision model rather than a vectoriser. It is only as
+  good as the agent's reading of the image, which is why its plans arrive as
+  drafts for a person to approve.
 - Furniture is made of blocks, so round items are 6- to 16-sided prisms.
 - The painter's ordering is exact for disjoint convex footprints. Chairs tucked
   under desks fall back to a centre-depth guess, which can be visibly wrong at
