@@ -32,7 +32,9 @@ for (const entry of PLANS) {
       assert.ok(plan[key] !== undefined, `missing export ${key}`);
     }
     assert.ok(plan.SOURCE.url && plan.SOURCE.credit && plan.SOURCE.title);
-    assert.ok(plan.SOURCE.pxPerMetre > 0 && plan.SOURCE.originPx.length === 2 && plan.SOURCE.sizePx.length === 2);
+    const scale = [plan.SOURCE.pxPerMetre].flat();
+    assert.ok(scale.length <= 2 && scale.every((v) => v > 0), 'pxPerMetre is a number or [x, y]');
+    assert.ok(plan.SOURCE.originPx.length === 2 && plan.SOURCE.sizePx.length === 2);
     // JSON.stringify writes NaN and Infinity as null.
     const json = JSON.stringify([plan.walls, plan.rooms, plan.furniture, plan.floorPatches, plan.OUTLINE ?? []]);
     assert.ok(!json.includes('null'), 'no NaN, Infinity or null in the data');

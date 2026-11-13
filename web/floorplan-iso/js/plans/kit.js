@@ -15,11 +15,19 @@
 
 export const THICKNESS = { exterior: 0.15, interior: 0.1, glass: 0.05 };
 
+// pxPerMetre is a number, or [x, y] when a published image has been squashed
+// on one axis (the corporate floor's labelled dimensions disagree by ~13%
+// between x and y).
+export const pxScale = (source) => (Array.isArray(source.pxPerMetre) ? source.pxPerMetre : [source.pxPerMetre, source.pxPerMetre]);
+
 // Image pixel → metres for a plan's SOURCE calibration.
-export const fromPx = (source) => (px, py) => [
-  +((px - source.originPx[0]) / source.pxPerMetre).toFixed(3),
-  +((py - source.originPx[1]) / source.pxPerMetre).toFixed(3),
-];
+export const fromPx = (source) => {
+  const [sx, sy] = pxScale(source);
+  return (px, py) => [
+    +((px - source.originPx[0]) / sx).toFixed(3),
+    +((py - source.originPx[1]) / sy).toFixed(3),
+  ];
+};
 
 export const FEET = 0.3048;
 export const ft = (feet, inches = 0) => (feet + inches / 12) * FEET;

@@ -14,6 +14,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve, extname } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { furniturePrisms } from '../js/geometry.js';
+import { pxScale } from '../js/plans/kit.js';
 
 const [modulePath, imagePath, outPath, ...flags] = process.argv.slice(2);
 if (!modulePath || !imagePath || !outPath) {
@@ -22,9 +23,11 @@ if (!modulePath || !imagePath || !outPath) {
 }
 
 const plan = await import(pathToFileURL(resolve(modulePath)).href);
-const { pxPerMetre: k, originPx: [ox, oy], sizePx: [W, H] } = plan.SOURCE;
-const X = (m) => (ox + m * k).toFixed(1);
-const Y = (m) => (oy + m * k).toFixed(1);
+const { originPx: [ox, oy], sizePx: [W, H] } = plan.SOURCE;
+const [kx, ky] = pxScale(plan.SOURCE);
+const k = (kx + ky) / 2; // for text and stroke sizes
+const X = (m) => (ox + m * kx).toFixed(1);
+const Y = (m) => (oy + m * ky).toFixed(1);
 const pts = (poly) => poly.map(([x, y]) => `${X(x)},${Y(y)}`).join(' ');
 const esc = (t) => String(t).replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
 
