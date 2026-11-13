@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import * as plan from '../js/plan.js';
+import * as plan from '../js/plans/roomsketcher-office.js';
 import { polygonArea, furniturePrisms, wallPrisms } from '../js/geometry.js';
 
 const near = (a, b, tol, msg) => assert.ok(Math.abs(a - b) <= tol, `${msg}: ${a} vs ${b}`);
@@ -58,7 +58,7 @@ test('every piece of furniture builds and stays inside the building', () => {
   }
 });
 
-test('all eighteen named people have a seat', () => {
+test('RoomSketcher: all eighteen named people have a seat', () => {
   const names = plan.furniture.filter((f) => f.label).map((f) => f.label).sort();
   assert.deepEqual(names, ['Cece', 'Dana', 'Eric', 'Frank', 'John', 'Kate', 'Linda', 'Liv', 'Mike', 'Nathan', 'Ned', 'Nicole', 'Pearl', 'Ryan', 'Sarah', 'Sebastian', 'Thomas', 'Tina']);
 });

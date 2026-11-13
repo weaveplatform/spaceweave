@@ -35,6 +35,35 @@ export function ensurePositive(poly) {
   return signedArea(poly) < 0 ? [...poly].reverse() : poly;
 }
 
+export function pointInPolygon([x, y], poly) {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [xi, yi] = poly[i];
+    const [xj, yj] = poly[j];
+    if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+
+// Grows a simple polygon by d along its edge normals (mitred corners), for
+// the slab under the outer face of the exterior walls.
+export function offsetPolygon(poly, d) {
+  const p = ensurePositive(poly);
+  const n = p.length;
+  const normal = (a, b) => {
+    const len = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+    return [(b[1] - a[1]) / len, -(b[0] - a[0]) / len];
+  };
+  return p.map((v, i) => {
+    const n0 = normal(p[(i - 1 + n) % n], v);
+    const n1 = normal(v, p[(i + 1) % n]);
+    const bx = n0[0] + n1[0];
+    const by = n0[1] + n1[1];
+    const k = d / Math.max(0.2, (bx * n1[0] + by * n1[1]));
+    return [v[0] + bx * k, v[1] + by * k];
+  });
+}
+
 export function centroid(poly) {
   let x = 0;
   let y = 0;
@@ -112,7 +141,9 @@ function wallFrame(wall, thickness) {
   const len = Math.hypot(bx - ax, by - ay);
   const ux = (bx - ax) / len;
   const uy = (by - ay) / len;
-  const t = thickness[wall.kind];
+  // A per-wall thickness covers columns and shaft walls, which are modelled
+  // as short walls so they follow the wall-height slider.
+  const t = wall.thickness ?? thickness[wall.kind];
   // A footprint along the wall from offset s0 to s1, tt thick, centred on the line.
   const band = (s0, s1, tt = t) => {
     const nx = -uy * (tt / 2);
@@ -170,10 +201,16 @@ function doorLeaves(wall, frame, s0, s1, opening, H) {
 
 // Every wall, carved at its openings, as prisms up to wall height H.
 // Door leaves are returned separately so they can be toggled.
-export function wallPrisms(walls, H, { thickness, width, depth, maxPiece = Infinity }) {
+export function wallPrisms(walls, H, { thickness, width, depth, outline = null, maxPiece = Infinity }) {
   const solids = [];
   const leaves = [];
   const centre = [width / 2, depth / 2];
+  // Which side of an exterior wall is outside. For a rectangle the side away
+  // from the centre; for an L-shape or slanted facade, probe just past the wall
+  // and ask the outline.
+  const isOutside = (px, py, nx, ny) => (outline
+    ? !pointInPolygon([px + nx * 0.5, py + ny * 0.5], outline)
+    : nx * (px - centre[0]) + ny * (py - centre[1]) > 0);
 
   for (const wall of walls) {
     const f = wallFrame(wall, thickness);
@@ -183,7 +220,7 @@ export function wallPrisms(walls, H, { thickness, width, depth, maxPiece = Infin
     if (wall.kind === 'exterior') {
       const mid = [f.ax + (f.ux * f.len) / 2, f.ay + (f.uy * f.len) / 2];
       let [nx, ny] = [-f.uy, f.ux];
-      if (nx * (mid[0] - centre[0]) + ny * (mid[1] - centre[1]) < 0) [nx, ny] = [-nx, -ny];
+      if (!isOutside(mid[0], mid[1], nx, ny)) [nx, ny] = [-nx, -ny];
       outward = [nx, ny];
     }
     const base = { wallId: wall.id, outward, kind: 'wall' };
@@ -209,7 +246,7 @@ export function wallPrisms(walls, H, { thickness, width, depth, maxPiece = Infin
         if (H > o.head) solids.push(prism(f.band(o.s0, o.s1), o.head, H, { ...base, mat: 'wall' }));
       } else {
         if (H > DOOR_HEAD) solids.push(prism(f.band(o.s0, o.s1), DOOR_HEAD, H, { ...base, mat: 'wall' }));
-        leaves.push(...doorLeaves(wall, f, o.s0, o.s1, o, H));
+        if (o.kind !== 'opening') leaves.push(...doorLeaves(wall, f, o.s0, o.s1, o, H));
       }
     }
   }
@@ -317,6 +354,27 @@ export function furniturePrisms(item, style = BLOCKY) {
         prism(rectPoly(x, y, 0.16, 0.16, facing), 0, 0.78, { mat: 'ceramic' }),
         prism(soft(x, y - 0.02, 0.5, 0.4, facing), 0.78, 0.88, { mat: 'ceramic' }),
       ];
+    case 'block':
+      return [prism(rectPoly(x, y, item.w, item.d, item.rot ?? 0), item.z0 ?? 0, (item.z0 ?? 0) + item.h, { mat: item.mat })];
+    case 'sofa': {
+      const w = item.w;
+      return [
+        prism(soft(x, y, 0.85, w, facing), 0, 0.42, { mat: 'fabricB' }),
+        prism(soft(x - fx * 0.35, y - fy * 0.35, 0.15, w, facing), 0.42, 0.8, { mat: 'fabricB' }),
+      ];
+    }
+    case 'stairs': {
+      // Treads rise along `facing`; each is a block from the floor so the
+      // flight reads as solid from any side.
+      const steps = item.steps ?? 9;
+      const run = item.d / steps;
+      const out = [];
+      for (let i = 0; i < steps; i++) {
+        const t = -item.d / 2 + run * (i + 0.5);
+        out.push(prism(rectPoly(x + fx * t, y + fy * t, run, item.w, facing), 0, (item.rise * (i + 1)) / steps, { mat: 'cabinet' }));
+      }
+      return out;
+    }
     default:
       throw new Error(`unknown furniture type ${item.type}`);
   }

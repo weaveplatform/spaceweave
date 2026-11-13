@@ -1,5 +1,5 @@
-import * as plan from './plan.js';
 import { PRESETS } from './projection.js';
+import { PLANS, DEFAULT_PLAN } from './plans/index.js';
 import { createScene } from './render.js';
 import { SKINS, DEFAULT_SKIN } from './skins.js';
 
@@ -23,29 +23,32 @@ const state = {
 const stats = document.querySelector('#stats');
 const stageWrap = document.querySelector('.stage-wrap');
 
-// Skin choice: ?skin= wins so a link can show a particular look, then the
-// viewer's last pick. Storage can throw (private mode, blocked site data).
-function initialSkin() {
-  const known = (id) => SKINS.some((s) => s.id === id);
-  const fromUrl = new URLSearchParams(location.search).get('skin');
+// Read ?key= and fall back to the viewer's last choice, then the default.
+// Storage can throw (private mode, blocked site data).
+function remembered(key, known, fallback) {
+  const fromUrl = new URLSearchParams(location.search).get(key);
   if (known(fromUrl)) return fromUrl;
   try {
-    const saved = localStorage.getItem('floorplan-skin');
+    const saved = localStorage.getItem(`floorplan-${key}`);
     if (known(saved)) return saved;
-  } catch { /* fall through to the default */ }
-  return DEFAULT_SKIN;
+  } catch { /* fall through */ }
+  return fallback;
 }
-stageWrap.dataset.skin = initialSkin();
 
-const scene = createScene({
-  styleRoot: stageWrap,
-  svg: document.querySelector('#stage'),
-  tooltip: document.querySelector('#tooltip'),
-  plan,
-  onStats: ({ prisms, faces, ms }) => {
-    stats.textContent = `${prisms} prisms · ${faces} faces · ${ms.toFixed(1)} ms/frame`;
-  },
-});
+function remember(key, value) {
+  try {
+    localStorage.setItem(`floorplan-${key}`, value);
+  } catch { /* the choice just won't persist */ }
+  const url = new URL(location.href);
+  url.searchParams.set(key, value);
+  history.replaceState(null, '', url);
+}
+
+stageWrap.dataset.skin = remembered('skin', (id) => SKINS.some((s) => s.id === id), DEFAULT_SKIN);
+
+// The scene is rebuilt from scratch when the plan changes; everything else
+// (camera, skin, toggles) carries over.
+let scene = null;
 
 // Several tweens can run at once (camera, build, sliders); coalesce them into
 // one render per animation frame.
@@ -55,7 +58,7 @@ function invalidate() {
   pending = true;
   requestAnimationFrame(() => {
     pending = false;
-    scene.render(state);
+    scene?.render(state);
   });
 }
 
@@ -96,7 +99,7 @@ function animateView(target, duration = 1100) {
   const to = { ...from, ...target };
   const theta = d3.interpolateNumber(from.theta, to.theta);
   const phi = d3.interpolateNumber(from.phi, to.phi);
-  scene.fit({ ...state, ...to }, duration);
+  scene?.fit({ ...state, ...to }, duration);
   motion(d3.select(document.body).transition('view').duration(duration).ease(d3.easeCubicInOut))
     .tween('view', () => (t) => {
       state.theta = theta(t);
@@ -127,7 +130,7 @@ document.querySelectorAll('[data-preset]').forEach((b) => b.addEventListener('cl
 document.querySelector('#rotate-left').addEventListener('click', () => animateView({ theta: state.theta - 90 }, 900));
 document.querySelector('#rotate-right').addEventListener('click', () => animateView({ theta: state.theta + 90 }, 900));
 document.querySelector('#rebuild').addEventListener('click', () => build());
-document.querySelector('#reset').addEventListener('click', () => scene.fit(state, 600));
+document.querySelector('#reset').addEventListener('click', () => scene?.fit(state, 600));
 
 elevation.addEventListener('input', () => {
   state.phi = +elevation.value;
@@ -161,14 +164,9 @@ picker.attr('title', (s) => s.blurb);
 function applySkin(id) {
   stageWrap.dataset.skin = id;
   skinBlurb.textContent = SKINS.find((s) => s.id === id).blurb;
-  scene.refreshPalette();
+  scene?.refreshPalette();
   invalidate();
-  try {
-    localStorage.setItem('floorplan-skin', id);
-  } catch { /* the choice just won't persist */ }
-  const url = new URL(location.href);
-  url.searchParams.set('skin', id);
-  history.replaceState(null, '', url);
+  remember('skin', id);
 }
 picker.select('input').on('change', (e, s) => applySkin(s.id));
 skinBlurb.textContent = SKINS.find((s) => s.id === stageWrap.dataset.skin).blurb;
@@ -178,18 +176,62 @@ document.fonts?.ready.then(invalidate);
 
 const dark = window.matchMedia('(prefers-color-scheme: dark)');
 dark.addEventListener('change', () => {
-  scene.refreshPalette();
+  scene?.refreshPalette();
   invalidate();
 });
-window.addEventListener('resize', () => scene.fit(state));
+window.addEventListener('resize', () => scene?.fit(state));
+
+// ---- plan picker
+const planBlurb = document.querySelector('#plan-blurb');
+const sourceLink = document.querySelector('#source-link');
+const planName = document.querySelector('#plan-name');
+const planPicker = d3.select('#plans').selectAll('label').data(PLANS).join('label');
+planPicker.append('input').attr('type', 'radio').attr('name', 'plan').attr('value', (p) => p.id);
+planPicker.append('span').text((p) => p.name);
+planPicker.attr('title', (p) => p.blurb);
+
+let loading = 0;
+async function loadPlan(id) {
+  const entry = PLANS.find((p) => p.id === id) ?? PLANS[0];
+  const ticket = ++loading;
+  planPicker.select('input').property('checked', (p) => p.id === entry.id);
+  planBlurb.textContent = entry.blurb;
+  let plan;
+  try {
+    plan = await entry.load();
+  } catch (err) {
+    console.error(err);
+    planBlurb.textContent = `${entry.name} couldn't be loaded.`;
+    return;
+  }
+  if (ticket !== loading) return; // a later click won
+  scene?.destroy();
+  scene = createScene({
+    styleRoot: stageWrap,
+    svg: document.querySelector('#stage'),
+    tooltip: document.querySelector('#tooltip'),
+    plan,
+    onStats: ({ prisms, faces, ms }) => {
+      stats.textContent = `${prisms} prisms · ${faces} faces · ${ms.toFixed(1)} ms/frame`;
+    },
+  });
+  sourceLink.href = plan.SOURCE.url;
+  sourceLink.textContent = plan.SOURCE.credit;
+  planName.textContent = plan.SOURCE.title;
+  document.querySelector('#stage').setAttribute('aria-label', `Isometric model of the ${plan.SOURCE.title} floor plan`);
+  remember('plan', entry.id);
+  state.build = 0;
+  scene.render(state);
+  scene.fit(state);
+  build();
+}
+planPicker.select('input').on('change', (e, p) => loadPlan(p.id));
 
 syncOutputs();
-scene.render(state);
-scene.fit(state);
-build();
+loadPlan(remembered('plan', (id) => PLANS.some((p) => p.id === id), DEFAULT_PLAN));
 
 // Exposed for poking at the scene from the console.
 globalThis.floorplan = {
-  state, invalidate, animateView, build,
-  refreshPalette: () => { scene.refreshPalette(); invalidate(); },
+  state, invalidate, animateView, build, loadPlan,
+  refreshPalette: () => { scene?.refreshPalette(); invalidate(); },
 };

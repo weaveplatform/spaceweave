@@ -9,9 +9,15 @@
 // structural lines below use the labelled dimensions and the furniture uses
 // measured pixel positions converted with the same scale.
 
+import {
+  THICKNESS, door, doubleDoor, win, rect, E, S, W, N, toward, desk, chair, tub, plant, box,
+} from './kit.js';
+
 export const SOURCE = {
+  title: 'Office',
   url: 'https://wpmedia.roomsketcher.com/content/uploads/2021/12/09160214/RoomSketcher-Office-Floor-Plan-PID3529710-2D-bw-with-Labels.jpg',
   credit: 'RoomSketcher office floor plan sample',
+  sizePx: [800, 460],
   pxPerMetre: 34.3,
   originPx: [86.7, 40],
 };
@@ -22,21 +28,14 @@ export const DEPTH = 10.65; // 3.32 + 3.47 + 3.86, and 3.17 + 3.61 + 2.75 + 1.11
 // The exterior door on the west wall; the build animation grows outward from here.
 export const ENTRANCE = [0, 7.4];
 
-export const THICKNESS = { exterior: 0.15, interior: 0.1, glass: 0.05 };
-
-// Openings use absolute coordinates along the wall's axis (x for a horizontal
-// wall, y for a vertical one) so they read straight off the traced grid.
-// swing: the compass side the leaf opens to; hinge: 'a' = low end, 'b' = high end.
-const door = (a, b, swing, hinge = 'a') => ({ a, b, kind: 'door', swing, hinge });
-const doubleDoor = (a, b, swing) => ({ a, b, kind: 'double-door', swing });
-const window_ = (a, b, sill, head) => ({ a, b, kind: 'window', sill, head });
+export { THICKNESS };
 
 // The north facade is glazed almost wall to wall. The solid pieces between the
 // windows are the mullions and partition junctions visible in the source.
 const NORTH_GLAZING = [
   [0.1, 2.05], [2.15, 4.05], [4.15, 6.05], [6.25, 8.2], [8.3, 10.28],
   [10.42, 12.45], [12.55, 14.5], [15.1, 17.05], [17.3, 19.25],
-].map(([a, b]) => window_(a, b, 0.1, 2.5));
+].map(([a, b]) => win(a, b, 0.1, 2.5));
 
 const EXT_HALF = THICKNESS.exterior / 2;
 
@@ -44,7 +43,7 @@ export const walls = [
   // Exterior. North and south run past the corners by half a thickness so the
   // corners close. West and east stop at the centreline and tuck inside them.
   { id: 'north', kind: 'exterior', from: [0, 0], to: [WIDTH, 0], ext: EXT_HALF, openings: NORTH_GLAZING },
-  { id: 'south', kind: 'exterior', from: [0, DEPTH], to: [WIDTH, DEPTH], ext: EXT_HALF, openings: [window_(12.38, 14.35, 0.9, 2.1)] },
+  { id: 'south', kind: 'exterior', from: [0, DEPTH], to: [WIDTH, DEPTH], ext: EXT_HALF, openings: [win(12.38, 14.35, 0.9, 2.1)] },
   { id: 'west', kind: 'exterior', from: [0, 0], to: [0, DEPTH], ext: 0, openings: [door(6.9, 7.87, 'E', 'a')] },
   { id: 'east', kind: 'exterior', from: [WIDTH, 0], to: [WIDTH, DEPTH], ext: 0, openings: [] },
 
@@ -77,7 +76,6 @@ export const walls = [
   { id: 'wc-divider', kind: 'interior', from: [17.15, 9.53], to: [17.15, DEPTH] },
 ];
 
-const rect = (x0, y0, x1, y1) => [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
 
 // zone drives the floor tint; floor drives the material (tile gets a grid).
 export const rooms = [
@@ -109,18 +107,6 @@ export const floorPatches = [
   { id: 'kitchen-tiles', name: 'Kitchen', polygon: rect(5.0, 8.2, 9.0, DEPTH), floor: 'tile' },
 ];
 
-// Facing is the compass bearing a seated person looks along, in degrees, in plan
-// space where y points down: 0 = east, 90 = south, 180 = west, 270 = north.
-const E = 0, S = 90, W = 180, N = 270;
-const toward = (x, y, tx, ty) => (Math.atan2(ty - y, tx - x) * 180) / Math.PI;
-
-const desk = (x, y, w, d, rot = 0) => ({ type: 'desk', x, y, w, d, rot });
-const chair = (x, y, facing, label) => ({ type: 'chair', x, y, facing, label });
-const tub = (x, y, facing) => ({ type: 'tub', x, y, facing });
-const plant = (x, y, r) => ({ type: 'plant', x, y, r });
-const box = (type, x0, y0, x1, y1, h, extra = {}) => ({
-  type, x: (x0 + x1) / 2, y: (y0 + y1) / 2, w: x1 - x0, d: y1 - y0, rot: 0, h, ...extra,
-});
 
 function conferenceChairs() {
   // Three chairs on each long side of the angled table.

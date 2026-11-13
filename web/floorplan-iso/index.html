@@ -23,7 +23,7 @@
       <span class="mark" aria-hidden="true"></span>
       <div>
         <h1>Isometric floor plan</h1>
-        <p>spaceweave trial · a flat office plan rebuilt in 3D with D3 and SVG</p>
+        <p>spaceweave trial · <span id="plan-name">a flat floor plan</span> rebuilt in 3D with D3 and SVG</p>
       </div>
     </div>
     <div class="views" role="group" aria-label="View">
@@ -54,6 +54,10 @@
     </section>
 
     <aside class="panel">
+      <h2 id="plan-heading">Floor plan</h2>
+      <fieldset class="plans" id="plans" aria-labelledby="plan-heading"></fieldset>
+      <p class="skin-blurb" id="plan-blurb"></p>
+
       <h2 id="style-heading">Style</h2>
       <fieldset class="skins" id="skins" aria-labelledby="style-heading"></fieldset>
       <p class="skin-blurb" id="skin-blurb"></p>
@@ -80,9 +84,9 @@
 
       <h2>How it's made</h2>
       <p>
-        The <a href="https://wpmedia.roomsketcher.com/content/uploads/2021/12/09160214/RoomSketcher-Office-Floor-Plan-PID3529710-2D-bw-with-Labels.jpg" target="_blank" rel="noopener">source plan</a>
-        is a flat 800×460 image. Its walls, doors, glazing and furniture were traced by hand into metres,
-        calibrated against the plan's own dimension lines.
+        Each source plan (this one: <a id="source-link" href="#" target="_blank" rel="noopener">source</a>)
+        is a flat image. Its walls, doors, glazing and furniture were traced by hand into metres,
+        calibrated against the plan's own dimension lines or scale bar.
       </p>
       <p>
         Every object is a footprint pushed up into a prism. Each frame, the prisms are projected

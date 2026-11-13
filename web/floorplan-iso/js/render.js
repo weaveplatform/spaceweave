@@ -4,7 +4,7 @@
 
 import { makeView } from './projection.js';
 import {
-  wallPrisms, furniturePrisms, projectPrism, orderItems, centroid, polygonArea, prism,
+  wallPrisms, furniturePrisms, projectPrism, orderItems, centroid, polygonArea, prism, offsetPolygon,
 } from './geometry.js';
 
 const d3 = globalThis.d3;
@@ -52,7 +52,8 @@ export function createScene({ svg: svgEl, tooltip: tooltipEl, styleRoot, plan, o
   const tooltip = d3.select(tooltipEl);
   const W = plan.WIDTH;
   const D = plan.DEPTH;
-  const opts = { thickness: plan.THICKNESS, width: W, depth: D };
+  const outline = plan.OUTLINE ?? [[0, 0], [W, 0], [W, D], [0, D]];
+  const opts = { thickness: plan.THICKNESS, width: W, depth: D, outline: plan.OUTLINE ?? null };
   const maxDist = Math.hypot(W, D);
   const distFromEntrance = (x, y) => Math.hypot(x - plan.ENTRANCE[0], y - plan.ENTRANCE[1]) / maxDist;
 
@@ -126,8 +127,8 @@ export function createScene({ svg: svgEl, tooltip: tooltipEl, styleRoot, plan, o
     return wallCache;
   }
 
-  const half = plan.THICKNESS.exterior / 2;
-  const plinth = prism([[-half, -half], [W + half, -half], [W + half, D + half], [-half, D + half]], -PLINTH, 0, { mat: 'plinth' });
+  // The slab follows the outer face of the exterior walls.
+  const plinth = prism(offsetPolygon(outline, plan.THICKNESS.exterior / 2), -PLINTH, 0, { mat: 'plinth' });
 
   const rooms = plan.rooms.map((r) => ({ ...r, area: polygonArea(r.polygon), c: r.label ?? centroid(r.polygon) }));
 
@@ -315,7 +316,7 @@ export function createScene({ svg: svgEl, tooltip: tooltipEl, styleRoot, plan, o
   function fit(state, duration = 0) {
     const view = makeView({ theta: state.theta, phi: state.phi, cx: W / 2, cy: D / 2 });
     const pts = [];
-    for (const [x, y] of [[0, 0], [W, 0], [W, D], [0, D]]) {
+    for (const [x, y] of outline) {
       pts.push(view.project(x, y, -PLINTH), view.project(x, y, state.wallHeight));
     }
     const t = transformToFit(screenBounds(pts));
@@ -334,5 +335,11 @@ export function createScene({ svg: svgEl, tooltip: tooltipEl, styleRoot, plan, o
     buildFurniture(palette.shape);
   }
 
-  return { render, fit, refreshPalette, svg };
+  function destroy() {
+    svg.on('.zoom', null).interrupt('camera');
+    svg.selectAll('*').remove();
+    tooltip.attr('hidden', true);
+  }
+
+  return { render, fit, refreshPalette, destroy, svg };
 }

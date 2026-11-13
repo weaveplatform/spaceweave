@@ -302,9 +302,22 @@ h1 { margin: 0; font-size: 17px; letter-spacing: -0.01em; }
 .labels .person text { font-size: 10.5px; dominant-baseline: auto; transform: translateY(-3px); }
 .labels .person line { stroke: var(--label-ink); stroke-opacity: 0.45; stroke-width: 1; }
 
+/* ---- plan picker */
+.plans { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; margin: 0; padding: 0; border: 0; }
+.plans label {
+  position: relative; cursor: pointer; text-align: center;
+  padding: 7px 8px; border: 1px solid var(--line); border-radius: 8px;
+  font-size: 13px; font-weight: 600;
+}
+.plans label:hover { border-color: var(--muted); }
+.plans input { position: absolute; opacity: 0; pointer-events: none; }
+.plans label:has(input:checked) { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.plans label:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+
 /* ---- style picker */
 .skins { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 0; padding: 0; border: 0; }
 .skins label {
+  position: relative;
   display: grid; gap: 6px; cursor: pointer;
   padding: 6px; border: 1px solid var(--line); border-radius: 10px;
   font-size: 12px; font-weight: 600; text-align: center;
