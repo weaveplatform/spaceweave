@@ -54,6 +54,29 @@ export function rectPoly(cx, cy, w, d, rotDeg = 0) {
   return [[-hw, -hd], [hw, -hd], [hw, hd], [-hw, hd]].map(([u, v]) => [cx + u * c - v * s, cy + u * s + v * c]);
 }
 
+// Convex, so it still works with the separating-axis ordering. Each corner is
+// cut into `segments` straight pieces. The default single chamfer reads as soft
+// at plan scale; true arcs multiply the faces drawn (and the frame time) for
+// slivers a few pixels wide.
+export function roundedRectPoly(cx, cy, w, d, rotDeg = 0, r = 0, segments = 1) {
+  if (r <= 1e-6) return rectPoly(cx, cy, w, d, rotDeg);
+  const c = Math.cos(rotDeg * DEG);
+  const s = Math.sin(rotDeg * DEG);
+  const hw = w / 2 - r;
+  const hd = d / 2 - r;
+  const corners = [[hw, hd, 0], [-hw, hd, 90], [-hw, -hd, 180], [hw, -hd, 270]];
+  const out = [];
+  for (const [u0, v0, a0] of corners) {
+    for (let i = 0; i <= segments; i++) {
+      const a = (a0 + (90 * i) / segments) * DEG;
+      const u = u0 + r * Math.cos(a);
+      const v = v0 + r * Math.sin(a);
+      out.push([cx + u * c - v * s, cy + u * s + v * c]);
+    }
+  }
+  return out;
+}
+
 export function ngonPoly(cx, cy, r, n = 12, rotDeg = 0) {
   const out = [];
   for (let i = 0; i < n; i++) {
@@ -63,8 +86,20 @@ export function ngonPoly(cx, cy, r, n = 12, rotDeg = 0) {
   return out;
 }
 
+// The separating-axis sort tests every edge of both footprints against every
+// vertex, so a 24-sided tub against a 16-sided seat costs ~40× a box pair.
+// Ordering only needs the rough shape: sort on at most 8 evenly spaced
+// vertices (inscribed, still convex) and draw the full outline.
+const SORT_VERTICES = 8;
+
+export function simplify(poly, max = SORT_VERTICES) {
+  if (poly.length <= max) return poly;
+  return Array.from({ length: max }, (_, i) => poly[Math.floor((i * poly.length) / max)]);
+}
+
 export function prism(poly, z0, z1, props = {}) {
-  return { poly: ensurePositive(poly), z0, z1, ...props };
+  const p = ensurePositive(poly);
+  return { poly: p, sortPoly: simplify(p), z0, z1, ...props };
 }
 
 // ---------------------------------------------------------------- walls
@@ -185,19 +220,21 @@ export function wallPrisms(walls, H, { thickness, width, depth, maxPiece = Infin
 
 const DESK_HEIGHT = 0.75;
 
-function chairParts(x, y, facing, size, mat) {
+// How the furniture is shaped, as opposed to coloured. Skins set this: corner
+// rounds the soft rectangles (seats, desk tops), facets multiplies the sides of
+// round things. The defaults give the original blocky model.
+export const BLOCKY = { corner: 0, facets: 1 };
+
+export function furniturePrisms(item, style = BLOCKY) {
+  const { x, y } = item;
+  const n = (sides) => Math.round(sides * style.facets);
+  // A rectangle with corners rounded by up to style.corner, never more than a
+  // quarter of its shorter side so thin parts stay rectangles.
+  const soft = (cx, cy, w, d, rot = 0) => roundedRectPoly(cx, cy, w, d, rot, Math.min(style.corner, w / 4, d / 4));
+  const facing = item.facing ?? 0;
   const fx = Math.cos(facing * DEG);
   const fy = Math.sin(facing * DEG);
-  const back = size / 2 - 0.035;
-  return [
-    prism(ngonPoly(x, y, 0.035, 6), 0, 0.4, { mat: 'metal' }),
-    prism(rectPoly(x, y, size, size, facing), 0.4, 0.47, { mat }),
-    prism(rectPoly(x - fx * back, y - fy * back, 0.07, size, facing), 0.47, 0.95, { mat }),
-  ];
-}
 
-export function furniturePrisms(item) {
-  const { x, y } = item;
   switch (item.type) {
     case 'desk': {
       const rot = item.rot ?? 0;
@@ -208,7 +245,7 @@ export function furniturePrisms(item) {
       return [
         prism(rectPoly(x - c * legOff, y - s * legOff, 0.04, item.d - 0.1, rot), 0, h - 0.04, { mat: 'metal' }),
         prism(rectPoly(x + c * legOff, y + s * legOff, 0.04, item.d - 0.1, rot), 0, h - 0.04, { mat: 'metal' }),
-        prism(rectPoly(x, y, item.w, item.d, rot), h - 0.04, h, { mat: 'wood' }),
+        prism(soft(x, y, item.w, item.d, rot), h - 0.04, h, { mat: 'wood' }),
       ];
     }
     case 'counter':
@@ -219,58 +256,66 @@ export function furniturePrisms(item) {
     case 'sink':
       return [
         prism(rectPoly(x, y, item.w, item.d), 0, item.h, { mat: 'counter' }),
-        prism(rectPoly(x, y, item.w * 0.7, item.d * 0.6), item.h, item.h + 0.01, { mat: 'steel' }),
+        prism(soft(x, y, item.w * 0.7, item.d * 0.6), item.h, item.h + 0.01, { mat: 'steel' }),
       ];
     case 'board':
       return [prism(rectPoly(x, y, item.w, item.d, item.rot ?? 0), item.z0, item.z1, { mat: 'board' })];
     case 'roundTable':
       return [
         prism(ngonPoly(x, y, 0.05, 6), 0, item.h - 0.04, { mat: 'metal' }),
-        prism(ngonPoly(x, y, item.r, 16), item.h - 0.04, item.h, { mat: 'wood' }),
+        prism(ngonPoly(x, y, item.r, n(16)), item.h - 0.04, item.h, { mat: 'wood' }),
       ];
-    case 'chair':
-      return chairParts(x, y, item.facing, item.size ?? 0.5, 'fabric');
-    case 'armchair': {
-      const fx = Math.cos(item.facing * DEG);
-      const fy = Math.sin(item.facing * DEG);
+    case 'chair': {
+      const size = item.size ?? 0.5;
+      const back = size / 2 - 0.035;
       return [
-        prism(rectPoly(x, y, 0.5, 0.52, item.facing), 0, 0.42, { mat: 'fabricB' }),
-        prism(rectPoly(x - fx * 0.2, y - fy * 0.2, 0.12, 0.52, item.facing), 0.42, 0.78, { mat: 'fabricB' }),
+        prism(ngonPoly(x, y, 0.035, 6), 0, 0.4, { mat: 'metal' }),
+        prism(soft(x, y, size, size, facing), 0.4, 0.47, { mat: 'fabric' }),
+        prism(soft(x - fx * back, y - fy * back, 0.07, size, facing), 0.47, 0.95, { mat: 'fabric' }),
       ];
     }
-    case 'tub': {
-      const fx = Math.cos(item.facing * DEG);
-      const fy = Math.sin(item.facing * DEG);
+    case 'armchair':
       return [
-        prism(ngonPoly(x, y, 0.32, 12), 0, 0.42, { mat: 'fabricB' }),
-        prism(rectPoly(x - fx * 0.22, y - fy * 0.22, 0.12, 0.5, item.facing), 0.42, 0.74, { mat: 'fabricB' }),
+        prism(soft(x, y, 0.5, 0.52, facing), 0, 0.42, { mat: 'fabricB' }),
+        prism(soft(x - fx * 0.2, y - fy * 0.2, 0.12, 0.52, facing), 0.42, 0.78, { mat: 'fabricB' }),
       ];
-    }
+    case 'tub':
+      return [
+        prism(ngonPoly(x, y, 0.32, n(12)), 0, 0.42, { mat: 'fabricB' }),
+        prism(soft(x - fx * 0.22, y - fy * 0.22, 0.12, 0.5, facing), 0.42, 0.74, { mat: 'fabricB' }),
+      ];
     case 'stool':
       return [
         prism(ngonPoly(x, y, 0.03, 6), 0, 0.62, { mat: 'metal' }),
-        prism(ngonPoly(x, y, 0.18, 10), 0.62, 0.67, { mat: 'fabric' }),
+        prism(ngonPoly(x, y, 0.18, n(10)), 0.62, 0.67, { mat: 'fabric' }),
       ];
     case 'plant': {
       const r = item.r;
+      if (style.facets > 1) {
+        // Smoother skins get a rounder canopy: three tiers that swell then taper.
+        const z = 0.32;
+        return [
+          prism(ngonPoly(x, y, r * 0.42, n(8)), 0, z, { mat: 'pot' }),
+          prism(ngonPoly(x, y, r * 0.8, n(9), 10), z, z + r * 0.6, { mat: 'plant' }),
+          prism(ngonPoly(x, y, r, n(9), 30), z + r * 0.6, z + r * 1.3, { mat: 'plant' }),
+          prism(ngonPoly(x, y, r * 0.6, n(8), 5), z + r * 1.3, z + r * 1.9, { mat: 'plantLight' }),
+        ];
+      }
       return [
         prism(ngonPoly(x, y, r * 0.45, 8), 0, 0.32, { mat: 'pot' }),
         prism(ngonPoly(x, y, r, 9, 10), 0.32, 0.32 + r * 1.3, { mat: 'plant' }),
         prism(ngonPoly(x, y, r * 0.62, 7, 25), 0.32 + r * 1.3, 0.32 + r * 2.0, { mat: 'plantLight' }),
       ];
     }
-    case 'toilet': {
-      const fx = Math.cos(item.facing * DEG);
-      const fy = Math.sin(item.facing * DEG);
+    case 'toilet':
       return [
-        prism(rectPoly(x - fx * 0.24, y - fy * 0.24, 0.18, 0.42, item.facing), 0, 0.8, { mat: 'ceramic' }),
-        prism(ngonPoly(x + fx * 0.06, y + fy * 0.06, 0.19, 12), 0, 0.42, { mat: 'ceramic' }),
+        prism(soft(x - fx * 0.24, y - fy * 0.24, 0.18, 0.42, facing), 0, 0.8, { mat: 'ceramic' }),
+        prism(ngonPoly(x + fx * 0.06, y + fy * 0.06, 0.19, n(12)), 0, 0.42, { mat: 'ceramic' }),
       ];
-    }
     case 'basin':
       return [
-        prism(rectPoly(x, y, 0.16, 0.16, item.facing), 0, 0.78, { mat: 'ceramic' }),
-        prism(rectPoly(x, y - 0.02, 0.5, 0.4, item.facing), 0.78, 0.88, { mat: 'ceramic' }),
+        prism(rectPoly(x, y, 0.16, 0.16, facing), 0, 0.78, { mat: 'ceramic' }),
+        prism(soft(x, y - 0.02, 0.5, 0.4, facing), 0.78, 0.88, { mat: 'ceramic' }),
       ];
     default:
       throw new Error(`unknown furniture type ${item.type}`);

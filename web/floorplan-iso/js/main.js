@@ -1,6 +1,7 @@
 import * as plan from './plan.js';
 import { PRESETS } from './projection.js';
 import { createScene } from './render.js';
+import { SKINS, DEFAULT_SKIN } from './skins.js';
 
 const d3 = globalThis.d3;
 
@@ -16,10 +17,28 @@ const state = {
   labels: true,
   people: true,
   build: 0,
+  moving: false,
 };
 
 const stats = document.querySelector('#stats');
+const stageWrap = document.querySelector('.stage-wrap');
+
+// Skin choice: ?skin= wins so a link can show a particular look, then the
+// viewer's last pick. Storage can throw (private mode, blocked site data).
+function initialSkin() {
+  const known = (id) => SKINS.some((s) => s.id === id);
+  const fromUrl = new URLSearchParams(location.search).get('skin');
+  if (known(fromUrl)) return fromUrl;
+  try {
+    const saved = localStorage.getItem('floorplan-skin');
+    if (known(saved)) return saved;
+  } catch { /* fall through to the default */ }
+  return DEFAULT_SKIN;
+}
+stageWrap.dataset.skin = initialSkin();
+
 const scene = createScene({
+  styleRoot: stageWrap,
   svg: document.querySelector('#stage'),
   tooltip: document.querySelector('#tooltip'),
   plan,
@@ -52,13 +71,33 @@ function syncOutputs() {
   wallHeightOut.textContent = `${state.wallHeight.toFixed(1)} m`;
 }
 
+// SVG filters (Sketch's wobble, Neon's glow, the soft ground shadow) are
+// re-rasterised on every frame, which halves the frame rate while the camera
+// moves. They are dropped for the duration of a camera or build tween; the
+// eye doesn't miss them in motion and they return when it settles.
+let moving = 0;
+function motion(transition) {
+  moving++;
+  stageWrap.classList.add('moving');
+  state.moving = true;
+  const settle = () => {
+    moving = Math.max(0, moving - 1);
+    if (moving === 0) {
+      stageWrap.classList.remove('moving');
+      state.moving = false;
+      invalidate(); // bring back what was skipped in motion (hatching)
+    }
+  };
+  return transition.on('end.motion', settle).on('interrupt.motion', settle);
+}
+
 function animateView(target, duration = 1100) {
   const from = { theta: state.theta, phi: state.phi };
   const to = { ...from, ...target };
   const theta = d3.interpolateNumber(from.theta, to.theta);
   const phi = d3.interpolateNumber(from.phi, to.phi);
   scene.fit({ ...state, ...to }, duration);
-  d3.select(document.body).transition('view').duration(duration).ease(d3.easeCubicInOut)
+  motion(d3.select(document.body).transition('view').duration(duration).ease(d3.easeCubicInOut))
     .tween('view', () => (t) => {
       state.theta = theta(t);
       state.phi = phi(t);
@@ -72,7 +111,7 @@ function animateView(target, duration = 1100) {
 }
 
 function build(duration = 2800) {
-  d3.select(document.body).transition('build').duration(duration).ease(d3.easeLinear)
+  motion(d3.select(document.body).transition('build').duration(duration).ease(d3.easeLinear))
     .tween('build', () => (t) => {
       state.build = t;
       invalidate();
@@ -107,6 +146,35 @@ document.querySelectorAll('[data-toggle]').forEach((input) => {
     invalidate();
   });
 });
+
+// ---- style picker
+const skinBlurb = document.querySelector('#skin-blurb');
+const picker = d3.select('#skins').selectAll('label').data(SKINS).join('label');
+picker.append('input').attr('type', 'radio').attr('name', 'skin')
+  .attr('value', (s) => s.id)
+  .property('checked', (s) => s.id === stageWrap.dataset.skin);
+picker.append('span').attr('class', 'chip')
+  .style('background', ({ swatch: [a, b, c] }) => `linear-gradient(135deg, ${a} 0 40%, ${b} 40% 70%, ${c} 70%)`);
+picker.append('span').text((s) => s.name);
+picker.attr('title', (s) => s.blurb);
+
+function applySkin(id) {
+  stageWrap.dataset.skin = id;
+  skinBlurb.textContent = SKINS.find((s) => s.id === id).blurb;
+  scene.refreshPalette();
+  invalidate();
+  try {
+    localStorage.setItem('floorplan-skin', id);
+  } catch { /* the choice just won't persist */ }
+  const url = new URL(location.href);
+  url.searchParams.set('skin', id);
+  history.replaceState(null, '', url);
+}
+picker.select('input').on('change', (e, s) => applySkin(s.id));
+skinBlurb.textContent = SKINS.find((s) => s.id === stageWrap.dataset.skin).blurb;
+// The handwriting font may arrive after the first frame; labels re-measure for free,
+// but re-render so nothing waits on the next interaction.
+document.fonts?.ready.then(invalidate);
 
 const dark = window.matchMedia('(prefers-color-scheme: dark)');
 dark.addEventListener('change', () => {

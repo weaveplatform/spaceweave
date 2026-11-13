@@ -14,7 +14,7 @@ from jsDelivr, pinned with a subresource-integrity hash.
 ```sh
 cd web/floorplan-iso
 python3 -m http.server 8000      # then open http://localhost:8000
-node --test 'test/*.test.js'     # 21 tests on the projection, geometry and traced data
+node --test 'test/*.test.js'     # projection, geometry, traced data and skin tokens
 ```
 
 ## What you can do
@@ -25,6 +25,28 @@ node --test 'test/*.test.js'     # 21 tests on the projection, geometry and trac
 - Use **Cut away near walls** to drop the exterior walls facing the camera, whichever way it points.
 - Hover a room for its zone and area; click it to fly to it. Scroll or drag to zoom and pan.
 - Toggle furniture, doors, glazing, room names and people.
+
+## Styles
+
+The Style picker reskins the same geometry. A skin is a block of CSS custom
+properties on `.stage-wrap[data-skin="…"]` in `styles.css`, plus a catalogue entry
+in `js/skins.js`. The properties cover colours, edge stroke, shading range, an
+SVG filter, pencil hatching, corner rounding and facet count. The renderer reads
+them with `getComputedStyle`, so adding a skin needs no JavaScript.
+`test/skins.test.js` fails if a skin leaves out a token.
+
+| Skin | Look |
+|---|---|
+| Model | Shaded materials; follows the system's light/dark mode |
+| Clay | All-white architectural massing model, terracotta seating, soft ground shadow |
+| Blueprint | Hidden-line white linework on blue paper, monospace labels |
+| Sketch | Wobbly ink lines from an SVG turbulence filter, pencil hatching, watercolour fills, handwritten labels |
+| Neon | Dark, glowing cyan edges, hot-pink wall caps |
+| Pastel | Flat isometric illustration with no outlines, bold shading and rounded furniture |
+
+`?skin=sketch` links to a style directly, and the viewer's last choice is
+remembered. SVG filters are switched off while the camera moves and come back
+when it settles; repainting them every frame would halve the frame rate.
 
 ## How it works
 

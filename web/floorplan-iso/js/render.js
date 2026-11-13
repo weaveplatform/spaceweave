@@ -14,15 +14,29 @@ const CUT_HEIGHT = 0.3; // what the walls nearest the camera are cut down to
 const PLINTH = 0.22;
 const TILE = 0.3;
 
+// Only big surfaces get pencil hatching: hatching every chair face doubles the
+// path count for detail too small to read.
+const HATCHED = new Set(['wall', 'cabinet', 'counter', 'appliance', 'door', 'plinth']);
+
 const ZONE_NAMES = { meet: 'Meeting', work: 'Work', social: 'Social', service: 'Service' };
 
 const fmt = (v) => (Math.round(v * PX_PER_M * 10) / 10).toString();
 const pathOf = (pts) => `M${pts.map((p) => `${fmt(p[0])},${fmt(p[1])}`).join('L')}Z`;
 
-function readPalette() {
-  const css = getComputedStyle(document.documentElement);
+// Skins are CSS custom properties on the stage (see styles.css and skins.js),
+// so the renderer reads its colours and knobs from there on every skin change.
+function readPalette(el) {
+  const css = getComputedStyle(el);
   const v = (name) => css.getPropertyValue(`--${name}`).trim();
+  const num = (name, fallback) => {
+    const n = parseFloat(v(name));
+    return Number.isFinite(n) ? n : fallback;
+  };
   return {
+    shadeMin: num('shade-min', 0.1),
+    shadeMax: num('shade-max', 0.65),
+    hatch: num('hatch', 0) > 0,
+    shape: { corner: num('corner', 0), facets: Math.max(1, num('facets', 1)) },
     wall: v('wall'), wallCap: v('wall-cap'), glass: v('glass'), door: v('door'),
     wood: v('wood'), metal: v('metal'), fabric: v('fabric'), fabricB: v('fabric-b'),
     cabinet: v('cabinet'), counter: v('counter'), steel: v('steel'), appliance: v('appliance'),
@@ -33,7 +47,7 @@ function readPalette() {
   };
 }
 
-export function createScene({ svg: svgEl, tooltip: tooltipEl, plan, onStats }) {
+export function createScene({ svg: svgEl, tooltip: tooltipEl, styleRoot, plan, onStats }) {
   const svg = d3.select(svgEl);
   const tooltip = d3.select(tooltipEl);
   const W = plan.WIDTH;
@@ -42,10 +56,32 @@ export function createScene({ svg: svgEl, tooltip: tooltipEl, plan, onStats }) {
   const maxDist = Math.hypot(W, D);
   const distFromEntrance = (x, y) => Math.hypot(x - plan.ENTRANCE[0], y - plan.ENTRANCE[1]) / maxDist;
 
-  let palette = readPalette();
+  let palette = readPalette(styleRoot);
   let shadeCache = new Map();
 
+  // Filters and patterns that skins switch on through CSS (--solids-filter) or
+  // the hatch flag. Their colours come from the same custom properties.
+  svg.append('defs').html(`
+    <filter id="sketch" x="-5%" y="-5%" width="110%" height="110%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.035" numOctaves="2" seed="7" result="noise"/>
+      <feDisplacementMap in="SourceGraphic" in2="noise" scale="2.6" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+    <filter id="glow" x="-10%" y="-10%" width="120%" height="120%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="2.2" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="soft-shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="14"/>
+    </filter>
+    <pattern id="hatch-light" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(55)">
+      <line x1="0" y1="0" x2="0" y2="6" style="stroke: var(--edge); stroke-opacity: .35; stroke-width: .7"/>
+    </pattern>
+    <pattern id="hatch-dark" width="3.5" height="3.5" patternUnits="userSpaceOnUse" patternTransform="rotate(55)">
+      <line x1="0" y1="0" x2="0" y2="3.5" style="stroke: var(--edge); stroke-opacity: .55; stroke-width: .8"/>
+    </pattern>`);
+
   const root = svg.append('g').attr('class', 'viewport');
+  const gShadow = root.append('g').attr('class', 'shadow');
   const gBase = root.append('g').attr('class', 'base');
   const gFloors = root.append('g').attr('class', 'floors');
   const gTiles = root.append('g').attr('class', 'tiles');
@@ -66,10 +102,18 @@ export function createScene({ svg: svgEl, tooltip: tooltipEl, plan, onStats }) {
     return { ...p, ...extra, id: id++, c };
   });
 
-  const furniture = plan.furniture.flatMap((item) => {
-    const c = [item.x, item.y];
-    return tag(furniturePrisms(item), { kind: 'furniture', delay: 0.42 + 0.38 * distFromEntrance(...c) });
-  });
+  // Furniture shape depends on the skin (rounded corners, facet count), so it is
+  // rebuilt when a skin changes it.
+  let furniture = [];
+  let furnitureShape = null;
+  function buildFurniture(shape) {
+    if (furnitureShape && furnitureShape.corner === shape.corner && furnitureShape.facets === shape.facets) return;
+    furnitureShape = shape;
+    furniture = plan.furniture.flatMap((item) => tag(furniturePrisms(item, shape), {
+      kind: 'furniture', delay: 0.42 + 0.38 * distFromEntrance(item.x, item.y),
+    }));
+  }
+  buildFurniture(palette.shape);
   const people = plan.furniture.filter((f) => f.label).map((f) => ({ name: f.label, x: f.x, y: f.y }));
 
   let wallCache = { H: null, solids: [], leaves: [] };
@@ -102,7 +146,8 @@ export function createScene({ svg: svgEl, tooltip: tooltipEl, plan, onStats }) {
     if (face.side === 'top') return mat === 'wall' ? palette.wallCap : palette[mat];
     // Light from the camera's right: faces turned that way are brightest.
     const nx = view.screenNormalX(face.nx, face.ny);
-    const k = Math.round((0.1 + 0.55 * (1 - (nx + 1) / 2)) * 50) / 50;
+    const { shadeMin, shadeMax } = palette;
+    const k = Math.round((shadeMin + (shadeMax - shadeMin) * (1 - (nx + 1) / 2)) * 50) / 50;
     const key = `${mat}|${k}`;
     let c = shadeCache.get(key);
     if (!c) {
@@ -127,7 +172,13 @@ export function createScene({ svg: svgEl, tooltip: tooltipEl, plan, onStats }) {
     const sinP = Math.sin((state.phi * Math.PI) / 180);
     const cosP = Math.cos((state.phi * Math.PI) / 180);
 
-    // Base slab and floors
+    // Ground shadow (skins with --shadow-opacity), base slab and floors
+    const shadowPts = plinth.poly.map(([x, y]) => {
+      const [sx, sy] = view.project(x, y, -PLINTH);
+      return [sx + 0.3, sy + 0.55];
+    });
+    gShadow.selectAll('path').data([0]).join('path').attr('d', pathOf(shadowPts));
+
     const base = projectPrism(plinth, view);
     gBase.selectAll('path').data(base.faces, (f) => f.side).join('path')
       .attr('d', (f) => pathOf(f.pts.map((p) => [p[0], p[1]])))
@@ -174,7 +225,7 @@ export function createScene({ svg: svgEl, tooltip: tooltipEl, plan, onStats }) {
       const proj = projectPrism(p, view, z0, z1);
       const [, yr] = view.rotate(p.c[0], p.c[1]);
       items.push({
-        p, poly: p.poly, kind: p.kind, z0e: z0, z1e: z1, bbox: proj.bbox, faces: proj.faces,
+        p, poly: p.sortPoly ?? p.poly, kind: p.kind, z0e: z0, z1e: z1, bbox: proj.bbox, faces: proj.faces,
         key: yr * cosP + ((z0 + z1) / 2) * sinP,
       });
     }
@@ -182,7 +233,14 @@ export function createScene({ svg: svgEl, tooltip: tooltipEl, plan, onStats }) {
     const faces = [];
     for (const it of ordered) {
       for (const f of it.faces) {
-        faces.push({ id: `${it.p.id}:${f.side}`, d: pathOf(f.pts), fill: shade(it.p.mat, f, view), mat: it.p.mat });
+        const d = pathOf(f.pts);
+        faces.push({ id: `${it.p.id}:${f.side}`, d, fill: shade(it.p.mat, f, view), mat: it.p.mat });
+        // Pencil hatching is a second, line-only path over the coloured face,
+        // so the watercolour shows through; denser on the side away from the light.
+        if (palette.hatch && !state.moving && f.side !== 'top' && HATCHED.has(it.p.mat)) {
+          const dark = view.screenNormalX(f.nx, f.ny) < 0;
+          faces.push({ id: `${it.p.id}:${f.side}:h`, d, fill: `url(#hatch-${dark ? 'dark' : 'light'})`, mat: 'hatch' });
+        }
       }
     }
     gSolids.selectAll('path').data(faces, (f) => f.id).join('path')
@@ -271,8 +329,9 @@ export function createScene({ svg: svgEl, tooltip: tooltipEl, plan, onStats }) {
   }
 
   function refreshPalette() {
-    palette = readPalette();
+    palette = readPalette(styleRoot);
     shadeCache = new Map();
+    buildFurniture(palette.shape);
   }
 
   return { render, fit, refreshPalette, svg };

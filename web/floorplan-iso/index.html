@@ -5,6 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Isometric Floor Plan</title>
   <meta name="description" content="spaceweave trial: a 2D office floor plan rebuilt as an interactive isometric model with D3.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <!-- Handwriting face for the Sketch skin's labels; other skins use system fonts. -->
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Caveat:wght@600&display=swap">
   <link rel="stylesheet" href="styles.css">
   <!-- Pinned to 7.9.0, the long-standing release, with SRI. Loaded as the UMD
        global so the pure modules stay importable from Node without a bundler. -->
@@ -30,7 +34,7 @@
   </header>
 
   <main class="layout">
-    <section class="stage-wrap" aria-label="Floor plan model">
+    <section class="stage-wrap" data-skin="model" aria-label="Floor plan model">
       <svg id="stage" role="img" aria-label="Isometric model of a 19 by 11 metre office floor"></svg>
       <div id="tooltip" class="tooltip" hidden></div>
 
@@ -50,6 +54,10 @@
     </section>
 
     <aside class="panel">
+      <h2 id="style-heading">Style</h2>
+      <fieldset class="skins" id="skins" aria-labelledby="style-heading"></fieldset>
+      <p class="skin-blurb" id="skin-blurb"></p>
+
       <h2>Camera</h2>
       <label class="range">
         <span>Elevation <output id="elevation-out"></output></span>
