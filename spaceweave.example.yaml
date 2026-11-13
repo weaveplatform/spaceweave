@@ -1,0 +1,31 @@
+# spaceweave configuration. Copy to spaceweave.yaml (read from the working
+# directory) or pass --config. Every key is optional; these are the defaults.
+# Unknown keys are an error. Precedence: flag > SPACEWEAVE_* environment > file.
+#
+# There is no API key setting: the Anthropic SDK reads ANTHROPIC_API_KEY or an
+# `ant auth login` profile. Images dropped in the inbox are sent to the Claude API.
+
+inbox: floorplans/inbox                         # SPACEWEAVE_INBOX, --inbox
+output: web/floorplan-iso/generated             # SPACEWEAVE_OUTPUT, --output; must be the site's generated/ folder
+node: node                                      # SPACEWEAVE_NODE
+validator: web/floorplan-iso/tools/validate.mjs
+workers: 1                                      # SPACEWEAVE_WORKERS, --workers; plans traced at once, 1–8
+model: claude-opus-5-5                          # SPACEWEAVE_MODEL, --model
+effort: high                                    # SPACEWEAVE_EFFORT; low, medium, high, xhigh or max
+settle: 1s                                      # an inbox file must stop changing for this long
+
+# A run stops at whichever limit it hits first. A valid trace by then is
+# still published as a draft, marked as stopped early.
+limits:
+  maxTurns: 120
+  maxSubmits: 12
+  maxUsd: 15                                    # SPACEWEAVE_MAX_USD, --max-usd; per plan, per attempt
+  timeout: 45m
+
+# US dollars per million tokens, for the spending cap. Claude Opus 5.5 list
+# prices; change them if you change the model.
+prices:
+  input: 4
+  output: 20
+  cacheRead: 0.2
+  cacheWrite: 5
