@@ -1,4 +1,4 @@
-module github.com/weaveplatform/weaveplatform-template
+module github.com/weaveplatform/spaceweave
 
 go 1.27
 
