@@ -1,5 +1,5 @@
 import { PRESETS } from './projection.js';
-import { PLANS, DEFAULT_PLAN } from './plans/index.js';
+import { PLANS, DEFAULT_PLAN, READY, loadCatalog } from './plans/index.js';
 import { createScene } from './render.js';
 import { SKINS, DEFAULT_SKIN } from './skins.js';
 
@@ -185,17 +185,70 @@ window.addEventListener('resize', () => scene?.fit(state));
 const planBlurb = document.querySelector('#plan-blurb');
 const sourceLink = document.querySelector('#source-link');
 const planName = document.querySelector('#plan-name');
-const planPicker = d3.select('#plans').selectAll('label').data(PLANS).join('label');
-planPicker.append('input').attr('type', 'radio').attr('name', 'plan').attr('value', (p) => p.id);
-planPicker.append('span').text((p) => p.name);
-planPicker.attr('title', (p) => p.blurb);
+
+// Built-in plans plus the tracer's catalogue, which is re-read while the page
+// is open so a newly traced plan appears without a reload.
+let plans = PLANS;
+let current = null;
+
+function renderPicker() {
+  d3.select('#plans').selectAll('label')
+    .data(plans, (p) => p.id)
+    .join((enter) => {
+      const label = enter.append('label');
+      label.append('input').attr('type', 'radio').attr('name', 'plan').attr('value', (p) => p.id)
+        .on('change', (e, p) => loadPlan(p.id));
+      label.append('span').attr('class', 'plan-name');
+      label.append('span').attr('class', 'badge');
+      return label;
+    })
+    .attr('title', (p) => p.blurb)
+    .classed('generated', (p) => p.generated)
+    .classed('pending', (p) => p.generated && !READY.has(p.status))
+    .call((label) => {
+      label.select('input')
+        .property('checked', (p) => p.id === current)
+        .property('disabled', (p) => p.generated && !READY.has(p.status));
+      label.select('.plan-name').text((p) => p.name);
+      label.select('.badge')
+        .text((p) => ({ draft: 'Draft', queued: 'Queued', tracing: 'Tracing…' })[p.status] ?? '')
+        .attr('hidden', (p) => (['draft', 'queued', 'tracing'].includes(p.status) ? null : ''));
+    });
+}
+
+// A generated plan's blurb carries its review status and links to the
+// tracer's evidence, so a draft can be judged without leaving the page.
+function renderBlurb(entry) {
+  const blurb = d3.select(planBlurb).text(entry.blurb);
+  if (!entry.generated) return;
+  const facts = [entry.status === 'draft' ? 'Draft, not yet reviewed' : 'Auto-traced'];
+  if (Number.isFinite(entry.confidence)) facts.push(`confidence ${Math.round(entry.confidence * 100)}%`);
+  blurb.append('br');
+  blurb.append('span').text(`${facts.join(' · ')} · `);
+  blurb.append('a').attr('href', `${entry.dir}overlay.png`).attr('target', '_blank').text('overlay');
+  blurb.append('span').text(' · ');
+  blurb.append('a').attr('href', `${entry.dir}report.json`).attr('target', '_blank').text('report');
+}
+
+async function refreshCatalog() {
+  try {
+    plans = [...PLANS, ...(await loadCatalog())];
+  } catch (err) {
+    console.warn('plan catalogue unavailable:', err);
+    return;
+  }
+  renderPicker();
+  const entry = plans.find((p) => p.id === current);
+  if (entry) renderBlurb(entry);
+}
 
 let loading = 0;
 async function loadPlan(id) {
-  const entry = PLANS.find((p) => p.id === id) ?? PLANS[0];
+  const entry = plans.find((p) => p.id === id && (!p.generated || READY.has(p.status))) ?? PLANS[0];
   const ticket = ++loading;
-  planPicker.select('input').property('checked', (p) => p.id === entry.id);
-  planBlurb.textContent = entry.blurb;
+  current = entry.id;
+  renderPicker();
+  renderBlurb(entry);
   let plan;
   try {
     plan = await entry.load();
@@ -225,10 +278,13 @@ async function loadPlan(id) {
   scene.fit(state);
   build();
 }
-planPicker.select('input').on('change', (e, p) => loadPlan(p.id));
-
 syncOutputs();
-loadPlan(remembered('plan', (id) => PLANS.some((p) => p.id === id), DEFAULT_PLAN));
+await refreshCatalog();
+loadPlan(remembered('plan', (id) => plans.some((p) => p.id === id), DEFAULT_PLAN));
+// The tracer takes minutes per plan, so a 10 s poll is plenty; also catch up
+// as soon as the tab is looked at again.
+setInterval(() => { if (!document.hidden) refreshCatalog(); }, 10_000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshCatalog(); });
 
 // Exposed for poking at the scene from the console.
 globalThis.floorplan = {
