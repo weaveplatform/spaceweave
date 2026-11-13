@@ -5,6 +5,6 @@
   "description": "Isometric floor plan trial: static site, no dependencies, no build step",
   "scripts": {
     "test": "node --test 'test/*.test.js'",
-    "serve": "python3 -m http.server 8000"
+    "serve": "python3 tools/serve.py 8000"
   }
 }

@@ -93,7 +93,13 @@ export function createScene({ svg: svgEl, tooltip: tooltipEl, styleRoot, plan, o
   const gOverlay = root.append('g').attr('class', 'overlay');
   const gLabels = root.append('g').attr('class', 'labels');
 
-  const zoom = d3.zoom().scaleExtent([0.2, 12]).on('zoom', (e) => root.attr('transform', e.transform));
+  // Labels keep a constant on-screen size: CSS divides their font size by the
+  // zoom scale, so a 46 m clinic fitted to the window stays as readable as a
+  // 19 m office.
+  const zoom = d3.zoom().scaleExtent([0.2, 12]).on('zoom', (e) => {
+    root.attr('transform', e.transform);
+    gLabels.style('--zoom-k', e.transform.k);
+  });
   svg.call(zoom).on('dblclick.zoom', null);
 
   // ---- static geometry, built once (walls rebuild when their height changes)

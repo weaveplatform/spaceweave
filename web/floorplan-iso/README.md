@@ -13,7 +13,7 @@ from jsDelivr, pinned with a subresource-integrity hash.
 
 ```sh
 cd web/floorplan-iso
-python3 -m http.server 8000      # then open http://localhost:8000
+python3 tools/serve.py           # then open http://localhost:8000 (no-cache dev server)
 node --test 'test/*.test.js'     # projection, geometry, traced data and skin tokens
 ```
 
