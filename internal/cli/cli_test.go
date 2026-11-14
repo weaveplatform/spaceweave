@@ -7,6 +7,9 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"io"
+	"mime/multipart"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -18,6 +21,7 @@ import (
 
 	"github.com/weaveplatform/spaceweave/internal/catalog"
 	"github.com/weaveplatform/spaceweave/internal/fakeclaude"
+	"github.com/weaveplatform/spaceweave/internal/server"
 )
 
 type okValidator struct{}
@@ -335,5 +339,145 @@ func TestNodeValidatorPrerequisites(t *testing.T) {
 	}
 	if code := Execute(context.Background(), app, []string{"plans", "list", "--config", cfg}); code != 0 {
 		t.Fatal("review commands don't need node")
+	}
+}
+
+// servedURL waits for serve to log its address.
+func servedURL(t *testing.T, log *syncBuffer, exited <-chan int) string {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		if _, rest, ok := strings.Cut(log.String(), "msg=serving url="); ok {
+			return strings.TrimSuffix(strings.Fields(rest)[0], "/")
+		}
+		select {
+		case code := <-exited:
+			t.Fatalf("serve exited %d: %s", code, log)
+		default:
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("serve didn't start: %s", log)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+func TestServe(t *testing.T) {
+	e := newEnv(t, tracer)
+	site := filepath.Join(e.dir, "site")
+	if err := os.MkdirAll(site, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(site, "index.html"),
+		[]byte("<title>plans</title>"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	exited := make(chan int, 1)
+	go func() {
+		exited <- Execute(ctx, e.app(), []string{"serve", "--addr", "127.0.0.1:0", "--site", site, "--allow-host", "studio.local"})
+	}()
+	base := servedURL(t, e.stderr, exited)
+
+	res, err := http.Get(base + "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	page, _ := io.ReadAll(res.Body)
+	_ = res.Body.Close()
+	if !strings.Contains(string(page), "plans") {
+		t.Fatalf("index: %s", page)
+	}
+
+	img := filepath.Join(e.dir, "Box.png")
+	boxPNG(t, img, 0)
+	data, _ := os.ReadFile(img)
+	var body bytes.Buffer
+	mw := multipart.NewWriter(&body)
+	fw, _ := mw.CreateFormFile("image", "Box.png")
+	_, _ = fw.Write(data)
+	_ = mw.Close()
+	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, base+"/api/plans", &body)
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	req.Header.Set(server.RequestHeader, "1")
+	res, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = res.Body.Close()
+	if res.StatusCode != http.StatusCreated {
+		t.Fatalf("upload: %d", res.StatusCode)
+	}
+
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		if ps := e.plans(); len(ps) == 1 && ps[0].Status == catalog.Draft {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("no draft; log:\n%s", e.stderr)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	cancel()
+	if code := <-exited; code != 0 {
+		t.Fatalf("exit %d: %s", code, e.stderr)
+	}
+	for _, want := range []string{"msg=uploaded", "draft ready", "stopped"} {
+		if !strings.Contains(e.stderr.String(), want) {
+			t.Errorf("log lacks %s", want)
+		}
+	}
+}
+
+func TestServeErrors(t *testing.T) {
+	e := newEnv(t, tracer)
+	site := filepath.Join(e.dir, "site")
+	if err := os.MkdirAll(site, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if code := e.run(
+		"serve",
+		"--site",
+		filepath.Join(e.dir, "nowhere"),
+	); code != 1 ||
+		!strings.Contains(e.stderr.String(), "site folder") {
+		t.Fatalf("%d %s", code, e.stderr)
+	}
+	if err := os.WriteFile(filepath.Join(site, "index.html"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	e.stderr = &syncBuffer{}
+	if code := e.run(
+		"serve",
+		"--site",
+		site,
+		"--addr",
+		"nope",
+	); code != 1 ||
+		!strings.Contains(e.stderr.String(), "listen") {
+		t.Fatalf("%d %s", code, e.stderr)
+	}
+	e.stderr = &syncBuffer{}
+	if code := e.run("serve", "--config", filepath.Join(e.dir, "absent.yaml")); code != 1 {
+		t.Fatalf("%d %s", code, e.stderr)
+	}
+
+	// Every interface: warn that only localhost names are answered.
+	e.stderr = &syncBuffer{}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	app := e.app()
+	exited := make(chan int, 1)
+	go func() { exited <- Execute(ctx, app, []string{"serve", "--site", site, "--addr", ":0"}) }()
+	servedURL(t, e.stderr, exited)
+	cancel()
+	if code := <-exited; code != 0 ||
+		!strings.Contains(e.stderr.String(), "answering only to localhost names") {
+		t.Fatalf("%d %s", code, e.stderr)
 	}
 }

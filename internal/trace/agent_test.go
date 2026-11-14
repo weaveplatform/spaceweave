@@ -180,10 +180,15 @@ func TestHappyPath(t *testing.T) {
 	var transcript bytes.Buffer
 	opts := options(srv, &fakeValidator{})
 	opts.Transcript = &transcript
+	var progress []Progress
+	opts.Progress = func(p Progress) { progress = append(progress, p) }
 
 	res, err := Run(context.Background(), opts, job(t))
 	if err != nil {
 		t.Fatal(err)
+	}
+	if len(progress) != 4 || progress[0].Turn != 1 || progress[3].Submits != 1 || progress[3].CostUSD <= progress[0].CostUSD {
+		t.Fatalf("progress %+v", progress)
 	}
 	if res.Confidence != 1 || res.Summary != "A box." || len(res.Caveats) != 1 || res.Stopped != "" || res.Turns != 4 || res.Submits != 1 {
 		t.Fatalf("result %+v", res)

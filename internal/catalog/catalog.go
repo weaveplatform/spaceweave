@@ -67,8 +67,16 @@ type Entry struct {
 	Attempts   int       `json:"attempts"`
 	Note       string    `json:"note,omitempty"` // reviewer feedback for the next attempt
 	Error      string    `json:"error,omitempty"`
+	Progress   *Progress `json:"progress,omitempty"` // set only while tracing
 	CreatedAt  time.Time `json:"createdAt"`
 	UpdatedAt  time.Time `json:"updatedAt"`
+}
+
+// Progress is how far a trace has got, for the site's pipeline view.
+type Progress struct {
+	Turn    int     `json:"turn"`
+	Submits int     `json:"submits"`
+	CostUSD float64 `json:"costUsd"`
 }
 
 // Catalog is catalog.json.
@@ -217,6 +225,7 @@ func (s *Store) Transition(id string, to Status, mutate func(*Entry)) error {
 		}
 		e.Status = to
 		e.UpdatedAt = s.Now().UTC()
+		e.Progress = nil
 		if mutate != nil {
 			mutate(e)
 		}
@@ -249,6 +258,80 @@ func (s *Store) Claim() (Entry, bool, error) {
 	return claimed, found, err
 }
 
+// SetProgress records how far a trace has got. It does nothing once the plan
+// has left tracing, so a late update can't resurrect a finished run's progress.
+func (s *Store) SetProgress(id string, p Progress) error {
+	return s.Update(func(c *Catalog) error {
+		e, err := c.find(id)
+		if err != nil {
+			return err
+		}
+		if e.Status == Tracing {
+			e.Progress = &p
+		}
+		return nil
+	})
+}
+
+// Action is a reviewer's decision on a plan.
+type Action string
+
+// The review actions, shared by `spaceweave plans` and the site's buttons.
+const (
+	Approve Action = "approve"
+	Reject  Action = "reject"
+	Retry   Action = "retry"
+)
+
+// reviews narrows the transitions to what each action means: reject and
+// retry both re-queue, but rejecting a failure or retrying a draft is a
+// mistake worth saying so.
+var reviews = map[Action]struct {
+	from []Status
+	to   Status
+}{
+	Approve: {[]Status{Draft}, Approved},
+	Reject:  {[]Status{Draft, Approved}, Queued},
+	Retry:   {[]Status{Failed}, Queued},
+}
+
+// ErrAction is an unknown review action.
+var ErrAction = errors.New("unknown review action")
+
+// Review applies a reviewer's action and returns the status the plan had and
+// the entry as it is now. A rejection's note goes to the next attempt.
+func (s *Store) Review(id string, a Action, note string) (Status, Entry, error) {
+	r, ok := reviews[a]
+	if !ok {
+		return "", Entry{}, fmt.Errorf("%w: %q", ErrAction, a)
+	}
+	var was Status
+	var now Entry
+	err := s.Update(func(c *Catalog) error {
+		e, err := c.find(id)
+		if err != nil {
+			return err
+		}
+		if !slices.Contains(r.from, e.Status) {
+			return fmt.Errorf("%w: %s is %s, can't %s it", ErrTransition, id, e.Status, a)
+		}
+		was = e.Status
+		e.Status = r.to
+		e.UpdatedAt = s.Now().UTC()
+		e.Progress = nil
+		switch a {
+		case Reject:
+			e.Note = note
+		case Retry:
+			e.Error = ""
+		case Approve:
+		}
+		now = *e
+		return nil
+	})
+	return was, now, err
+}
+
 // Recover requeues plans left tracing by a worker that stopped mid-run, so
 // they aren't stuck forever. Call it before starting workers.
 func (s *Store) Recover() (int, error) {
@@ -258,6 +341,7 @@ func (s *Store) Recover() (int, error) {
 			if c.Plans[i].Status == Tracing {
 				c.Plans[i].Status = Queued
 				c.Plans[i].UpdatedAt = s.Now().UTC()
+				c.Plans[i].Progress = nil
 				n++
 			}
 		}

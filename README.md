@@ -1,8 +1,9 @@
 # spaceweave
 
 Turns floor-plan images into interactive isometric models. The microsite is in
-[`web/floorplan-iso/`](web/floorplan-iso/README.md); `cmd/spaceweave` watches a
-folder for new plan images and has Claude trace them into it.
+[`web/floorplan-iso/`](web/floorplan-iso/README.md). `go run ./cmd/spaceweave serve`
+serves it with a drop zone: upload a plan image and Claude traces it into the
+site as a draft for you to approve or send back.
 
 The rest of this README comes from the weaveplatform template.
 

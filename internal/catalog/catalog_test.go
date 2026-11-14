@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -283,5 +284,76 @@ func TestSlugAndTitle(t *testing.T) {
 	}
 	if Title("medical-office_layout.png") != "Medical Office Layout" || Title(".png") != "Untitled plan" {
 		t.Fatal("Title")
+	}
+}
+
+func TestReviewAndProgress(t *testing.T) {
+	s, _ := open(t)
+	e, _, _ := s.Ingest(image(t, "a.png", "a"))
+	if _, _, err := s.Review(e.ID, "delete", ""); !errors.Is(err, ErrAction) {
+		t.Fatalf("unknown action: %v", err)
+	}
+	if _, _, err := s.Review(
+		e.ID,
+		Approve,
+		"",
+	); !errors.Is(err, ErrTransition) ||
+		!strings.Contains(err.Error(), "can't approve") {
+		t.Fatalf("approving a queued plan: %v", err)
+	}
+	if _, _, err := s.Review("nope", Approve, ""); !errors.Is(err, ErrNotFound) {
+		t.Fatal(err)
+	}
+
+	if err := s.SetProgress(e.ID, Progress{Turn: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := s.Get(e.ID); got.Progress != nil {
+		t.Fatal("progress recorded for a plan that isn't tracing")
+	}
+	_ = s.Transition(e.ID, Tracing, nil)
+	if err := s.SetProgress(e.ID, Progress{Turn: 3, Submits: 1, CostUSD: 0.4}); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := s.Get(e.ID); got.Progress == nil || got.Progress.Turn != 3 {
+		t.Fatalf("%+v", got.Progress)
+	}
+	if err := s.SetProgress("nope", Progress{}); !errors.Is(err, ErrNotFound) {
+		t.Fatal(err)
+	}
+	if _, err := s.Recover(); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := s.Get(e.ID); got.Progress != nil {
+		t.Fatal("a requeued plan keeps its old progress")
+	}
+	_ = s.Transition(e.ID, Tracing, nil)
+	_ = s.SetProgress(e.ID, Progress{Turn: 5})
+	_ = s.Transition(e.ID, Failed, func(x *Entry) { x.Error = "boom" })
+	if got, _ := s.Get(e.ID); got.Progress != nil {
+		t.Fatal("a finished plan keeps its progress")
+	}
+
+	was, now, err := s.Review(e.ID, Retry, "ignored")
+	if err != nil || was != Failed || now.Status != Queued || now.Error != "" || now.Note != "" {
+		t.Fatalf("retry: %s %+v %v", was, now, err)
+	}
+	_ = s.Transition(e.ID, Tracing, nil)
+	_ = s.Transition(e.ID, Draft, nil)
+	if was, now, err := s.Review(
+		e.ID,
+		Approve,
+		"",
+	); err != nil || was != Draft ||
+		now.Status != Approved {
+		t.Fatalf("approve: %s %+v %v", was, now, err)
+	}
+	if _, now, err := s.Review(
+		e.ID,
+		Reject,
+		"Add the kitchen",
+	); err != nil || now.Status != Queued ||
+		now.Note != "Add the kitchen" {
+		t.Fatalf("reject: %+v %v", now, err)
 	}
 }

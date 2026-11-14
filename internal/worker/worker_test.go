@@ -76,10 +76,14 @@ func TestDraftIsPublished(t *testing.T) {
 	store, ingested := setup(t)
 	var got trace.Job
 	var opts trace.Options
+	var midway *catalog.Progress
 	w := &Worker{Store: store, Options: trace.Options{Model: "claude-opus-5-5"},
 		Trace: func(_ context.Context, o trace.Options, j trace.Job) (*trace.Result, error) {
 			got, opts = j, o
 			_, _ = o.Transcript.Write([]byte("{}\n"))
+			o.Progress(trace.Progress{Turn: 2, Submits: 1, CostUSD: 0.5})
+			mid, _ := store.Get(ingested.ID)
+			midway = mid.Progress
 			return good(), nil
 		}}
 	worked, err := w.Next(context.Background())
@@ -92,6 +96,9 @@ func TestDraftIsPublished(t *testing.T) {
 	}
 	if e.Status != catalog.Draft || *e.Confidence != 0.8 || e.Summary != "A small office" || e.CostUSD != 1.25 {
 		t.Fatalf("%+v", e)
+	}
+	if midway == nil || midway.Turn != 2 || midway.CostUSD != 0.5 || e.Progress != nil {
+		t.Fatalf("progress is shown while tracing and cleared after: %+v %+v", midway, e.Progress)
 	}
 	if got.Title != "Office Plan" || got.Meta.URL != "generated/"+e.ID+"/source.png" ||
 		got.Meta.Credit != "Uploaded Office Plan.png" || got.Meta.SizePx != [2]int{40, 30} || got.Previous != nil {
@@ -376,5 +383,38 @@ func waitFor(t *testing.T, cond func() bool) {
 			t.Fatal("timed out")
 		}
 		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// A progress update that can't be saved is logged; the trace carries on.
+func TestProgressFailureIsOnlyLogged(t *testing.T) {
+	store, ingested := setup(t)
+	var log bytes.Buffer
+	catalogFile := filepath.Join(store.Dir, "catalog.json")
+	w := &Worker{
+		Store: store, Log: slog.New(slog.NewTextHandler(&log, nil)),
+		Trace: func(_ context.Context, o trace.Options, _ trace.Job) (*trace.Result, error) {
+			saved, err := os.ReadFile(catalogFile)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(catalogFile, []byte("{"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			o.Progress(trace.Progress{Turn: 1})
+			if err := os.WriteFile(catalogFile, saved, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			return good(), nil
+		},
+	}
+	if worked, err := w.Next(context.Background()); !worked || err != nil {
+		t.Fatal(worked, err)
+	}
+	if e, _ := store.Get(
+		ingested.ID,
+	); e.Status != catalog.Draft ||
+		!strings.Contains(log.String(), "record progress") {
+		t.Fatalf("%s\n%s", e.Status, log.String())
 	}
 }

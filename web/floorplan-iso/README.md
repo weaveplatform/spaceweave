@@ -14,9 +14,9 @@ the Floor plan picker switches between them, and `?plan=` links to one directly.
 The images are linked, not copied, because they belong to their publishers.
 Each plan module's header comment records how its scale was measured.
 
-New plans don't need tracing by hand: drop an image into a folder and the
-`spaceweave` worker traces it with Claude and adds it to the picker as a draft.
-See [Adding plans automatically](#adding-plans-automatically).
+New plans don't need tracing by hand: drop an image on the page (or into a
+folder) and the `spaceweave` worker traces it with Claude and adds it to the
+picker as a draft. See [Adding plans automatically](#adding-plans-automatically).
 
 This is a static site with no build step and no npm dependencies. D3 7.9.0 loads
 from jsDelivr, pinned with a subresource-integrity hash.
@@ -31,23 +31,46 @@ node --test 'test/*.test.js'     # projection, geometry, every plan's invariants
 
 ## Adding plans automatically
 
-`spaceweave watch` watches `floorplans/inbox/`. Each PNG, JPEG or WebP dropped
-there is copied into `generated/<id>/`, traced by a Claude agent, checked, and
-listed in `generated/catalog.json`. The site polls that file, so the plan shows
-up in the picker within seconds of the worker finishing, marked **Draft**, with
-its confidence and links to the overlay and the report. Both folders are
-git-ignored.
+`spaceweave serve` serves this site with a small API added, and runs the
+tracer alongside it:
 
 ```sh
-# terminal 1, from the repository root
+# from the repository root
 export ANTHROPIC_API_KEY=…            # or sign in once with `ant auth login`
-go run ./cmd/spaceweave watch
+go run ./cmd/spaceweave serve         # then open http://127.0.0.1:8000
+```
 
-# terminal 2
-cd web/floorplan-iso && python3 tools/serve.py
+Under **Add a plan**, drop a PNG, JPEG or WebP image on the page, choose one,
+or paste a screenshot. The list below the drop zone follows each image through
+**Uploaded → Queued → Tracing → Review**, with the agent's turn count and the
+money spent so far while it traces. When it finishes, the plan joins the
+picker marked **Draft**, with its confidence and links to the overlay and the
+report. Open it, then:
 
-# terminal 3
-cp ~/Downloads/some-plan.png floorplans/inbox/
+- **Approve** drops the Draft badge.
+- **Send back…** asks what the next pass should fix. The plan is traced again,
+  starting from the rejected trace with your note as guidance.
+- **Retry** appears on a plan that failed.
+
+The server answers only to `localhost`-style host names, and the API refuses
+requests that don't come from the page itself, because every upload costs
+money. To reach it from another machine, listen on that interface and name
+it: `--addr 0.0.0.0:8000 --allow-host my-laptop.local`.
+
+Under `tools/serve.py` the page has no API, so it shows how to start
+`spaceweave serve` instead of the drop zone.
+
+### Without the page
+
+`spaceweave watch` runs the same tracer on `floorplans/inbox/` (which `serve`
+watches too). Each image copied there is traced and listed in
+`generated/catalog.json`; the site polls that file, so the plan appears in the
+picker within seconds of the worker finishing. Both folders are git-ignored.
+
+```sh
+go run ./cmd/spaceweave watch                       # terminal 1
+cd web/floorplan-iso && python3 tools/serve.py      # terminal 2
+cp ~/Downloads/some-plan.png floorplans/inbox/      # terminal 3
 ```
 
 **Uploaded images are sent to the Claude API** (Anthropic) to be traced. Don't
@@ -60,7 +83,7 @@ It then submits a trace and reads back two checks: the site's own validator
 drawn over the image. It repeats until both are clean, then reports a
 confidence and the caveats.
 
-Review a draft in the site, then:
+The review buttons have command-line equivalents:
 
 ```sh
 go run ./cmd/spaceweave plans list
