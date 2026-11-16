@@ -1,0 +1,10 @@
+{
+  "name": "floorplan-iso",
+  "private": true,
+  "type": "module",
+  "description": "Isometric floor plan trial: static site, no dependencies, no build step",
+  "scripts": {
+    "test": "node --test 'test/*.test.js'",
+    "serve": "python3 tools/serve.py 8000"
+  }
+}
