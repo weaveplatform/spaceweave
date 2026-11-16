@@ -93,3 +93,38 @@ test('API errors carry the server message, or the status when there is none', as
     (err) => err instanceof ApiError && err.status === 409 && err.message === 'x is draft');
   await assert.rejects(createApi(fakeFetch(404).impl).info(), /HTTP 404/, 'a static server has no API');
 });
+
+const DRAWINGS = new Set(['dxf', 'svg']);
+const drawingStates = (entry) => describe(entry, 15, DRAWINGS).steps.map((s) => `${s.label}:${s.state}`);
+
+test('a drawing gets a Converting step before tracing', () => {
+  assert.deepEqual(drawingStates({ status: 'converting', format: 'dxf' }),
+    ['Uploaded:done', 'Queued:done', 'Converting:current', 'Tracing:todo', 'Review:todo']);
+  assert.equal(describe({ status: 'converting', format: 'dxf' }, 15, DRAWINGS).detail, 'Turning the DXF drawing into an image…');
+  assert.deepEqual(drawingStates({ status: 'tracing', format: 'svg', source: 'source.png' }),
+    ['Uploaded:done', 'Queued:done', 'Converting:done', 'Tracing:current', 'Review:todo']);
+});
+
+test('a raster image keeps four steps', () => {
+  assert.equal(describe({ status: 'tracing', format: 'png' }, 15, DRAWINGS).steps.length, 4);
+});
+
+test('a drawing that failed to convert fails on the Converting step', () => {
+  assert.deepEqual(drawingStates({ status: 'failed', format: 'dxf', error: 'bad' }).slice(2, 4),
+    ['Converting:failed', 'Tracing:todo']);
+  assert.deepEqual(drawingStates({ status: 'failed', format: 'dxf', source: 'source.png' }).slice(2, 4),
+    ['Converting:done', 'Tracing:failed']);
+});
+
+test('an exact scale is mentioned; an assumed one is not', () => {
+  const exact = { status: 'draft', format: 'dxf', costUsd: 1, scale: { pxPerMetre: 120 } };
+  assert.equal(describe(exact, 15, DRAWINGS).detail, 'Ready for review · $1.00 · from DXF · scale from the drawing');
+  const assumed = { ...exact, scale: { pxPerMetre: 120, assumed: true } };
+  assert.equal(describe(assumed, 15, DRAWINGS).detail, 'Ready for review · $1.00 · from DXF');
+  const tracing = { status: 'tracing', format: 'dxf', source: 's', scale: { pxPerMetre: 1 }, progress: { turn: 2, submits: 0, costUsd: 0.5 } };
+  assert.equal(describe(tracing, 15, DRAWINGS).detail, 'Turn 2 · 0 submissions · $0.50 of $15.00 · scale from the drawing');
+});
+
+test('converting counts as busy', () => {
+  assert.equal(busy([{ generated: true, status: 'converting' }]), true);
+});

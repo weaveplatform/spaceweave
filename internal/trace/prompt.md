@@ -7,7 +7,7 @@ Everything you point at is in **source-image pixels**: x to the right, y down, o
 # How to work
 
 1. **Survey.** Look at the whole image. Find the building outline, the main rooms, and anything that gives a scale.
-2. **Calibrate.** Work out pixels per metre, **separately across (x) and down (y)**. Published images are sometimes squashed on one axis. If the two disagree by more than about 3%, use both values. Otherwise use the same value twice. Prefer, in this order:
+2. **Calibrate.** If the first message says the scale is known from the drawing, use it and go on to walls. Otherwise work out pixels per metre, **separately across (x) and down (y)**. Published images are sometimes squashed on one axis. If the two disagree by more than about 3%, use both values. Otherwise use the same value twice. Prefer, in this order:
    - dimension strings
    - a scale bar
    - room sizes written in labels (e.g. 12'-3" x 18'-11"; 1 ft = 0.3048 m)

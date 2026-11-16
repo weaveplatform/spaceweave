@@ -2,8 +2,13 @@
 
 Turns floor-plan images into interactive isometric models. The microsite is in
 [`web/floorplan-iso/`](web/floorplan-iso/README.md). `go run ./cmd/spaceweave serve`
-serves it with a drop zone: upload a plan image and Claude traces it into the
-site as a draft for you to approve or send back.
+serves it with a drop zone: upload a plan image, or a DXF or SVG drawing, and
+Claude traces it into the site as a draft for you to approve or send back.
+
+Drawings are rendered in Go by `internal/convert` (with `internal/dxf`,
+`internal/svgdraw`, `internal/cad` and `internal/vector`). No external
+converter is used. [`NOTICE`](NOTICE) lists the third-party material that
+ships in the binary, and what was consulted while writing the readers.
 
 The rest of this README comes from the weaveplatform template.
 

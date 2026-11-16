@@ -80,6 +80,68 @@ type Job struct {
 	Meta     plan.Meta // carried into plan.json's SOURCE
 	Feedback string    // a reviewer's note on the previous attempt
 	Previous *plan.Trace
+	Drawing  *Drawing // set when the image was rendered from a drawing
+}
+
+// Drawing is what a drawing said about the image rendered from it.
+type Drawing struct {
+	Format string // "DXF", "SVG"
+	// PxPerMetre is the image's scale on the building, from the drawing's
+	// units; 0 when they aren't known. Assumed means they were guessed.
+	PxPerMetre float64
+	Assumed    bool
+	// PxPerPaperMM is the image's scale on paper, for a drawing measured on
+	// a sheet.
+	PxPerPaperMM float64
+	Notes        []string
+}
+
+// exact reports whether the scale is known and can be pinned.
+func (d *Drawing) exact() bool { return d != nil && d.PxPerMetre > 0 && !d.Assumed }
+
+// describe tells the model what the drawing says about scale.
+func (d *Drawing) describe() string {
+	var b strings.Builder
+	switch {
+	case d.exact():
+		fmt.Fprintf(
+			&b,
+			"\nThis image was rendered from a %s drawing that states its units, so its scale is exact: "+
+				"%.4f px per metre on both axes. calibration.pxPerMetre is fixed to that on every submission; "+
+				"don't spend turns measuring it. Put \"from the drawing's units\" in calibration.evidence.\n",
+			d.Format,
+			d.PxPerMetre,
+		)
+	case d.PxPerMetre > 0:
+		fmt.Fprintf(
+			&b,
+			"\nThis image was rendered from a %s drawing that doesn't state its units. They look like "+
+				"millimetres or similar, which would make the scale %.4f px per metre on both axes. Check that against "+
+				"a dimension string or a door before relying on it.\n",
+			d.Format,
+			d.PxPerMetre,
+		)
+	case d.PxPerPaperMM > 0:
+		fmt.Fprintf(
+			&b,
+			"\nThis image was rendered from a %s drawing measured on paper: %.4f px per paper "+
+				"millimetre. If the drawing states its scale as 1:N, the scale is %.4f × 1000 / N px per metre; "+
+				"otherwise calibrate as usual.\n",
+			d.Format,
+			d.PxPerPaperMM,
+			d.PxPerPaperMM,
+		)
+	default:
+		fmt.Fprintf(
+			&b,
+			"\nThis image was rendered from a %s drawing that says nothing about its scale.\n",
+			d.Format,
+		)
+	}
+	for _, n := range d.Notes {
+		fmt.Fprintf(&b, "Conversion note: %s\n", n)
+	}
+	return b.String()
 }
 
 // Usage is the run's token count.
@@ -255,6 +317,9 @@ func (r *run) opening() ([]anthropic.BetaContentBlockParamUnion, error) {
 		h,
 		r.job.Title,
 	)
+	if r.job.Drawing != nil {
+		b.WriteString(r.job.Drawing.describe())
+	}
 	if r.job.Feedback != "" {
 		fmt.Fprintf(
 			&b,

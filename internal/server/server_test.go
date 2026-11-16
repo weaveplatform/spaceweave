@@ -13,12 +13,14 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/weaveplatform/spaceweave/internal/catalog"
+	"github.com/weaveplatform/spaceweave/internal/convert"
 )
 
 type fixture struct {
@@ -169,6 +171,10 @@ func TestInfoAndUnknownAPI(t *testing.T) {
 		info.MaxUploadBytes != DefaultMaxUpload {
 		t.Fatalf("%d %+v", w.Code, info)
 	}
+	// The page builds its picker and pre-upload check from this list.
+	if !reflect.DeepEqual(info.Formats, convert.Formats) {
+		t.Fatalf("formats %+v", info.Formats)
+	}
 	if w := f.do(
 		httptest.NewRequest(http.MethodGet, "/api/nope", nil),
 	); w.Code != 404 ||
@@ -231,17 +237,21 @@ func TestUploadRejections(t *testing.T) {
 		want  string
 	}{
 		{"wrong field", "file", "a.png", ok, 400, "no image field"},
-		{"extension", "image", "notes.txt", ok, 415, "only .png"},
-		{"dotfile", "image", ".png", ok, 415, "only .png"},
-		{"not an image", "image", "a.png", []byte("hello"), 422, "isn't a PNG"},
+		{"extension", "image", "notes.txt", []byte("hello"), 415, ".txt files aren't supported"},
+		{"misnamed", "image", "notes.txt", ok, 422, "Rename it to end in .png"},
+		{"dotfile", "image", ".png", ok, 400, "needs a name"},
+		{"not an image", "image", "a.png", []byte("hello"), 422, "doesn't look like a PNG"},
+		{"pdf", "image", "plan.pdf", []byte("%PDF-1.7\n"), 415, "PDF files aren't supported"},
+		{"dwg", "image", "plan.dwg", []byte("AC1032\x00\x00"), 415, "Save it as DXF"},
 		{
 			"gif",
 			"image",
 			"a.png",
 			[]byte("GIF89a\x01\x00\x01\x00\x00\x00\x00;"),
 			422,
-			"isn't a PNG",
+			"GIF files aren't supported",
 		},
+		{"damaged", "image", "a.png", []byte("\x89PNG\r\n\x1a\nbroken"), 422, "damaged"},
 		{"too many pixels", "image", "a.png", hugePNG(), 422, "limit is 100 megapixels"},
 		{"too big", "image", "a.png", bytes.Repeat([]byte{0}, 8192), 413, "upload limit"},
 	}
@@ -417,5 +427,24 @@ func TestRejectWakesTheWorker(t *testing.T) {
 	); w.Code != 200 || got.Plan.Error != "" ||
 		f.wakes.Load() != 1 {
 		t.Fatalf("%d %s wakes=%d", w.Code, w.Body, f.wakes.Load())
+	}
+}
+
+func TestUploadDrawing(t *testing.T) {
+	f := newFixture(t)
+	ct, body := form(
+		t,
+		"image",
+		"Office.dxf",
+		[]byte("  0\nSECTION\n  2\nENTITIES\n  0\nENDSEC\n  0\nEOF\n"),
+	)
+	w := f.post("/api/plans", ct, body)
+	got := decode[uploadReply](t, w)
+	// Accepted on its header alone; whether it draws is the worker's
+	// business, so the upload stays fast.
+	if w.Code != http.StatusCreated || got.Plan.Format != "dxf" ||
+		got.Plan.Upload != "original.dxf" ||
+		got.Plan.Source != "" {
+		t.Fatalf("%d %s", w.Code, w.Body)
 	}
 }

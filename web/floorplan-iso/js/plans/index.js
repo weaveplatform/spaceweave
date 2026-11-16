@@ -10,10 +10,10 @@ export const PLANS = [
 
 export const DEFAULT_PLAN = 'office';
 
-// Statuses the picker lists. queued and tracing show as disabled placeholders
-// so a dropped image is visibly on its way; failed plans have nothing to show
-// and appear only in the upload pipeline.
-export const LISTED = new Set(['queued', 'tracing', 'draft', 'approved']);
+// Statuses the picker lists. queued, converting and tracing show as disabled
+// placeholders so a dropped plan is visibly on its way; failed plans have
+// nothing to show and appear only in the upload pipeline.
+export const LISTED = new Set(['queued', 'converting', 'tracing', 'draft', 'approved']);
 export const READY = new Set(['draft', 'approved']);
 
 // Must match the output directory the Go tracer writes (internal/catalog).
@@ -43,6 +43,11 @@ export async function loadCatalog(fetchImpl = globalThis.fetch) {
         error: p.error,
         progress: p.progress,
         updatedAt: p.updatedAt,
+        format: p.format,
+        source: p.source,
+        upload: p.upload,
+        drawing: p.drawing,
+        scale: p.scale,
         generated: true,
         dir,
         load: async () => {

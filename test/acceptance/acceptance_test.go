@@ -13,18 +13,22 @@ import (
 	"image/color"
 	"image/png"
 	"io"
+	"math"
 	"mime/multipart"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/weaveplatform/spaceweave/internal/catalog"
+	"github.com/weaveplatform/spaceweave/internal/dxf/dxftest"
 	"github.com/weaveplatform/spaceweave/internal/fakeclaude"
 	"github.com/weaveplatform/spaceweave/internal/server"
 )
@@ -64,8 +68,16 @@ func run(m *testing.M) int {
 	}
 	// atomic, because the unit tests run with -race and `go tool covdata`
 	// won't merge counters recorded in different modes.
-	build := exec.Command("go", "build", "-cover", "-covermode=atomic", "-coverpkg=github.com/weaveplatform/spaceweave/...",
-		"-o", binary, "./cmd/spaceweave")
+	build := exec.Command(
+		"go",
+		"build",
+		"-cover",
+		"-covermode=atomic",
+		"-coverpkg=github.com/weaveplatform/spaceweave/...",
+		"-o",
+		binary,
+		"./cmd/spaceweave",
+	)
 	build.Dir = repoRoot
 	build.Env = append(os.Environ(), "GOWORK=off")
 	if out, err := build.CombinedOutput(); err != nil {
@@ -108,14 +120,23 @@ func newSite(t *testing.T, script fakeclaude.Script) *site {
 		t.Skip("node is needed for the plan validator")
 	}
 	dir := t.TempDir()
-	s := &site{t: t, dir: dir, inbox: filepath.Join(dir, "inbox"), output: filepath.Join(dir, "generated")}
+	s := &site{
+		t:      t,
+		dir:    dir,
+		inbox:  filepath.Join(dir, "inbox"),
+		output: filepath.Join(dir, "generated"),
+	}
 	if err := os.MkdirAll(s.inbox, 0o750); err != nil {
 		t.Fatal(err)
 	}
 	s.api = fakeclaude.New(script)
 	t.Cleanup(s.api.Close)
-	cfg := fmt.Sprintf("inbox: %s\noutput: %s\nvalidator: %s\nsettle: 100ms\nlimits:\n  maxTurns: 20\n  maxSubmits: 4\n  maxUsd: 5\n  timeout: 1m\n",
-		s.inbox, s.output, filepath.Join(repoRoot, "web", "floorplan-iso", "tools", "validate.mjs"))
+	cfg := fmt.Sprintf(
+		"inbox: %s\noutput: %s\nvalidator: %s\nsettle: 100ms\nlimits:\n  maxTurns: 20\n  maxSubmits: 4\n  maxUsd: 5\n  timeout: 1m\n",
+		s.inbox,
+		s.output,
+		filepath.Join(repoRoot, "web", "floorplan-iso", "tools", "validate.mjs"),
+	)
 	if err := os.WriteFile(filepath.Join(dir, "spaceweave.yaml"), []byte(cfg), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -161,12 +182,19 @@ func (s *site) plans() []catalog.Entry {
 	return ps
 }
 
-func (s *site) waitFor(what string, cond func([]catalog.Entry) bool, log *lockedBuffer) []catalog.Entry {
+func (s *site) waitFor(
+	what string,
+	cond func([]catalog.Entry) bool,
+	log *lockedBuffer,
+) []catalog.Entry {
 	s.t.Helper()
 	deadline := time.Now().Add(30 * time.Second)
 	for {
 		var c catalog.Catalog
-		if b, err := os.ReadFile(filepath.Join(s.output, "catalog.json")); err == nil && json.Unmarshal(b, &c) == nil && cond(c.Plans) {
+		if b, err := os.ReadFile(
+			filepath.Join(s.output, "catalog.json"),
+		); err == nil && json.Unmarshal(b, &c) == nil &&
+			cond(c.Plans) {
 			return c.Plans
 		}
 		if time.Now().After(deadline) {
@@ -199,36 +227,74 @@ func floorPlan(t *testing.T, path string, mark uint8) {
 	}
 }
 
-func roomTrace() map[string]any {
+func roomTrace() map[string]any { return roomTraceAt(1) }
+
+// roomTraceAt is the studio drawn k times larger in pixels: a 10 × 5 m room
+// at 20k px per metre, for an image whose scale is fixed by its drawing.
+func roomTraceAt(k float64) map[string]any {
 	wall := func(id string, x0, y0, x1, y1 float64, openings ...any) map[string]any {
-		w := map[string]any{"id": id, "kind": "exterior", "from": []float64{x0, y0}, "to": []float64{x1, y1}}
+		x0, y0, x1, y1 = x0*k, y0*k, x1*k, y1*k
+		w := map[string]any{
+			"id":   id,
+			"kind": "exterior",
+			"from": []float64{x0, y0},
+			"to":   []float64{x1, y1},
+		}
 		if len(openings) > 0 {
 			w["openings"] = openings
 		}
 		return w
 	}
 	return map[string]any{
-		"title":       "Studio",
-		"calibration": map[string]any{"pxPerMetre": []float64{20, 20}, "evidence": "door leaf 18 px = 0.9 m"},
-		"thickness":   map[string]any{"exterior": 0.2, "interior": 0.1, "glass": 0.05},
-		"entrance":    []float64{2, 50},
+		"title": "Studio",
+		"calibration": map[string]any{
+			"pxPerMetre": []float64{20, 20},
+			"evidence":   "door leaf 18 px = 0.9 m",
+		},
+		"thickness": map[string]any{"exterior": 0.2, "interior": 0.1, "glass": 0.05},
+		"entrance":  []float64{2 * k, 50 * k},
 		"walls": []any{
-			wall("n", 2, 2, 198, 2, map[string]any{"a": 60, "b": 120, "kind": "window"}),
+			wall("n", 2, 2, 198, 2, map[string]any{"a": 60 * k, "b": 120 * k, "kind": "window"}),
 			wall("s", 2, 98, 198, 98),
-			wall("w", 2, 2, 2, 98, map[string]any{"a": 41, "b": 59, "kind": "door", "swing": "E", "hinge": "a"}),
+			wall(
+				"w",
+				2,
+				2,
+				2,
+				98,
+				map[string]any{
+					"a":     41 * k,
+					"b":     59 * k,
+					"kind":  "door",
+					"swing": "E",
+					"hinge": "a",
+				},
+			),
 			wall("e", 198, 2, 198, 98),
 		},
-		"rooms": []any{map[string]any{
-			"id": "studio", "name": "Studio", "zone": "work", "floor": "carpet",
-			"polygon": [][]float64{{2, 2}, {198, 2}, {198, 98}, {2, 98}},
-		}},
+		"rooms": []any{
+			map[string]any{
+				"id":    "studio",
+				"name":  "Studio",
+				"zone":  "work",
+				"floor": "carpet",
+				"polygon": [][]float64{
+					{2 * k, 2 * k},
+					{198 * k, 2 * k},
+					{198 * k, 98 * k},
+					{2 * k, 98 * k},
+				},
+			},
+		},
 		"furniture": []any{
-			map[string]any{"type": "desk", "x": 100, "y": 30, "w": 1.6, "d": 0.8},
-			map[string]any{"type": "chair", "x": 100, "y": 45, "facing": 270},
-			map[string]any{"type": "plant", "x": 185, "y": 85},
+			map[string]any{"type": "desk", "x": 100 * k, "y": 30 * k, "w": 1.6, "d": 0.8},
+			map[string]any{"type": "chair", "x": 100 * k, "y": 45 * k, "facing": 270},
+			map[string]any{"type": "plant", "x": 185 * k, "y": 85 * k},
 		},
 	}
 }
+
+var fixedScale = regexp.MustCompile(`([0-9.]+) px per metre on both axes`)
 
 // claude scripts a model that submits the trace and finishes, and records
 // the opening message of each run so tests can see reviewer feedback arrive.
@@ -248,9 +314,23 @@ func (c *claude) script(_ int, req fakeclaude.Request) fakeclaude.Reply {
 		c.mu.Lock()
 		c.openings = append(c.openings, string(req.Messages[0]))
 		c.mu.Unlock()
-		return use("submit_trace", map[string]any{"trace": roomTrace()})
+		// Like a real model, trace at the scale the opening states, when it
+		// states one.
+		k := 1.0
+		if m := fixedScale.FindStringSubmatch(string(req.Messages[0])); m != nil {
+			s, _ := strconv.ParseFloat(m[1], 64)
+			k = s / 20
+		}
+		return use("submit_trace", map[string]any{"trace": roomTraceAt(k)})
 	}
-	return use("finish", map[string]any{"confidence": 0.9, "summary": "A one-room studio", "caveats": []string{"Furniture is indicative"}})
+	return use(
+		"finish",
+		map[string]any{
+			"confidence": 0.9,
+			"summary":    "A one-room studio",
+			"caveats":    []string{"Furniture is indicative"},
+		},
+	)
 }
 
 func (c *claude) opening(i int) string {
@@ -294,7 +374,8 @@ func TestWatchApproveReject(t *testing.T) {
 
 	// The published plan passes the site's own validator.
 	out, err := exec.Command("node", filepath.Join(repoRoot, "web", "floorplan-iso", "tools", "validate.mjs"),
-		filepath.Join(dir, "plan.json")).Output()
+		filepath.Join(dir, "plan.json")).
+		Output()
 	if err != nil || strings.TrimSpace(string(out)) != `{"ok":true,"errors":[]}` {
 		t.Fatalf("validate: %v %s", err, out)
 	}
@@ -310,12 +391,18 @@ func TestWatchApproveReject(t *testing.T) {
 	if err := json.Unmarshal(b, &p); err != nil {
 		t.Fatal(err)
 	}
-	if p.Source.URL != "generated/"+id+"/source.png" || p.Source.Credit != "Uploaded Studio Flat.png" || p.Width != 9.8 {
+	if p.Source.URL != "generated/"+id+"/source.png" ||
+		p.Source.Credit != "Uploaded Studio Flat.png" ||
+		p.Width != 9.8 {
 		t.Fatalf("plan.json: %s", b)
 	}
 	var report map[string]any
 	b, _ = os.ReadFile(filepath.Join(dir, "report.json"))
-	if err := json.Unmarshal(b, &report); err != nil || report["status"] != "draft" || report["confidence"] != 0.9 {
+	if err := json.Unmarshal(
+		b,
+		&report,
+	); err != nil || report["status"] != "draft" ||
+		report["confidence"] != 0.9 {
 		t.Fatalf("report.json: %s", b)
 	}
 
@@ -327,14 +414,21 @@ func TestWatchApproveReject(t *testing.T) {
 	if got := s.plans()[0].Status; got != catalog.Approved {
 		t.Fatal(got)
 	}
-	if _, errOut, code := s.run("plans", "reject", id, "--note", "The door is on the wrong wall"); code != 0 {
+	if _, errOut, code := s.run(
+		"plans",
+		"reject",
+		id,
+		"--note",
+		"The door is on the wrong wall",
+	); code != 0 {
 		t.Fatal(errOut)
 	}
 	s.waitFor("the second attempt", func(ps []catalog.Entry) bool {
 		return ps[0].Status == catalog.Draft && ps[0].Attempts == 2
 	}, &log)
 	second := model.opening(1)
-	if !strings.Contains(second, "The door is on the wrong wall") || !strings.Contains(second, `\"title\":\"Studio\"`) {
+	if !strings.Contains(second, "The door is on the wrong wall") ||
+		!strings.Contains(second, `\"title\":\"Studio\"`) {
 		t.Fatalf("feedback didn't reach the model: %.300s", second)
 	}
 
@@ -369,13 +463,18 @@ func TestWatchApproveReject(t *testing.T) {
 
 func TestOneOffTraceAndFailure(t *testing.T) {
 	refuse := func(int, fakeclaude.Request) fakeclaude.Reply {
-		return fakeclaude.Reply{StopReason: "refusal", Category: "cyber", Usage: fakeclaude.Usage{Input: 1000}}
+		return fakeclaude.Reply{
+			StopReason: "refusal",
+			Category:   "cyber",
+			Usage:      fakeclaude.Usage{Input: 1000},
+		}
 	}
 	s := newSite(t, refuse)
 	img := filepath.Join(s.dir, "plan.png")
 	floorPlan(t, img, 3)
 	out, errOut, code := s.run("trace", img)
-	if code != 1 || !strings.Contains(errOut, "trace failed") || !strings.Contains(errOut, "the model declined (cyber)") {
+	if code != 1 || !strings.Contains(errOut, "trace failed") ||
+		!strings.Contains(errOut, "the model declined (cyber)") {
 		t.Fatalf("%d\n%s\n%s", code, out, errOut)
 	}
 	ps := s.plans()
@@ -522,6 +621,58 @@ func TestServeUploadAndReview(t *testing.T) {
 		t.Fatal("the note from the page didn't reach the model")
 	}
 
+	// A drawing is converted, then traced at the scale its units give.
+	send := func(name string, data []byte) (int, string) {
+		var body bytes.Buffer
+		mw := multipart.NewWriter(&body)
+		fw, _ := mw.CreateFormFile("image", name)
+		_, _ = fw.Write(data)
+		_ = mw.Close()
+		return post("/api/plans", mw.FormDataContentType(), &body, true)
+	}
+	if code, body := send(
+		"Scan.pdf",
+		[]byte("%PDF-1.7\n"),
+	); code != http.StatusUnsupportedMediaType ||
+		!strings.Contains(body, "PDF files aren't supported") {
+		t.Fatalf("pdf: %d %s", code, body)
+	}
+	if code, body := send("Office.dxf", dxftest.Plan().Bytes()); code != http.StatusCreated {
+		t.Fatalf("dxf: %d %s", code, body)
+	}
+	ps = s.waitFor("the drawing's draft", func(ps []catalog.Entry) bool {
+		return len(ps) == 2 && ps[1].Status == catalog.Draft
+	}, &log)
+	drawing := ps[1]
+	if drawing.Format != "dxf" || !drawing.Scale.Exact() || drawing.Source != "source.png" {
+		t.Fatalf("%+v", drawing)
+	}
+	if !strings.Contains(model.opening(2), "states its units") {
+		t.Fatal("the model wasn't told the drawing's scale")
+	}
+	var traced struct {
+		Source struct {
+			PxPerMetre float64 `json:"pxPerMetre"`
+		} `json:"SOURCE"`
+	}
+	code, planJSON := get("/generated/" + drawing.ID + "/plan.json")
+	if err := json.Unmarshal([]byte(planJSON), &traced); code != 200 || err != nil {
+		t.Fatalf("plan.json: %d %v", code, err)
+	}
+	// The fake model submitted 20 px/m; the drawing's own scale wins.
+	if math.Abs(traced.Source.PxPerMetre-drawing.Scale.PxPerMetre) > 1e-9 {
+		t.Fatalf(
+			"SOURCE.pxPerMetre %v, drawing says %v",
+			traced.Source.PxPerMetre,
+			drawing.Scale.PxPerMetre,
+		)
+	}
+	for _, f := range []string{"drawing.svg", "source.png", "original.dxf"} {
+		if code, _ := get("/generated/" + drawing.ID + "/" + f); code != 200 {
+			t.Fatalf("%s: %d", f, code)
+		}
+	}
+
 	if err := srv.Process.Signal(os.Interrupt); err != nil {
 		t.Fatal(err)
 	}
@@ -546,17 +697,28 @@ func TestLive(t *testing.T) {
 	if img == "" {
 		t.Fatal("set SPACEWEAVE_LIVE_IMAGE to a floor-plan image")
 	}
-	s := newSite(t, func(int, fakeclaude.Request) fakeclaude.Reply { return fakeclaude.Reply{Status: 500} })
+	s := newSite(
+		t,
+		func(int, fakeclaude.Request) fakeclaude.Reply { return fakeclaude.Reply{Status: 500} },
+	)
 	env := s.env[:0:0]
 	for _, kv := range s.env {
-		if !strings.HasPrefix(kv, "ANTHROPIC_BASE_URL=") && !strings.HasPrefix(kv, "ANTHROPIC_API_KEY=test") {
+		if !strings.HasPrefix(kv, "ANTHROPIC_BASE_URL=") &&
+			!strings.HasPrefix(kv, "ANTHROPIC_API_KEY=test") {
 			env = append(env, kv)
 		}
 	}
 	s.env = env
 	ctx, cancel := context.WithTimeout(context.Background(), time.Hour)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, binary, "trace", img, "--max-usd", "5") //nolint:gosec // the binary under test
+	cmd := exec.CommandContext(
+		ctx,
+		binary,
+		"trace",
+		img,
+		"--max-usd",
+		"5",
+	) //nolint:gosec // the binary under test
 	cmd.Dir, cmd.Env = s.dir, s.env
 	out, err := cmd.CombinedOutput()
 	t.Logf("%s", out)
@@ -567,5 +729,10 @@ func TestLive(t *testing.T) {
 	if ps[0].Status != catalog.Draft {
 		t.Fatalf("%+v", ps[0])
 	}
-	t.Logf("confidence %.2f, cost $%.2f, files in %s", *ps[0].Confidence, ps[0].CostUSD, filepath.Join(s.output, ps[0].ID))
+	t.Logf(
+		"confidence %.2f, cost $%.2f, files in %s",
+		*ps[0].Confidence,
+		ps[0].CostUSD,
+		filepath.Join(s.output, ps[0].ID),
+	)
 }

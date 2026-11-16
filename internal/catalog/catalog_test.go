@@ -42,10 +42,16 @@ func TestIngestDedupesByContent(t *testing.T) {
 	if err != nil || !created {
 		t.Fatalf("ingest: %v %v", created, err)
 	}
-	if e.ID != "corporate-floor-3-"+e.SHA256[:6] || e.Status != Queued || e.Source != "source.png" || e.Title != "Corporate Floor 3" || e.Original != "Corporate Floor_3.PNG" {
+	if e.ID != "corporate-floor-3-"+e.SHA256[:6] || e.Status != Queued ||
+		e.Source != "source.png" ||
+		e.Title != "Corporate Floor 3" ||
+		e.Original != "Corporate Floor_3.PNG" {
 		t.Fatalf("entry %+v", e)
 	}
-	if b, err := os.ReadFile(filepath.Join(dir, e.ID, "source.png")); err != nil || string(b) != "pixels" {
+	if b, err := os.ReadFile(
+		filepath.Join(dir, e.ID, "source.png"),
+	); err != nil ||
+		string(b) != "pixels" {
 		t.Fatalf("source not copied: %v", err)
 	}
 
@@ -63,7 +69,11 @@ func TestCatalogFileIsWhatTheSiteReads(t *testing.T) {
 	e, _, _ := s.Ingest(image(t, "a.jpg", "x"))
 	conf := 0.75
 	_ = s.Transition(e.ID, Tracing, nil)
-	_ = s.Transition(e.ID, Draft, func(e *Entry) { e.Confidence = &conf; e.Summary = "Small office" })
+	_ = s.Transition(
+		e.ID,
+		Draft,
+		func(e *Entry) { e.Confidence = &conf; e.Summary = "Small office" },
+	)
 
 	b, err := os.ReadFile(filepath.Join(dir, "catalog.json"))
 	if err != nil {
@@ -78,7 +88,9 @@ func TestCatalogFileIsWhatTheSiteReads(t *testing.T) {
 	}
 	p := raw.Plans[0]
 	// js/plans/index.js reads exactly these keys.
-	if raw.Version != 1 || p["id"] != e.ID || p["status"] != "draft" || p["title"] != "A" || p["confidence"] != 0.75 || p["summary"] != "Small office" {
+	if raw.Version != 1 || p["id"] != e.ID || p["status"] != "draft" || p["title"] != "A" ||
+		p["confidence"] != 0.75 ||
+		p["summary"] != "Small office" {
 		t.Fatalf("catalog.json: %s", b)
 	}
 	if entries, _ := os.ReadDir(dir); len(entries) != 2 {
@@ -93,8 +105,16 @@ func TestTransitions(t *testing.T) {
 		to Status
 		ok bool
 	}{
-		{Draft, false}, {Tracing, true}, {Approved, false}, {Draft, true}, {Approved, true},
-		{Queued, true}, {Tracing, true}, {Failed, true}, {Draft, false}, {Queued, true},
+		{Draft, false},
+		{Tracing, true},
+		{Approved, false},
+		{Draft, true},
+		{Approved, true},
+		{Queued, true},
+		{Tracing, true},
+		{Failed, true},
+		{Draft, false},
+		{Queued, true},
 	}
 	for i, st := range steps {
 		err := s.Transition(e.ID, st.to, nil)
@@ -171,7 +191,11 @@ func TestLoadErrors(t *testing.T) {
 	if _, _, err := s.Claim(); err == nil {
 		t.Fatal("claim on an unreadable catalogue")
 	}
-	if err := os.WriteFile(filepath.Join(dir, "catalog.json"), []byte(`{"version":1}`), 0o600); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(dir, "catalog.json"),
+		[]byte(`{"version":1}`),
+		0o600,
+	); err != nil {
 		t.Fatal(err)
 	}
 	if c, err := s.Load(); err != nil || c.Plans == nil {
@@ -231,7 +255,10 @@ func TestLocking(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.Chmod(ro.Dir, 0o700) })
 	if os.Getuid() != 0 {
-		if err := ro.Update(func(*Catalog) error { return nil }); err == nil || errors.Is(err, ErrLocked) {
+		if err := ro.Update(
+			func(*Catalog) error { return nil },
+		); err == nil ||
+			errors.Is(err, ErrLocked) {
 			t.Fatalf("an unwritable directory is an error, not a wait: %v", err)
 		}
 	}
@@ -282,7 +309,8 @@ func TestSlugAndTitle(t *testing.T) {
 			t.Errorf("Slug(%q) = %q, want %q", in, got, want)
 		}
 	}
-	if Title("medical-office_layout.png") != "Medical Office Layout" || Title(".png") != "Untitled plan" {
+	if Title("medical-office_layout.png") != "Medical Office Layout" ||
+		Title(".png") != "Untitled plan" {
 		t.Fatal("Title")
 	}
 }
@@ -355,5 +383,76 @@ func TestReviewAndProgress(t *testing.T) {
 	); err != nil || now.Status != Queued ||
 		now.Note != "Add the kitchen" {
 		t.Fatalf("reject: %+v %v", now, err)
+	}
+}
+
+func TestDrawingsAreConvertedBeforeTracing(t *testing.T) {
+	s, dir := open(t)
+	e, _, err := s.Ingest(image(t, "Office.DXF", "0\nSECTION\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The original keeps its own name so a converted source.png can sit
+	// beside it; Source stays empty until then.
+	if e.Format != "dxf" || e.Upload != "original.dxf" || e.Source != "" {
+		t.Fatalf("%+v", e)
+	}
+	if _, err := os.Stat(filepath.Join(dir, e.ID, "original.dxf")); err != nil {
+		t.Fatal(err)
+	}
+	got, ok, err := s.Claim()
+	if err != nil || !ok || got.Status != Converting {
+		t.Fatalf("an unconverted drawing is claimed for converting: %+v %v", got, err)
+	}
+	if n, _ := s.Recover(); n != 1 {
+		t.Fatal("a conversion cut short is requeued")
+	}
+	if _, _, err := s.Claim(); err != nil {
+		t.Fatal(err)
+	}
+	scale := &Scale{PxPerMetre: 120}
+	now, err := s.Converted(e.ID, "source.png", "drawing.svg", scale)
+	if err != nil || now.Status != Tracing || now.Source != "source.png" ||
+		now.Drawing != "drawing.svg" ||
+		!now.Scale.Exact() {
+		t.Fatalf("%+v %v", now, err)
+	}
+	// Once converted, a retry goes straight to tracing.
+	if err := s.Transition(e.ID, Failed, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Transition(e.ID, Queued, nil); err != nil {
+		t.Fatal(err)
+	}
+	if got, _, _ := s.Claim(); got.Status != Tracing {
+		t.Fatalf("%+v", got)
+	}
+	if _, err := s.Converted(e.ID, "source.png", "", nil); err == nil {
+		t.Fatal("tracing → tracing isn't a conversion")
+	}
+}
+
+func TestScaleExact(t *testing.T) {
+	var none *Scale
+	for _, c := range []struct {
+		s    *Scale
+		want bool
+	}{
+		{none, false},
+		{&Scale{}, false},
+		{&Scale{PxPerMetre: 10, Assumed: true}, false},
+		{&Scale{PxPerPaperMM: 3}, false},
+		{&Scale{PxPerMetre: 10}, true},
+	} {
+		if got := c.s.Exact(); got != c.want {
+			t.Errorf("%+v: %v", c.s, got)
+		}
+	}
+}
+
+func TestIngestRefusesUnknownFormats(t *testing.T) {
+	s, _ := open(t)
+	if _, _, err := s.Ingest(image(t, "plan.pdf", "%PDF-")); !errors.Is(err, ErrFormat) {
+		t.Fatal(err)
 	}
 }

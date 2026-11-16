@@ -22,28 +22,34 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/weaveplatform/spaceweave/internal/convert"
 )
 
 // Status is where a plan is in its life.
 type Status string
 
-// The statuses. Their string values are read by js/plans/index.js.
+// The statuses. Their string values are read by js/plans/index.js and
+// js/pipeline.js.
 const (
-	Queued   Status = "queued"
-	Tracing  Status = "tracing"
-	Draft    Status = "draft"
-	Approved Status = "approved"
-	Failed   Status = "failed"
+	Queued     Status = "queued"
+	Converting Status = "converting"
+	Tracing    Status = "tracing"
+	Draft      Status = "draft"
+	Approved   Status = "approved"
+	Failed     Status = "failed"
 )
 
 // transitions lists the allowed moves. Rejecting a draft (or an approved plan)
-// and retrying a failure both send it back to the queue.
+// and retrying a failure both send it back to the queue. A drawing is
+// converted to an image before its first trace.
 var transitions = map[Status][]Status{
-	Queued:   {Tracing},
-	Tracing:  {Draft, Failed, Queued},
-	Draft:    {Approved, Queued},
-	Approved: {Queued},
-	Failed:   {Queued},
+	Queued:     {Converting, Tracing},
+	Converting: {Tracing, Failed, Queued},
+	Tracing:    {Draft, Failed, Queued},
+	Draft:      {Approved, Queued},
+	Approved:   {Queued},
+	Failed:     {Queued},
 }
 
 // Errors.
@@ -51,15 +57,24 @@ var (
 	ErrNotFound   = errors.New("no such plan")
 	ErrTransition = errors.New("status change not allowed")
 	ErrLocked     = errors.New("catalog is locked by another process")
+	ErrFormat     = errors.New("not a format spaceweave reads")
 )
 
 // Entry is one plan in catalog.json.
 type Entry struct {
-	ID         string    `json:"id"`
-	Title      string    `json:"title"`
-	Status     Status    `json:"status"`
-	Source     string    `json:"source"`   // file name inside the plan's directory
-	Original   string    `json:"original"` // the inbox file it came from
+	ID     string `json:"id"`
+	Title  string `json:"title"`
+	Status Status `json:"status"`
+	// Source is the image the tracer reads, inside the plan's directory;
+	// empty for a drawing until it has been converted.
+	Source string `json:"source"`
+	// Upload is the file as it arrived, inside the plan's directory: the
+	// same as Source for an image, original.<ext> for a drawing.
+	Upload     string    `json:"upload"`
+	Format     string    `json:"format"`            // a convert.Format ID
+	Drawing    string    `json:"drawing,omitempty"` // the drawing as SVG, once converted
+	Scale      *Scale    `json:"scale,omitempty"`   // known from the drawing, once converted
+	Original   string    `json:"original"`          // the inbox file it came from
 	SHA256     string    `json:"sha256"`
 	Confidence *float64  `json:"confidence,omitempty"`
 	Summary    string    `json:"summary,omitempty"`
@@ -71,6 +86,21 @@ type Entry struct {
 	CreatedAt  time.Time `json:"createdAt"`
 	UpdatedAt  time.Time `json:"updatedAt"`
 }
+
+// Scale is what a drawing says about its own scale.
+type Scale struct {
+	// PxPerMetre is the image's scale on the building; 0 when unknown.
+	PxPerMetre float64 `json:"pxPerMetre"`
+	// Assumed means the drawing didn't state its units and they were
+	// guessed from its size.
+	Assumed bool `json:"assumed,omitempty"`
+	// PxPerPaperMM is the image's scale on paper, for a drawing measured
+	// on a sheet rather than the building.
+	PxPerPaperMM float64 `json:"pxPerPaperMm,omitempty"`
+}
+
+// Exact reports whether the scale can be trusted without checking.
+func (s *Scale) Exact() bool { return s != nil && s.PxPerMetre > 0 && !s.Assumed }
 
 // Progress is how far a trace has got, for the site's pipeline view.
 type Progress struct {
@@ -233,8 +263,8 @@ func (s *Store) Transition(id string, to Status, mutate func(*Entry)) error {
 	})
 }
 
-// Claim takes the oldest queued plan and marks it tracing. ok is false when
-// the queue is empty.
+// Claim takes the oldest queued plan and marks it converting, if it is a
+// drawing not yet converted, or tracing. ok is false when the queue is empty.
 func (s *Store) Claim() (Entry, bool, error) {
 	var claimed Entry
 	found := false
@@ -250,6 +280,9 @@ func (s *Store) Claim() (Entry, bool, error) {
 			return nil
 		}
 		oldest.Status = Tracing
+		if oldest.Source == "" {
+			oldest.Status = Converting
+		}
 		oldest.Attempts++
 		oldest.UpdatedAt = s.Now().UTC()
 		claimed, found = *oldest, true
@@ -332,13 +365,23 @@ func (s *Store) Review(id string, a Action, note string) (Status, Entry, error) 
 	return was, now, err
 }
 
-// Recover requeues plans left tracing by a worker that stopped mid-run, so
-// they aren't stuck forever. Call it before starting workers.
+// Converted records a drawing's conversion and moves it on to tracing.
+func (s *Store) Converted(id, source, drawing string, scale *Scale) (Entry, error) {
+	var now Entry
+	err := s.Transition(id, Tracing, func(e *Entry) {
+		e.Source, e.Drawing, e.Scale = source, drawing, scale
+		now = *e
+	})
+	return now, err
+}
+
+// Recover requeues plans left converting or tracing by a worker that stopped
+// mid-run, so they aren't stuck forever. Call it before starting workers.
 func (s *Store) Recover() (int, error) {
 	n := 0
 	err := s.Update(func(c *Catalog) error {
 		for i := range c.Plans {
-			if c.Plans[i].Status == Tracing {
+			if st := c.Plans[i].Status; st == Tracing || st == Converting {
 				c.Plans[i].Status = Queued
 				c.Plans[i].UpdatedAt = s.Now().UTC()
 				c.Plans[i].Progress = nil
@@ -350,10 +393,16 @@ func (s *Store) Recover() (int, error) {
 	return n, err
 }
 
-// Ingest adds an image to the queue: it hashes the file, and unless an entry
-// with the same content exists, copies it into a new plan directory. created
-// is false for a duplicate, with the existing entry returned.
+// Ingest adds an image or drawing to the queue: it hashes the file, and
+// unless an entry with the same content exists, copies it into a new plan
+// directory. created is false for a duplicate, with the existing entry
+// returned. The file's format comes from its name; callers check that the
+// content agrees (convert.Check) before ingesting.
 func (s *Store) Ingest(path string) (Entry, bool, error) {
+	format, ok := convert.ByExt(path)
+	if !ok {
+		return Entry{}, false, fmt.Errorf("%w: %s", ErrFormat, filepath.Base(path))
+	}
 	sum, err := hashFile(path)
 	if err != nil {
 		return Entry{}, false, err
@@ -374,13 +423,27 @@ func (s *Store) Ingest(path string) (Entry, bool, error) {
 		if err := os.MkdirAll(dir, 0o750); err != nil {
 			return fmt.Errorf("create plan directory: %w", err)
 		}
-		if err := copyFile(path, filepath.Join(dir, "source"+ext)); err != nil {
+		// An image is traced as it is; a drawing keeps its original beside
+		// the image converted from it.
+		upload, source := "source"+ext, "source"+ext
+		if format.Drawing {
+			upload, source = "original"+ext, ""
+		}
+		if err := copyFile(path, filepath.Join(dir, upload)); err != nil {
 			return err
 		}
 		now := s.Now().UTC()
 		entry = Entry{
-			ID: id, Title: Title(base), Status: Queued, Source: "source" + ext, Original: base,
-			SHA256: sum, CreatedAt: now, UpdatedAt: now,
+			ID:        id,
+			Title:     Title(base),
+			Status:    Queued,
+			Source:    source,
+			Upload:    upload,
+			Format:    format.ID,
+			Original:  base,
+			SHA256:    sum,
+			CreatedAt: now,
+			UpdatedAt: now,
 		}
 		c.Plans = append(c.Plans, entry)
 		created = true

@@ -32,7 +32,7 @@ import (
 	_ "golang.org/x/image/webp"
 
 	"github.com/weaveplatform/spaceweave/internal/catalog"
-	"github.com/weaveplatform/spaceweave/internal/inbox"
+	"github.com/weaveplatform/spaceweave/internal/convert"
 )
 
 // RequestHeader must accompany every POST to the API. It must match
@@ -47,12 +47,14 @@ const (
 	maxNote          = 64 << 10
 )
 
-// Info is what the page shows about the tracer before you upload.
+// Info is what the page shows about the tracer before you upload, and the
+// formats its pre-upload check accepts.
 type Info struct {
-	Version        string  `json:"version"`
-	Model          string  `json:"model"`
-	MaxUSD         float64 `json:"maxUsd"`
-	MaxUploadBytes int64   `json:"maxUploadBytes"`
+	Version        string           `json:"version"`
+	Model          string           `json:"model"`
+	MaxUSD         float64          `json:"maxUsd"`
+	MaxUploadBytes int64            `json:"maxUploadBytes"`
+	Formats        []convert.Format `json:"formats"`
 }
 
 // Server serves the site and the API.
@@ -173,6 +175,7 @@ func sameOrigin(next http.Handler) http.Handler {
 func (s *Server) info(w http.ResponseWriter, _ *http.Request) {
 	i := s.Info
 	i.MaxUploadBytes = s.maxUpload()
+	i.Formats = convert.Formats
 	writeJSON(w, http.StatusOK, i)
 }
 
@@ -200,12 +203,8 @@ func (s *Server) upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	name := filepath.Base(part.FileName())
-	if !inbox.Eligible(name) {
-		writeError(
-			w,
-			http.StatusUnsupportedMediaType,
-			"only .png, .jpg, .jpeg and .webp images can be traced",
-		)
+	if strings.HasPrefix(name, ".") || name == "" {
+		writeError(w, http.StatusBadRequest, "the file needs a name")
 		return
 	}
 	// Ingest takes a path and names the plan after the file, so the upload is
@@ -221,8 +220,8 @@ func (s *Server) upload(w http.ResponseWriter, r *http.Request) {
 		s.bodyError(w, err)
 		return
 	}
-	if msg := checkImage(path); msg != "" {
-		writeError(w, http.StatusUnprocessableEntity, msg)
+	if code, msg := check(path); msg != "" {
+		writeError(w, code, msg)
 		return
 	}
 	e, created, err := s.Store.Ingest(path)
@@ -272,23 +271,49 @@ func save(path string, from io.Reader) error {
 	return nil
 }
 
-// checkImage returns why an upload can't be traced, or "". It reads only
-// the header, so it's cheap even for a large image.
-func checkImage(path string) string {
+// check returns why an upload can't be traced, with the status to answer
+// with, or "". It reads only the start of the file, so it's cheap however
+// big the upload is; a drawing's deeper problems surface when the worker
+// converts it.
+func check(path string) (int, string) {
 	f, err := os.Open(path) //nolint:gosec // our own temp file
 	if err != nil {
-		return "the upload couldn't be read back"
+		return http.StatusInternalServerError, "the upload couldn't be read back"
 	}
 	defer f.Close() //nolint:errcheck // read-only
-	cfg, format, err := image.DecodeConfig(f)
-	if err != nil || !slices.Contains([]string{"png", "jpeg", "webp"}, format) {
-		return "that file isn't a PNG, JPEG or WebP image"
+	head := make([]byte, convert.SniffLen)
+	n, _ := io.ReadFull(f, head)
+	format, err := convert.Check(filepath.Base(path), head[:n])
+	switch {
+	case errors.Is(err, convert.ErrMismatch):
+		// A format we read, misnamed or damaged: the request is understood
+		// but its content can't be processed as named.
+		return http.StatusUnprocessableEntity, err.Error()
+	case err != nil:
+		return http.StatusUnsupportedMediaType, err.Error()
+	}
+	if format.Drawing {
+		return 0, ""
+	}
+	if _, err := f.Seek(0, io.SeekStart); err != nil {
+		return http.StatusInternalServerError, "the upload couldn't be read back"
+	}
+	cfg, _, err := image.DecodeConfig(f)
+	if err != nil {
+		return http.StatusUnprocessableEntity, fmt.Sprintf(
+			"that %s image is damaged and can't be read",
+			format.Label,
+		)
 	}
 	if cfg.Width*cfg.Height > MaxPixels {
-		return fmt.Sprintf("the image is %d × %d pixels; the limit is %d megapixels",
-			cfg.Width, cfg.Height, MaxPixels/1_000_000)
+		return http.StatusUnprocessableEntity, fmt.Sprintf(
+			"the image is %d × %d pixels; the limit is %d megapixels",
+			cfg.Width,
+			cfg.Height,
+			MaxPixels/1_000_000,
+		)
 	}
-	return ""
+	return 0, ""
 }
 
 func (s *Server) bodyError(w http.ResponseWriter, err error) {
