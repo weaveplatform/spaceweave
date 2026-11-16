@@ -45,6 +45,11 @@ test:
 	@rm -rf $(COVER_DIR)/unit && mkdir -p $(COVER_DIR)/unit
 	$(GO) test -race -shuffle=on -count=1 -cover -coverpkg=$(MODULE)/... $(UNIT_PKGS) -args -test.gocoverdir=$(CURDIR)/$(COVER_DIR)/unit
 
+## acceptance: build the binary with coverage and drive it end to end (needs node); coverage to cover/acceptance
+acceptance:
+	@rm -rf $(COVER_DIR)/acceptance && mkdir -p $(COVER_DIR)/acceptance
+	SPACEWEAVE_COVERDIR=$(CURDIR)/$(COVER_DIR)/acceptance $(GO) test -count=1 ./test/acceptance/...
+
 ## cover: merge every cover/* directory and enforce .testcoverage.yml (>=95% total, >=90% per package)
 cover:
 	@dirs=$$(find $(COVER_DIR) -mindepth 1 -maxdepth 1 -type d ! -name '.merged' | paste -sd, -); \
@@ -73,6 +78,6 @@ build:
 	done
 
 ## gate: everything CI runs, in order
-gate: vet lint test cover vuln build
+gate: vet lint test acceptance cover vuln build
 
-.PHONY: help init fmt lint vet test cover vuln build gate
+.PHONY: help init fmt lint vet test acceptance cover vuln build gate
