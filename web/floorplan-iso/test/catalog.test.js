@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { loadCatalog, PLANS } from '../js/plans/index.js';
+import { loadCatalog, PLANS, LISTED } from '../js/plans/index.js';
 
 const respond = (status, body) => ({ status, ok: status >= 200 && status < 300, json: async () => body });
 
@@ -22,7 +22,7 @@ test('a server error is reported, not mistaken for an empty catalogue', async ()
   await assert.rejects(loadCatalog(impl), /HTTP 500/);
 });
 
-test('lists ready and in-progress plans, hides the rest, and never shadows a built-in plan', async () => {
+test('lists every generated plan and never shadows a built-in plan', async () => {
   const { impl, calls } = fakeFetch({
     'generated/catalog.json': respond(200, {
       plans: [
@@ -30,15 +30,17 @@ test('lists ready and in-progress plans, hides the rest, and never shadows a bui
         { id: 'b-2', status: 'approved' },
         { id: 'c-3', status: 'tracing' },
         { id: 'd-4', status: 'queued' },
-        { id: 'e-5', status: 'rejected' },
-        { id: 'f-6', status: 'failed' },
+        { id: 'f-6', status: 'failed', error: 'boom', costUsd: 0.5 },
         { id: PLANS[0].id, status: 'draft' },
       ],
     }),
     'generated/a-1/plan.json': respond(200, { WIDTH: 3 }),
   });
   const plans = await loadCatalog(impl);
-  assert.deepEqual(plans.map((p) => [p.id, p.status]), [['a-1', 'draft'], ['b-2', 'approved'], ['c-3', 'tracing'], ['d-4', 'queued']]);
+  assert.deepEqual(plans.map((p) => [p.id, p.status]), [['a-1', 'draft'], ['b-2', 'approved'], ['c-3', 'tracing'], ['d-4', 'queued'], ['f-6', 'failed']]);
+  assert.deepEqual(plans.filter((p) => LISTED.has(p.status)).map((p) => p.id), ['a-1', 'b-2', 'c-3', 'd-4'], 'the picker leaves failures out');
+  assert.equal(plans[4].error, 'boom');
+  assert.equal(plans[4].costUsd, 0.5);
   assert.equal(calls[0].init.cache, 'no-store');
 
   const [a, b] = plans;

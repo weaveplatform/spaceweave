@@ -8,6 +8,7 @@
   --line: #d6dbe0;
   --accent: #2f6fde;
   --accent-ink: #ffffff;
+  --danger: #c2410c;
   --edge: #1d2329;
 
   /* Model materials */
@@ -69,6 +70,7 @@
     --line: #2c353e;
     --accent: #6ea0ff;
     --accent-ink: #0d1117;
+    --danger: #fb923c;
     --edge: #05080a;
 
     --wall: #d9d6d0;
@@ -110,6 +112,7 @@
   --line: #2c353e;
   --accent: #6ea0ff;
   --accent-ink: #0d1117;
+  --danger: #fb923c;
   --edge: #05080a;
   --wall: #d9d6d0;
   --wall-cap: #0b0d0f;
@@ -139,6 +142,9 @@
 }
 
 * { box-sizing: border-box; }
+
+/* Components set display, which would otherwise beat the hidden attribute. */
+[hidden] { display: none !important; }
 
 html, body { height: 100%; }
 
@@ -323,6 +329,79 @@ h1 { margin: 0; font-size: 17px; letter-spacing: -0.01em; }
   font-size: 10px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
   border: 1px solid currentColor; opacity: 0.8;
 }
+
+/* ---- review, upload and the tracer pipeline */
+.visually-hidden {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+button.primary:hover { filter: brightness(1.08); }
+.actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.review { margin: -2px 0 6px; }
+.reject-form { display: grid; gap: 6px; margin-top: 10px; font-size: 13px; }
+.reject-form textarea {
+  font: inherit; font-size: 13px; color: var(--ink); background: var(--bg);
+  border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; resize: vertical;
+}
+.reject-form textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.dropzone {
+  display: grid; justify-items: center; gap: 2px; text-align: center; cursor: pointer;
+  padding: 16px 12px; border: 1.5px dashed var(--line); border-radius: 10px;
+  font-size: 13px; color: var(--muted);
+  transition: border-color 150ms ease, background 150ms ease;
+}
+.dropzone strong { color: var(--ink); }
+.dropzone u { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+.dropzone small { margin-top: 6px; font-size: 11.5px; line-height: 1.4; }
+.dropzone:hover, .dropzone:focus-within, body.dragging .dropzone {
+  border-color: var(--accent); background: color-mix(in srgb, var(--accent) 7%, transparent);
+}
+.dropzone:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+.dropzone-icon {
+  width: 22px; height: 22px; margin-bottom: 4px; background: var(--accent);
+  clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
+  opacity: 0.85;
+}
+.panel code { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; }
+.upload-status { min-height: 0; margin: 8px 0 0 !important; color: var(--ink) !important; }
+.upload-status:empty { display: none; }
+.upload-status.error { color: var(--danger) !important; }
+
+.pipeline { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 8px; }
+.job { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 12.5px; }
+.job[data-status="failed"] { border-color: color-mix(in srgb, var(--danger) 50%, var(--line)); }
+.job-head { display: flex; justify-content: space-between; gap: 8px; font-weight: 600; }
+.job-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.job-attempt { flex: none; color: var(--muted); font-weight: 500; }
+.job-detail { margin: 6px 0 0 !important; font-size: 12px !important; overflow-wrap: anywhere; }
+.job-actions { margin-top: 6px; display: flex; gap: 6px; }
+.job-actions button { padding: 3px 10px; font-size: 12px; }
+.steps { list-style: none; margin: 8px 0 0; padding: 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: 3px; }
+.steps li {
+  padding-top: 5px; border-top: 3px solid var(--line);
+  font-size: 10.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.steps li.done { border-color: var(--accent); }
+.steps li.current { border-color: var(--accent); color: var(--ink); font-weight: 600; }
+.job[data-status="tracing"] .steps li.current, .job[data-status="uploading"] .steps li.current {
+  animation: working 0.9s ease-in-out infinite alternate;
+}
+.steps li.failed { border-color: var(--danger); color: var(--danger); font-weight: 600; }
+@keyframes working { from { border-top-color: var(--line); } }
+@media (prefers-reduced-motion: reduce) {
+  .steps li.current { animation: none !important; }
+}
+
+.drop-overlay {
+  position: absolute; inset: 12px; z-index: 5; display: none;
+  place-items: center; pointer-events: none;
+  border: 2px dashed var(--accent); border-radius: 14px;
+  background: color-mix(in srgb, var(--panel) 72%, transparent);
+  font-weight: 700; font-size: 16px; color: var(--accent);
+}
+body.dragging .drop-overlay { display: grid; }
 
 /* ---- style picker */
 .skins { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 0; padding: 0; border: 0; }

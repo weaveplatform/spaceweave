@@ -37,6 +37,7 @@
     <section class="stage-wrap" data-skin="model" aria-label="Floor plan model">
       <svg id="stage" role="img" aria-label="Isometric model of a floor plan"></svg>
       <div id="tooltip" class="tooltip" hidden></div>
+      <div class="drop-overlay" aria-hidden="true"><span>Drop to trace this plan</span></div>
 
       <div class="dock">
         <button type="button" id="rotate-left" class="icon" title="Rotate left" aria-label="Rotate left">⟲</button>
@@ -57,6 +58,37 @@
       <h2 id="plan-heading">Floor plan</h2>
       <fieldset class="plans" id="plans" aria-labelledby="plan-heading"></fieldset>
       <p class="skin-blurb" id="plan-blurb"></p>
+      <div class="review" id="review" hidden>
+        <div class="actions">
+          <button type="button" id="approve" class="primary">Approve</button>
+          <button type="button" id="send-back">Send back…</button>
+        </div>
+        <form id="reject-form" class="reject-form" hidden>
+          <label for="reject-note">What should the next pass fix?</label>
+          <textarea id="reject-note" rows="3" required
+                    placeholder="The kitchen is missing, and the east wall sits a metre too far left."></textarea>
+          <div class="actions">
+            <button type="submit" class="primary">Send back</button>
+            <button type="button" id="reject-cancel">Cancel</button>
+          </div>
+        </form>
+      </div>
+
+      <h2 id="add-heading">Add a plan</h2>
+      <label class="dropzone" id="dropzone" hidden>
+        <input type="file" id="upload-file" class="visually-hidden" multiple
+               accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp">
+        <span class="dropzone-icon" aria-hidden="true"></span>
+        <strong>Drop a floor-plan image</strong>
+        <span>or <u>choose a file</u>, or paste one</span>
+        <small id="upload-terms"></small>
+      </label>
+      <p class="hint" id="upload-offline" hidden>
+        To add plans from this page, run <code>go run ./cmd/spaceweave serve</code> from the
+        repository root and open the address it prints.
+      </p>
+      <p class="upload-status" id="upload-status" role="status" aria-live="polite"></p>
+      <ol class="pipeline" id="pipeline" aria-labelledby="add-heading" hidden></ol>
 
       <h2 id="style-heading">Style</h2>
       <fieldset class="skins" id="skins" aria-labelledby="style-heading"></fieldset>

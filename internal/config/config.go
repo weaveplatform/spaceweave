@@ -38,6 +38,17 @@ type Config struct {
 	// Settle is how long an inbox file's size must stay unchanged before it
 	// is picked up, so a file still being copied isn't read half-written.
 	Settle time.Duration `yaml:"settle"`
+	Serve  Serve         `yaml:"serve"`
+}
+
+// Serve configures `spaceweave serve`.
+type Serve struct {
+	Addr string `yaml:"addr"` // listen address
+	Site string `yaml:"site"` // the microsite's folder
+	// Hosts are extra host names the server answers to. Only loopback names
+	// are accepted by default, because any page in the browser can make
+	// requests to a local server, and a DNS-rebound one can read the replies.
+	Hosts []string `yaml:"hosts"`
 }
 
 // Limits stop a trace that isn't converging. Whichever is hit first ends
@@ -80,6 +91,7 @@ func Default() Config {
 		Limits:    Limits{MaxTurns: 120, MaxSubmits: 12, MaxUSD: 15, Timeout: 45 * time.Minute},
 		Prices:    Prices{Input: 4, Output: 20, CacheRead: 0.2, CacheWrite: 5},
 		Settle:    time.Second,
+		Serve:     Serve{Addr: "127.0.0.1:8000", Site: "web/floorplan-iso"},
 	}
 }
 
@@ -120,12 +132,14 @@ var Env = map[string]string{
 	"SPACEWEAVE_EFFORT":  "effort",
 	"SPACEWEAVE_WORKERS": "workers",
 	"SPACEWEAVE_MAX_USD": "limits.maxUsd",
+	"SPACEWEAVE_ADDR":    "serve.addr",
 }
 
 func (c *Config) applyEnv(getenv func(string) (string, bool)) error {
 	strs := map[string]*string{
 		"SPACEWEAVE_INBOX": &c.Inbox, "SPACEWEAVE_OUTPUT": &c.Output, "SPACEWEAVE_NODE": &c.Node,
 		"SPACEWEAVE_MODEL": &c.Model, "SPACEWEAVE_EFFORT": &c.Effort,
+		"SPACEWEAVE_ADDR": &c.Serve.Addr,
 	}
 	for k, p := range strs {
 		if v, ok := getenv(k); ok {
@@ -172,6 +186,9 @@ func (c Config) Validate() error {
 	}
 	if c.Settle < 0 {
 		bad("settle can't be negative")
+	}
+	if c.Serve.Addr == "" || c.Serve.Site == "" {
+		bad("serve.addr and serve.site must be set")
 	}
 	if len(problems) > 0 {
 		return fmt.Errorf("%w: %s", ErrInvalid, strings.Join(problems, "\n"))

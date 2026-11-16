@@ -12,6 +12,9 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"io"
+	"mime/multipart"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -23,6 +26,7 @@ import (
 
 	"github.com/weaveplatform/spaceweave/internal/catalog"
 	"github.com/weaveplatform/spaceweave/internal/fakeclaude"
+	"github.com/weaveplatform/spaceweave/internal/server"
 )
 
 var (
@@ -386,6 +390,149 @@ func TestOneOffTraceAndFailure(t *testing.T) {
 	}
 	if _, errOut, code := s.run("trace"); code != 2 || !strings.Contains(errOut, "accepts 1 arg") {
 		t.Fatalf("%d %s", code, errOut)
+	}
+}
+
+// TestServeUploadAndReview is the page's path: upload an image over HTTP,
+// watch it become a draft, open it, and approve or send it back, all against
+// the real site folder.
+func TestServeUploadAndReview(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("stopping the server needs an interrupt signal")
+	}
+	model := &claude{}
+	s := newSite(t, model.script)
+	var log lockedBuffer
+	srv := s.command(
+		"serve",
+		"--addr",
+		"127.0.0.1:0",
+		"--site",
+		filepath.Join(repoRoot, "web", "floorplan-iso"),
+	)
+	srv.Stdout, srv.Stderr = &log, &log
+	if err := srv.Start(); err != nil {
+		t.Fatal(err)
+	}
+	exited := make(chan error, 1)
+	go func() { exited <- srv.Wait() }()
+	stopped := false
+	defer func() {
+		if !stopped {
+			_ = srv.Process.Kill()
+			<-exited
+		}
+	}()
+	var base string
+	for deadline := time.Now().Add(15 * time.Second); base == ""; {
+		if _, rest, ok := strings.Cut(log.String(), "msg=serving url="); ok {
+			base = strings.TrimSuffix(strings.Fields(rest)[0], "/")
+		} else if time.Now().After(deadline) {
+			t.Fatalf("serve didn't start:\n%s", &log)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	get := func(path string) (int, string) {
+		t.Helper()
+		res, err := http.Get(base + path) //nolint:noctx // test
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer res.Body.Close() //nolint:errcheck // test
+		b, _ := io.ReadAll(res.Body)
+		return res.StatusCode, string(b)
+	}
+	post := func(path, contentType string, body io.Reader, header bool) (int, string) {
+		t.Helper()
+		req, _ := http.NewRequestWithContext(context.Background(), http.MethodPost, base+path, body)
+		req.Header.Set("Content-Type", contentType)
+		if header {
+			req.Header.Set(server.RequestHeader, "1")
+		}
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer res.Body.Close() //nolint:errcheck // test
+		b, _ := io.ReadAll(res.Body)
+		return res.StatusCode, string(b)
+	}
+
+	if code, page := get("/"); code != 200 || !strings.Contains(page, `id="dropzone"`) {
+		t.Fatalf("index: %d", code)
+	}
+	if code, js := get("/js/workbench.js"); code != 200 || !strings.Contains(js, "initWorkbench") {
+		t.Fatalf("modules: %d", code)
+	}
+	if code, info := get("/api/info"); code != 200 || !strings.Contains(info, `"maxUsd":5`) {
+		t.Fatalf("info: %d %s", code, info)
+	}
+
+	img := filepath.Join(s.dir, "Upload Studio.png")
+	floorPlan(t, img, 4)
+	data, _ := os.ReadFile(img)
+	upload := func(header bool) (int, string) {
+		var body bytes.Buffer
+		mw := multipart.NewWriter(&body)
+		fw, _ := mw.CreateFormFile("image", "Upload Studio.png")
+		_, _ = fw.Write(data)
+		_ = mw.Close()
+		return post("/api/plans", mw.FormDataContentType(), &body, header)
+	}
+	if code, _ := upload(false); code != http.StatusForbidden {
+		t.Fatalf("an upload without the header must be refused: %d", code)
+	}
+	if code, body := upload(true); code != http.StatusCreated {
+		t.Fatalf("upload: %d %s", code, body)
+	}
+	ps := s.waitFor("a draft", func(ps []catalog.Entry) bool {
+		return len(ps) == 1 && ps[0].Status == catalog.Draft
+	}, &log)
+	id := ps[0].ID
+	if code, catalogJSON := get(
+		"/generated/catalog.json",
+	); code != 200 ||
+		!strings.Contains(catalogJSON, id) {
+		t.Fatalf("catalog: %d", code)
+	}
+	if code, _ := get("/generated/" + id + "/plan.json"); code != 200 {
+		t.Fatalf("plan.json: %d", code)
+	}
+	if code, body := upload(true); code != 200 || !strings.Contains(body, `"duplicate":true`) {
+		t.Fatalf("the same image again: %d %s", code, body)
+	}
+
+	if code, body := post(
+		"/api/plans/"+id+"/approve",
+		"application/json",
+		nil,
+		true,
+	); code != 200 ||
+		!strings.Contains(body, `"status":"approved"`) {
+		t.Fatalf("approve: %d %s", code, body)
+	}
+	if code, body := post("/api/plans/"+id+"/reject", "application/json",
+		strings.NewReader(`{"note":"Put the door on the east wall"}`), true); code != 200 {
+		t.Fatalf("reject: %d %s", code, body)
+	}
+	s.waitFor("the second attempt", func(ps []catalog.Entry) bool {
+		return ps[0].Status == catalog.Draft && ps[0].Attempts == 2
+	}, &log)
+	if !strings.Contains(model.opening(1), "Put the door on the east wall") {
+		t.Fatal("the note from the page didn't reach the model")
+	}
+
+	if err := srv.Process.Signal(os.Interrupt); err != nil {
+		t.Fatal(err)
+	}
+	stopped = true
+	select {
+	case err := <-exited:
+		if err != nil {
+			t.Fatalf("serve exit: %v\n%s", err, &log)
+		}
+	case <-time.After(15 * time.Second):
+		t.Fatal("serve didn't stop on interrupt")
 	}
 }
 

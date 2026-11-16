@@ -9,12 +9,17 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
+	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"slices"
 	"strconv"
+	"strings"
 	"sync"
 	"text/tabwriter"
+	"time"
 
 	"github.com/anthropics/anthropic-sdk-go/v2"
 	"github.com/anthropics/anthropic-sdk-go/v2/option"
@@ -25,6 +30,7 @@ import (
 	"github.com/weaveplatform/spaceweave/internal/config"
 	"github.com/weaveplatform/spaceweave/internal/inbox"
 	"github.com/weaveplatform/spaceweave/internal/plan"
+	"github.com/weaveplatform/spaceweave/internal/server"
 	"github.com/weaveplatform/spaceweave/internal/trace"
 	"github.com/weaveplatform/spaceweave/internal/worker"
 )
@@ -55,6 +61,9 @@ type flags struct {
 	maxUSD  float64
 	workers int
 	verbose bool
+	addr    string
+	site    string
+	hosts   []string
 }
 
 // Execute runs the command line and returns the process exit code.
@@ -102,7 +111,7 @@ func New(app App) *cobra.Command {
 	p.IntVar(&f.workers, "workers", 0, "plans traced at once")
 	p.BoolVarP(&f.verbose, "verbose", "v", false, "debug logging")
 
-	root.AddCommand(watchCmd(app, f), traceCmd(app, f), plansCmd(app, f))
+	root.AddCommand(watchCmd(app, f), serveCmd(app, f), traceCmd(app, f), plansCmd(app, f))
 	return root
 }
 
@@ -141,6 +150,15 @@ func (f *flags) load(cmd *cobra.Command, app App) (config.Config, error) {
 	}
 	if set("workers") {
 		c.Workers = f.workers
+	}
+	if set("addr") {
+		c.Serve.Addr = f.addr
+	}
+	if set("site") {
+		c.Serve.Site = f.site
+	}
+	if set("allow-host") {
+		c.Serve.Hosts = append(c.Serve.Hosts, f.hosts...)
 	}
 	if err := c.Validate(); err != nil {
 		return c, fmt.Errorf("%w: %w", ErrUsage, err)
@@ -200,6 +218,81 @@ func newWorker(
 	}, nil
 }
 
+// daemon is what watch and serve share: the inbox watcher feeding the
+// workers.
+type daemon struct {
+	c       config.Config
+	log     *slog.Logger
+	store   *catalog.Store
+	worker  *worker.Worker
+	watcher *inbox.Watcher
+	wake    chan struct{}
+}
+
+func (f *flags) daemon(cmd *cobra.Command, app App) (*daemon, error) {
+	c, err := f.load(cmd, app)
+	if err != nil {
+		return nil, err
+	}
+	d := &daemon{c: c, log: f.logger(app), wake: make(chan struct{}, 1)}
+	if d.store, err = openStore(c); err != nil {
+		return nil, err
+	}
+	if d.worker, err = newWorker(app, c, d.store, d.log); err != nil {
+		return nil, err
+	}
+	d.watcher = &inbox.Watcher{
+		Dir: c.Inbox, Settle: c.Settle, Log: d.log,
+		Ingest: func(path string) error {
+			e, created, err := d.store.Ingest(path)
+			if err != nil {
+				return err //nolint:wrapcheck // logged by the watcher with the file name
+			}
+			if !created {
+				d.log.Info("already seen", "file", path, "plan", e.ID, "status", e.Status)
+				return nil
+			}
+			d.log.Info("queued", "file", path, "plan", e.ID)
+			d.poke()
+			return nil
+		},
+	}
+	return d, nil
+}
+
+// poke wakes an idle worker. The channel holds one wake-up; more would only
+// say the same thing.
+func (d *daemon) poke() {
+	select {
+	case d.wake <- struct{}{}:
+	default:
+	}
+}
+
+// run runs the watcher, the workers and any extra services until ctx is done
+// or one of them stops, which stops the rest.
+func (d *daemon) run(ctx context.Context, extra ...func(context.Context) error) error {
+	d.log.Info("watching", "inbox", d.c.Inbox, "output", d.c.Output, "model", d.c.Model,
+		"workers", d.c.Workers, "maxUsd", d.c.Limits.MaxUSD)
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	services := append([]func(context.Context) error{
+		d.watcher.Run,
+		func(ctx context.Context) error { return d.worker.Run(ctx, d.c.Workers, d.wake) },
+	}, extra...)
+	errs := make([]error, len(services))
+	var wg sync.WaitGroup
+	for i, run := range services {
+		wg.Go(func() {
+			errs[i] = run(ctx)
+			cancel()
+		})
+	}
+	wg.Wait()
+	d.log.Info("stopped")
+	return errors.Join(errs...)
+}
+
 func watchCmd(app App, f *flags) *cobra.Command {
 	return &cobra.Command{
 		Use:   "watch",
@@ -208,59 +301,93 @@ func watchCmd(app App, f *flags) *cobra.Command {
 			"traced and published as a draft. Runs until interrupted.",
 		Args: usageArgs(0),
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			c, err := f.load(cmd, app)
+			d, err := f.daemon(cmd, app)
 			if err != nil {
 				return err
 			}
-			log := f.logger(app)
-			store, err := openStore(c)
-			if err != nil {
-				return err
-			}
-			w, err := newWorker(app, c, store, log)
-			if err != nil {
-				return err
-			}
-			wake := make(chan struct{}, 1)
-			watcher := &inbox.Watcher{
-				Dir: c.Inbox, Settle: c.Settle, Log: log,
-				Ingest: func(path string) error {
-					e, created, err := store.Ingest(path)
-					if err != nil {
-						return err //nolint:wrapcheck // logged by the watcher with the file name
-					}
-					if !created {
-						log.Info("already seen", "file", path, "plan", e.ID, "status", e.Status)
-						return nil
-					}
-					log.Info("queued", "file", path, "plan", e.ID)
-					select {
-					case wake <- struct{}{}:
-					default:
-					}
-					return nil
-				},
-			}
-			log.Info("watching", "inbox", c.Inbox, "output", c.Output, "model", c.Model,
-				"workers", c.Workers, "maxUsd", c.Limits.MaxUSD)
-
-			ctx, cancel := context.WithCancel(cmd.Context())
-			defer cancel()
-			var wg sync.WaitGroup
-			var watchErr, workErr error
-			wg.Go(func() {
-				watchErr = watcher.Run(ctx)
-				cancel()
-			})
-			wg.Go(func() {
-				workErr = w.Run(ctx, c.Workers, wake)
-				cancel()
-			})
-			wg.Wait()
-			log.Info("stopped")
-			return errors.Join(watchErr, workErr)
+			return d.run(cmd.Context())
 		},
 	}
+}
+
+func serveCmd(app App, f *flags) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "serve",
+		Short: "Serve the microsite with uploads and review, and trace what arrives",
+		Long: "Serves the microsite. Images dropped on the page (or into the inbox) are traced " +
+			"and published as drafts, which can be approved or sent back from the page. " +
+			"Runs until interrupted.\n\n" +
+			"Only loopback host names are answered unless others are allowed, because every " +
+			"upload spends money on the Claude API.",
+		Args: usageArgs(0),
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			d, err := f.daemon(cmd, app)
+			if err != nil {
+				return err
+			}
+			s := d.c.Serve
+			if _, err := os.Stat(filepath.Join(s.Site, "index.html")); err != nil {
+				return fmt.Errorf(
+					"site folder: %w (run from the repository root, or set serve.site)",
+					err,
+				)
+			}
+			ln, err := (&net.ListenConfig{}).Listen(cmd.Context(), "tcp", s.Addr)
+			if err != nil {
+				return fmt.Errorf("listen: %w", err)
+			}
+			hosts := s.Hosts
+			h, _, _ := net.SplitHostPort(ln.Addr().String())
+			if ip := net.ParseIP(h); ip != nil && ip.IsUnspecified() {
+				if len(s.Hosts) == 0 {
+					d.log.Warn(
+						"listening on every interface, but answering only to localhost names; add others with --allow-host",
+					)
+				}
+			} else {
+				hosts = append(
+					slices.Clone(hosts),
+					strings.ToLower(h),
+				) // a named interface answers to its own address
+			}
+			srv := &server.Server{
+				Site:  s.Site,
+				Store: d.store,
+				Hosts: hosts,
+				Wake:  d.poke,
+				Log:   d.log,
+				Info: server.Info{
+					Version: buildinfo.Version(),
+					Model:   d.c.Model,
+					MaxUSD:  d.c.Limits.MaxUSD,
+				},
+			}
+			hs := &http.Server{Handler: srv.Handler(), ReadHeaderTimeout: 10 * time.Second}
+			d.log.Info("serving", "url", "http://"+ln.Addr().String()+"/", "site", s.Site)
+			return d.run(cmd.Context(), func(ctx context.Context) error {
+				served := make(chan error, 1)
+				go func() { served <- hs.Serve(ln) }()
+				select {
+				case err := <-served:
+					return fmt.Errorf("serve: %w", err)
+				case <-ctx.Done():
+				}
+				// Uploads in flight get a moment to land; a trace in progress
+				// is requeued by the worker, not waited for.
+				stop, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+				defer cancel()
+				if err := hs.Shutdown(stop); err != nil {
+					return fmt.Errorf("shut down: %w", err)
+				}
+				return nil
+			})
+		},
+	}
+	fl := cmd.Flags()
+	fl.StringVar(&f.addr, "addr", "", "listen address (default "+config.Default().Serve.Addr+")")
+	fl.StringVar(&f.site, "site", "", "the microsite's folder")
+	fl.StringSliceVar(&f.hosts, "allow-host", nil, "extra host name to answer to (repeatable)")
+	return cmd
 }
 
 func traceCmd(app App, f *flags) *cobra.Command {
@@ -395,7 +522,7 @@ func plansCmd(app App, f *flags) *cobra.Command {
 		Short: "Approve a draft; the site drops its Draft badge",
 		Args:  usageArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return f.move(cmd, app, args[0], []catalog.Status{catalog.Draft}, catalog.Approved, nil)
+			return f.review(cmd, app, args[0], catalog.Approve, "")
 		},
 	}
 
@@ -407,14 +534,7 @@ func plansCmd(app App, f *flags) *cobra.Command {
 			"along with the rejected trace to correct.",
 		Args: usageArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return f.move(
-				cmd,
-				app,
-				args[0],
-				[]catalog.Status{catalog.Draft, catalog.Approved},
-				catalog.Queued,
-				func(e *catalog.Entry) { e.Note = note },
-			)
+			return f.review(cmd, app, args[0], catalog.Reject, note)
 		},
 	}
 	reject.Flags().StringVar(&note, "note", "", "what to fix")
@@ -424,8 +544,7 @@ func plansCmd(app App, f *flags) *cobra.Command {
 		Short: "Re-queue a failed plan",
 		Args:  usageArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return f.move(cmd, app, args[0], []catalog.Status{catalog.Failed}, catalog.Queued,
-				func(e *catalog.Entry) { e.Error = "" })
+			return f.review(cmd, app, args[0], catalog.Retry, "")
 		},
 	}
 	cmd.AddCommand(list, approve, reject, retry)
@@ -440,31 +559,21 @@ func (f *flags) store(cmd *cobra.Command, app App) (*catalog.Store, error) {
 	return openStore(c)
 }
 
-// move changes a plan's status. from narrows the catalogue's own rules to
-// what the command means: reject and retry both re-queue, but rejecting a
-// failure or retrying a draft is a mistake worth saying so.
-func (f *flags) move(
+func (f *flags) review(
 	cmd *cobra.Command,
 	app App,
 	id string,
-	from []catalog.Status,
-	to catalog.Status,
-	mutate func(*catalog.Entry),
+	a catalog.Action,
+	note string,
 ) error {
 	store, err := f.store(cmd, app)
 	if err != nil {
 		return err
 	}
-	e, err := store.Get(id)
+	was, e, err := store.Review(id, a, note)
 	if err != nil {
 		return err //nolint:wrapcheck // names the plan
 	}
-	if !slices.Contains(from, e.Status) {
-		return fmt.Errorf("%w: %s is %s", catalog.ErrTransition, id, e.Status)
-	}
-	if err := store.Transition(id, to, mutate); err != nil {
-		return err //nolint:wrapcheck // names itself
-	}
-	_, _ = fmt.Fprintf(app.Stdout, "%s: %s → %s\n", id, e.Status, to)
+	_, _ = fmt.Fprintf(app.Stdout, "%s: %s → %s\n", id, was, e.Status)
 	return nil
 }

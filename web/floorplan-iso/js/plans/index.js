@@ -11,16 +11,16 @@ export const PLANS = [
 export const DEFAULT_PLAN = 'office';
 
 // Statuses the picker lists. queued and tracing show as disabled placeholders
-// so a dropped image is visibly on its way; rejected plans are waiting for
-// another pass and failed ones have nothing to show.
-const LISTED = new Set(['queued', 'tracing', 'draft', 'approved']);
+// so a dropped image is visibly on its way; failed plans have nothing to show
+// and appear only in the upload pipeline.
+export const LISTED = new Set(['queued', 'tracing', 'draft', 'approved']);
 export const READY = new Set(['draft', 'approved']);
 
 // Must match the output directory the Go tracer writes (internal/catalog).
 export const GENERATED = 'generated/';
 
-// Reads generated/catalog.json. A missing file (no tracer has run) is an
-// empty catalogue, not an error.
+// Reads generated/catalog.json: every generated plan, whatever its status. A
+// missing file (no tracer has run) is an empty catalogue, not an error.
 export async function loadCatalog(fetchImpl = globalThis.fetch) {
   const res = await fetchImpl(`${GENERATED}catalog.json`, { cache: 'no-store' });
   if (res.status === 404) return [];
@@ -28,7 +28,7 @@ export async function loadCatalog(fetchImpl = globalThis.fetch) {
   const { plans = [] } = await res.json();
   const builtIn = new Set(PLANS.map((p) => p.id));
   return plans
-    .filter((p) => LISTED.has(p.status) && !builtIn.has(p.id))
+    .filter((p) => !builtIn.has(p.id))
     .map((p) => {
       const dir = `${GENERATED}${p.id}/`;
       return {
@@ -37,6 +37,12 @@ export async function loadCatalog(fetchImpl = globalThis.fetch) {
         blurb: p.summary || 'Traced automatically',
         status: p.status,
         confidence: p.confidence,
+        costUsd: p.costUsd,
+        attempts: p.attempts,
+        note: p.note,
+        error: p.error,
+        progress: p.progress,
+        updatedAt: p.updatedAt,
         generated: true,
         dir,
         load: async () => {
