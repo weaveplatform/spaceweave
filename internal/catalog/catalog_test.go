@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -254,7 +255,9 @@ func TestLocking(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.Chmod(ro.Dir, 0o700) })
-	if os.Getuid() != 0 {
+	// Windows ignores a directory's permission bits, and root ignores them
+	// everywhere, so neither can make the directory unwritable this way.
+	if runtime.GOOS != "windows" && os.Getuid() != 0 {
 		if err := ro.Update(
 			func(*Catalog) error { return nil },
 		); err == nil ||

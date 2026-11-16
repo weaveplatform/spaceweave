@@ -345,6 +345,9 @@ func TestUsageAndConfigErrors(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	// The OS words "no such file" differently on Windows; the path is the same.
+	missing := filepath.Join(e.dir, "missing.png")
+	missingDXF := filepath.Join(e.dir, "missing.dxf")
 	cases := []struct {
 		args []string
 		code int
@@ -358,8 +361,8 @@ func TestUsageAndConfigErrors(t *testing.T) {
 		{[]string{"trace", notes}, 2, ".txt files aren't supported"},
 		{[]string{"convert", notes}, 2, ".txt files aren't supported"},
 		{[]string{"convert", pngFile}, 2, "only drawings need converting"},
-		{[]string{"convert", filepath.Join(e.dir, "missing.dxf")}, 1, "no such file"},
-		{[]string{"trace", filepath.Join(e.dir, "missing.png")}, 1, "no such file"},
+		{[]string{"convert", missingDXF}, 1, "open " + missingDXF + ": "},
+		{[]string{"trace", missing}, 1, "open " + missing + ": "},
 		{
 			[]string{"plans", "list", "--config", filepath.Join(e.dir, "absent.yaml")},
 			1,

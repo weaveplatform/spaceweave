@@ -455,7 +455,7 @@ func (s *Store) Ingest(path string) (Entry, bool, error) {
 func hashFile(path string) (string, error) {
 	f, err := os.Open(path) //nolint:gosec // inbox files are the input
 	if err != nil {
-		return "", fmt.Errorf("open %s: %w", path, err)
+		return "", fmt.Errorf("hash plan: %w", err) // the *PathError names the path
 	}
 	defer f.Close() //nolint:errcheck // read-only
 	h := sha256.New()

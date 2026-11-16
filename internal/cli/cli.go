@@ -489,13 +489,13 @@ func confidence(e catalog.Entry) string {
 func checkFile(path string) (convert.Format, error) {
 	f, err := os.Open(path) //nolint:gosec // a path the user gave
 	if err != nil {
-		return convert.Format{}, fmt.Errorf("open %s: %w", path, err)
+		return convert.Format{}, fmt.Errorf("read input: %w", err) // the *PathError names the path
 	}
 	defer f.Close() //nolint:errcheck // read-only
 	head := make([]byte, convert.SniffLen)
 	n, err := io.ReadFull(f, head)
 	if err != nil && !errors.Is(err, io.ErrUnexpectedEOF) && !errors.Is(err, io.EOF) {
-		return convert.Format{}, fmt.Errorf("read %s: %w", path, err)
+		return convert.Format{}, fmt.Errorf("read input: %w", err)
 	}
 	format, err := convert.Check(filepath.Base(path), head[:n])
 	if err != nil {
