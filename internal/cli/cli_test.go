@@ -278,6 +278,8 @@ func TestUsageAndConfigErrors(t *testing.T) {
 	if err := os.WriteFile(bad, []byte("maxUSD: 3\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	// The OS words "no such file" differently on Windows; the path is the same.
+	missing := filepath.Join(e.dir, "missing.png")
 	cases := []struct {
 		args []string
 		code int
@@ -289,7 +291,7 @@ func TestUsageAndConfigErrors(t *testing.T) {
 		{[]string{"plans", "list", "extra"}, 2, "accepts 0 arg"},
 		{[]string{"watch", "--workers", "0"}, 2, "workers must be 1–8"},
 		{[]string{"trace", "notes.txt"}, 2, "is not a .png"},
-		{[]string{"trace", filepath.Join(e.dir, "missing.png")}, 1, "no such file"},
+		{[]string{"trace", missing}, 1, "open " + missing + ": "},
 		{[]string{"plans", "list", "--config", filepath.Join(e.dir, "absent.yaml")}, 1, "config file not found"},
 		{[]string{"watch", "--config", bad}, 1, "field maxUSD not found"},
 		{[]string{"plans", "list", "--output", filepath.Join(bad, "x")}, 1, "create output directory"},
