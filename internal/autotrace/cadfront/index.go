@@ -126,3 +126,59 @@ func (r *reader) reach(g *grid, i int, end, out point) point {
 	}
 	return best
 }
+
+// maxBridge is the widest gap, in metres, between two pieces of one
+// straight wall that is closed over: a riser, a pipe box or a column set
+// in the wall's line breaks the wall's ink without being a way through.
+// Doorways are wider and are joined by their openings instead.
+const maxBridge = 0.5
+
+// bridgeGaps runs each wall end on to the next piece of the same wall
+// when the two are in line, alike in thickness and no more than maxBridge
+// apart. Every end moves against where the walls were, so the result
+// doesn't depend on the order they were found in.
+func (r *reader) bridgeGaps() {
+	g := r.wallGrid()
+	reach := r.metres(maxBridge)
+	ends := make([][2]point, len(r.walls))
+	for i, w := range r.walls {
+		ends[i] = [2]point{
+			r.bridge(g, i, w.a, w.a.Sub(w.b), reach),
+			r.bridge(g, i, w.b, w.b.Sub(w.a), reach),
+		}
+	}
+	for i := range r.walls {
+		r.walls[i].a, r.walls[i].b = ends[i][0], ends[i][1]
+	}
+}
+
+// sinInLine is how far apart in direction two pieces of one wall may be.
+var sinInLine = math.Sin(1 * math.Pi / 180)
+
+func (r *reader) bridge(g *grid, i int, end, out point, reach float64) point {
+	self := r.walls[i]
+	d := unit(out)
+	best, bestS := end, math.Inf(1)
+	for _, j := range g.near(end, reach) {
+		w := r.walls[j]
+		if j == i || w.glass != self.glass || w.thick > 1.5*self.thick || self.thick > 1.5*w.thick {
+			continue
+		}
+		wd := w.dir()
+		if math.Abs(cross(d, wd)) > sinInLine {
+			continue
+		}
+		// The nearer end of the other piece, ahead of this end and on its line.
+		near := w.a
+		if dot(w.b.Sub(end), d) < dot(w.a.Sub(end), d) {
+			near = w.b
+		}
+		s := dot(near.Sub(end), d)
+		off := math.Abs(cross(d, near.Sub(end)))
+		if s <= 0 || s > reach || off > math.Min(self.thick, w.thick)/2 || s >= bestS {
+			continue
+		}
+		best, bestS = end.Add(d.Mul(s)), s
+	}
+	return best
+}

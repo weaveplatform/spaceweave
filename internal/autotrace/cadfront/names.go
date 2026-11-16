@@ -65,7 +65,22 @@ var (
 		"WIND*", "WIN", "WDW*", "WNDW*", "FENSTER*", "FENETRE*", "FENÊTRE*", "VENTANA*",
 	}
 	doorWords = []string{"DOOR*", "DR", "DRS", "TÜR*", "TUER*", "PORTE*", "PUERTA*"}
-	furnWords = []string{"FURN*", "MOBIL*", "MÖBEL*", "MOEBEL*"}
+	furnWords = []string{"FURN*", "MOBIL*", "MÖBEL*", "MOEBEL*", "SANITARY", "SANI*"}
+	// structWords are the load-bearing layers: core walls drawn as line
+	// pairs, and columns. They are read as walls, so a drawing whose shell
+	// and cores live only there still encloses its rooms.
+	structWords = []string{
+		"STRUCT*", "COLUMN*", "COL", "COLS", "PILLAR*", "PIER*", "STUETZ*", "STÜTZ*",
+		"POTEAU*", "PILAR*", "TRAGWERK*",
+	}
+	// vetoWords outrank everything: a door's tag, a wall's dimensions or
+	// the structural grid is drawn on a layer named for walls, doors or
+	// structure, and none of it is one. A wall's hatch layer (A-WALL-PATT)
+	// is not vetoed: its poché marks the wall.
+	vetoWords = []string{
+		"GRID*", "AXIS", "AXES", "DIM*", "TEXT*", "TXT", "ANNO*", "IDEN", "NOTE*", "TAG*",
+		"HELPLINE*",
+	}
 	// notWallWords are layers whose lines are never walls, for drawings
 	// that don't name a wall layer: every other layer's lines are then
 	// candidates. Stairs, overhead and hidden lines run parallel in pairs
@@ -76,7 +91,7 @@ var (
 		"BORDER*", "VIEWPORT*", "VPORT*", "VP", "DEFPOINTS", "IDEN", "AREA*", "ROOM*", "SPACE*",
 		"ELEC*", "LITE", "LIGHT*", "CLNG", "CEIL*", "PLUM*", "FIXT*", "EQPM*", "STAIR*", "STRS",
 		"TREPPE*", "OVHD", "HIDD*", "HIDDEN", "CENTER*", "CNTR", "REV*", "SECT*", "ELEV*",
-		"ROOF*", "LOGO", "NORTH",
+		"ROOF*", "LOGO", "NORTH", "BRISE", "SHADING", "LOUVRE*", "LOUVER*",
 	}
 )
 
@@ -98,6 +113,12 @@ const (
 // wall-opening layer such as A-WALL-DOOR holds doors.
 func layerRole(name string) role {
 	t := tokens(name)
+	if matches(t, vetoWords) {
+		return roleNotWall
+	}
+	if r, ok := uniclassRole(t); ok {
+		return r
+	}
 	switch {
 	case matches(t, doorWords):
 		return roleDoor
@@ -105,7 +126,7 @@ func layerRole(name string) role {
 		return roleWindow
 	case matches(t, glassWords):
 		return roleGlass
-	case matches(t, wallWords):
+	case matches(t, wallWords), matches(t, structWords):
 		return roleWall
 	case matches(t, furnWords):
 		return roleFurniture
@@ -113,6 +134,55 @@ func layerRole(name string) role {
 		return roleNotWall
 	}
 	return roleNone
+}
+
+// uniclassRole reads a Uniclass 2015 classification code in a layer name,
+// as BS 1192 and ISO 19650 layer naming put one ("AR_EF_25_10-X_Existing
+// Walls", "Ss_40_15_Furniture"). The code says what the layer holds even
+// where its description is missing or in another language. Only the codes
+// a floor plan's evidence depends on are read; anything else falls through
+// to the words. Doors and windows share EF_25_30, so the words split them
+// (a window layer says so; anything else there is a door).
+func uniclassRole(t []string) (role, bool) {
+	for i := 0; i+1 < len(t); i++ {
+		code := t[i] + "_" + t[i+1]
+		if i+2 < len(t) {
+			code += "_" + t[i+2]
+		}
+		switch {
+		case strings.HasPrefix(code, "EF_25_10"):
+			if matches(t, glassWords) {
+				return roleGlass, true
+			}
+			return roleWall, true
+		case strings.HasPrefix(code, "EF_25_30"):
+			if matches(t, windowWords) {
+				return roleWindow, true
+			}
+			return roleDoor, true
+		case strings.HasPrefix(code, "SS_25_50"):
+			// Solar shading: brise soleil and louvres stand off the
+			// façade in long parallel runs, and enclose nothing.
+			return roleNotWall, true
+		case strings.HasPrefix(code, "SS_25"):
+			// Wall and barrier systems: partitions and glazed screens.
+			if matches(t, glassWords) {
+				return roleGlass, true
+			}
+			return roleWall, true
+		case strings.HasPrefix(code, "EF_20"):
+			return roleWall, true
+		case strings.HasPrefix(code, "EF_35"), strings.HasPrefix(code, "ZZ_"),
+			strings.HasPrefix(code, "SL_90"):
+			// Stairs and ramps, annotation, and lift installations: drawn
+			// in parallel pairs like walls, and none of them is one.
+			return roleNotWall, true
+		case strings.HasPrefix(code, "SS_40_15"), strings.HasPrefix(code, "PR_40_20"),
+			strings.HasPrefix(code, "PR_40_70"):
+			return roleFurniture, true
+		}
+	}
+	return roleNone, false
 }
 
 // blockRole classifies an insert by its block's name, then its layer.

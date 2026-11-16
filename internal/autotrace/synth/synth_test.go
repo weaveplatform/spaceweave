@@ -278,3 +278,27 @@ func fixtureBox(t *testing.T) *plan.Trace {
 		Room("Hall", [2]float64{0, 0}, [2]float64{400, 0}, [2]float64{400, 300}, [2]float64{0, 300}).
 		Trace()
 }
+
+// Walls can be drawn thinner or bolder, as their faces only, or hatched;
+// openings and everything else stay as they are.
+func TestWallStyles(t *testing.T) {
+	tr := New(40).Box(40, 40, 200, 120).Trace() // 8 px walls about y = 40
+	if g := Render(tr, Options{WallScale: 0.5}); !ink(g, 120, 39) || ink(g, 120, 36) {
+		t.Error("half-weight wall is not 4 px")
+	}
+	if g := Render(tr, Options{WallScale: 1.5}); !ink(g, 120, 34) {
+		t.Error("bold wall is not 12 px")
+	}
+	out := Render(tr, Options{Walls: Outline})
+	if !ink(out, 120, 36) || !ink(out, 120, 43) || ink(out, 120, 40) {
+		t.Error("outlined wall is not its two faces")
+	}
+	hatch := Render(tr, Options{Walls: Hatch})
+	if !ink(hatch, 120, 36) || !ink(hatch, 120, 43) {
+		t.Error("hatched wall lost its faces")
+	}
+	inside := image.Rect(100, 37, 140, 43)
+	if n := count(hatch, inside); n == 0 || n == inside.Dx()*inside.Dy() {
+		t.Errorf("hatched wall has %d of %d pixels inside inked", n, inside.Dx()*inside.Dy())
+	}
+}

@@ -3,7 +3,7 @@
 // it. Pure, so node can test it.
 
 export const STEPS = ['Uploaded', 'Queued', 'Tracing', 'Review'];
-// A drawing (DXF, SVG) is turned into an image before it's traced.
+// A drawing (DXF, DWG, SVG) is turned into an image before it's traced.
 export const DRAWING_STEPS = ['Uploaded', 'Queued', 'Converting', 'Tracing', 'Review'];
 
 // The step each status is on. 'uploading' is the page's own state while the

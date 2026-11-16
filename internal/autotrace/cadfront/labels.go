@@ -16,7 +16,8 @@ import (
 // A-FLOR-IDEN) would say where rooms are outright, but floorgraph.Input
 // carries no polygons; floorgraph finds rooms from the walls, named by the
 // labels below. Area layers are excluded from walls (notWallWords), so
-// their outlines don't turn into walls meanwhile.
+// their outlines don't turn into walls meanwhile, except in a drawing with
+// no walls at all, where they are the only evidence (see areaRooms).
 
 // findLabels reads every piece of text that isn't part of a door, window,
 // piece of furniture or dimension. MTEXT gives its first line, the name in
@@ -38,6 +39,11 @@ func (r *reader) findLabels() {
 			box = box.Union(t.Bounds())
 		}
 		l.used = true
+		// An area written out is never a room's name, and nor is what a
+		// workplace is called.
+		if _, ok := statedArea(text); ok || r.deskLabel(box.Center()) {
+			continue
+		}
 		r.in.Labels = append(r.in.Labels, floorgraph.Label{
 			At: r.toPx(box.Center()), Text: text, Height: lines[0].Height * r.px,
 		})
@@ -52,6 +58,7 @@ const minItem, maxItem = 0.1, 12.0
 // the size they are drawn. It needs real sizes, so it does nothing when
 // the drawing's units are unknown.
 func (r *reader) findFurniture() {
+	r.findDesks()
 	var tops []*node
 	for _, n := range r.nodes {
 		if n.top == n && n.role == roleFurniture {

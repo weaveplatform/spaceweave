@@ -532,7 +532,7 @@ func convertCmd(app App) *cobra.Command {
 	var maxSide int
 	cmd := &cobra.Command{
 		Use:   "convert <drawing>",
-		Short: "Render a DXF or SVG drawing as the PNG the tracer reads, and as SVG",
+		Short: "Render a DXF, DWG or SVG drawing as the PNG the tracer reads, and as SVG",
 		Long: "Renders the drawing the way the tracer will see it: black ink on white, with the scale " +
 			"worked out from the drawing's units where it states them. Nothing is sent anywhere.",
 		Args: usageArgs(1),

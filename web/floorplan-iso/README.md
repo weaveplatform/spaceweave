@@ -69,6 +69,7 @@ These formats are accepted:
 |---|---|
 | PNG, JPEG, WebP | Traced as they are |
 | DXF | ASCII or binary, any AutoCAD version |
+| DWG | AutoCAD 2000, 2004, 2010, 2013 and 2018 formats |
 | SVG | Exported from CAD or illustration tools |
 
 The page checks each file before uploading it. The extension has to be one of
@@ -76,12 +77,14 @@ these, and the first bytes have to agree with it, so a renamed file or a format
 we don't read is refused with a reason and costs nothing. The server checks
 again. Common near-misses get specific advice:
 
-- **DWG**: save it as DXF from your CAD program.
-- **PDF**: export the page as PNG, or the drawing as DXF or SVG.
+- **DWG in another format** (AutoCAD 2007, or Release 14 and older): the
+  refusal names the release; save it as DWG 2018 or 2013, or as DXF.
+- **PDF**: export the page as PNG, or the drawing as DXF, DWG or SVG.
+- **DWF**: export the drawing as DWG or DXF.
 - **TIFF, GIF, BMP**: export as PNG.
 - **HEIC**: export as JPEG.
 
-DWG and PDF support is in progress.
+PDF support is in progress.
 
 A drawing is rendered to an image here, in Go, before it is traced. Nothing is
 sent anywhere for this step. The rendering is black ink on white at up to
@@ -89,9 +92,9 @@ sent anywhere for this step. The rendering is black ink on white at up to
 doesn't vanish when the tracer thresholds the image. A stray entity far from
 the plan is left out of the picture.
 
-**Scale from the drawing.** When a DXF states its units (`$INSUNITS`), the
+**Scale from the drawing.** When a DXF or DWG states its units (`$INSUNITS`), the
 rendering's scale is exact. The tracer is told it and holds every submission to
-it, so there's no calibrating from dimension strings. When a DXF doesn't state
+it, so there's no calibrating from dimension strings. When one doesn't state
 its units, they're guessed from the drawing's size, and the tracer checks the
 guess against a door or a dimension. An SVG measured in millimetres has a paper
 scale only, so the tracer calibrates it as usual.
@@ -101,6 +104,7 @@ seeing what the tracer will see:
 
 ```sh
 go run ./cmd/spaceweave convert office.dxf              # writes office.png and office.svg
+go run ./cmd/spaceweave convert office.dwg              # the same, from a DWG
 go run ./cmd/spaceweave convert plan.svg -o plan.png --max-px 2048
 ```
 
@@ -125,18 +129,29 @@ By default (`tracer: auto`) plans are traced on the machine running
 `spaceweave`, with no model and no API key, and the same file always gives the
 same `plan.json`:
 
-- **A DXF is read as CAD entities.** Walls are pairs of parallel lines on wall
-  layers (`A-WALL`, `WALL`, `MUR`, …, or any layer when none is named so).
-  Doors are blocks with a swing arc, which give the hinge and swing; windows
-  are blocks on glazing layers; room names are the text inside each room;
-  furniture blocks are matched to the site's furniture by name. The scale is
-  exact when the drawing states its units.
+- **A DXF or DWG is read as CAD entities.** Layers are recognised by AIA/NCS
+  names (`A-WALL`, `A-DOOR`, `A-GLAZ`, …), Uniclass 2015 codes (`EF_25_10`
+  walls, `EF_25_30` doors and windows, `Ss_40_15` furniture, …) and common
+  words (`WALL`, `MUR`, …), or every layer when none is named. Walls are pairs
+  or bundles of parallel lines and polylines; long runs on window layers are
+  curtain walling; circles on structural layers are columns. Doors are swing
+  arcs (in blocks or loose, including elliptical ones), which give the hinge
+  and swing; room names are the room-name text inside each room, not desk or
+  room numbers; furniture blocks are matched to the site's furniture by name.
+  The scale is exact when the drawing states its units, and areas written on
+  the drawing ("23.3 sf", "12 m²") overrule units that contradict them. A
+  space-planning drawing with room outlines but no walls is read as an area
+  plan, its outlines becoming the walls.
 - **An image is read from its pixels.** Walls are the thick strokes, found
   with a distance transform and traced as horizontal and vertical bands.
   Gaps between collinear walls become doors (when a swing arc is drawn),
   windows (thin lines across) or plain openings. The scale comes from the
   drawing when the image was rendered from one, and otherwise from door
-  widths (taken as 0.9 m), marked as assumed.
+  widths (taken as 0.86 m), marked as assumed; with enough doors each axis is
+  measured on its own, which catches a squashed image. Walls drawn as two
+  faces or hatched are filled in first; slanted walls are read by turning the
+  image to their angle; thin partitions count as walls when both ends meet a
+  wall.
 - **Both** go through the same core: walls are snapped, joined at corners and
   T-junctions, and split into a planar graph; its faces are the rooms; walls
   on the outer face are exterior; rooms are named, zoned and floored from
@@ -144,17 +159,21 @@ same `plan.json`:
   validator, `tools/validate.mjs`) before it is published, with a confidence
   computed from the evidence and caveats saying what was guessed.
 
-Accuracy on plan images drawn from the hand traces (`make eval`; walls within
-3 px):
+Accuracy on plan images drawn from the four hand traces (`make eval`, which
+also scores each plan drawn thin, bold, scanned, outlined and hatched). Walls
+count within 3 px; a room counts when a traced room, or a group of them,
+covers it at 90% overlap; doors found also have the right swing and hinge:
 
-| Plan | Wall recall / precision | Rooms | Openings | Scale error |
+| Plan (clean drawing) | Wall recall / precision | Rooms | Openings | Scale error |
 |---|---|---|---|---|
-| Office | 1.00 / 0.96 | 11 of 13 | 22 of 22 | −6% (assumed from doors) |
-| Corporate | 0.81 / 0.87 | 30 of 58 | 68 of 95 | +3% (assumed from doors) |
+| Office | 1.00 / 0.96 | 13 of 13 | 22 of 22 | −1.7% (assumed from doors) |
+| Clinic | 1.00 / 0.97 | 36 of 36 | 53 of 53 | −1.8% |
+| Suites | 0.97 / 0.86 | 32 of 36 | 49 of 53 | +0.8% |
+| Corporate | 0.84 / 0.85 | 25 of 58 | 74 of 95 | +11% |
 
-What the image reader doesn't do yet: slanted or curved walls, walls drawn as
-two thin lines (including most glass partitions), hatched walls, and room
-names (images get "Room N" until OCR lands). These are the next changes.
+What the image reader doesn't do yet: room names (images get "Room N" until
+OCR lands), lift shafts and risers drawn as free-standing thin boxes, curved
+walls, and windows inside walls drawn as outlines (they get filled in).
 
 With `tracer: claude`, a Claude agent traces instead, the way the hand
 tracing was done: it views crops with pixel rulers, measures wall faces, and

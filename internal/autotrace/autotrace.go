@@ -24,7 +24,7 @@ import (
 // Version identifies the tracer's rules in report.json. Bump it when a
 // change can alter the plan traced from the same file, so a reviewer can
 // tell an old draft from a new one.
-const Version = "1"
+const Version = "2"
 
 // ErrNoImage is returned for a job without an image to trace.
 var ErrNoImage = errors.New("autotrace: no image")
@@ -85,7 +85,8 @@ func read(job trace.Job) (floorgraph.Input, error) {
 	w, h := job.Image.Size()
 	d := job.Drawing
 	exact := d != nil && d.PxPerMetre > 0 && !d.Assumed
-	if job.View != nil && strings.EqualFold(filepath.Ext(job.Original), ".dxf") {
+	ext := strings.ToLower(filepath.Ext(job.Original))
+	if job.View != nil && (ext == ".dxf" || ext == ".dwg") {
 		o := cadfront.Options{View: *job.View, Size: [2]int{w, h}, Title: job.Title}
 		if d != nil {
 			o.PxPerMetre, o.Exact = d.PxPerMetre, exact

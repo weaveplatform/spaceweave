@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/weaveplatform/spaceweave/internal/cad"
+	"github.com/weaveplatform/spaceweave/internal/dwg"
 	"github.com/weaveplatform/spaceweave/internal/dxf"
 	"github.com/weaveplatform/spaceweave/internal/svgdraw"
 	"github.com/weaveplatform/spaceweave/internal/vector"
@@ -126,24 +127,32 @@ func File(ctx context.Context, path, dir string, o Options) (*Result, error) {
 }
 
 func read(r io.Reader, format Format) (*vector.Drawing, error) {
+	var readCAD func(io.Reader) (*cad.Document, error)
 	switch format.ID {
 	case DXF.ID:
-		doc, err := dxf.Read(r)
+		readCAD = dxf.Read
+	case DWG.ID:
+		readCAD = dwg.Read
+	}
+	if readCAD != nil {
+		// Both readers produce the same document, so a DWG gets the DXF's
+		// units, scale and view: cad.Draw is the one place they're decided.
+		doc, err := readCAD(r)
 		if err != nil {
-			return nil, fmt.Errorf("read DXF: %w", err)
+			return nil, fmt.Errorf("read %s: %w", format.Label, err)
 		}
 		d, err := cad.Draw(doc)
 		if err != nil {
-			return nil, fmt.Errorf("draw DXF: %w", err)
-		}
-		return d, nil
-	default: // SVG; Check has ruled out everything else
-		d, err := svgdraw.Read(r)
-		if err != nil {
-			return nil, fmt.Errorf("read SVG: %w", err)
+			return nil, fmt.Errorf("draw %s: %w", format.Label, err)
 		}
 		return d, nil
 	}
+	// SVG; Check has ruled out everything else.
+	d, err := svgdraw.Read(r)
+	if err != nil {
+		return nil, fmt.Errorf("read SVG: %w", err)
+	}
+	return d, nil
 }
 
 func convert(r io.Reader, format Format, dir string, o Options) (*Result, error) {

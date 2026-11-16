@@ -20,6 +20,7 @@ import (
 	"github.com/anthropics/anthropic-sdk-go/v2/option"
 
 	"github.com/weaveplatform/spaceweave/internal/catalog"
+	"github.com/weaveplatform/spaceweave/internal/dwg/dwgtest"
 	"github.com/weaveplatform/spaceweave/internal/dxf/dxftest"
 	"github.com/weaveplatform/spaceweave/internal/fakeclaude"
 	"github.com/weaveplatform/spaceweave/internal/server"
@@ -600,6 +601,20 @@ func TestConvertWritesTheImageAndDrawing(t *testing.T) {
 		if _, err := os.Stat(filepath.Join(e.dir, f)); err != nil {
 			t.Error(err)
 		}
+	}
+
+	// A DWG converts the same way, with the scale its units give.
+	dwgFile := filepath.Join(e.dir, "office.dwg")
+	if err := os.WriteFile(dwgFile, dwgtest.Office("AC1032"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	e.stdout.Reset()
+	if code := e.run("convert", dwgFile, "--max-px", "640"); code != 0 {
+		t.Fatalf("%d %s", code, e.stderr)
+	}
+	if out := e.stdout.String(); !strings.Contains(out, "office.dwg: DWG, 640 × ") ||
+		!strings.Contains(out, "from the drawing's units") {
+		t.Errorf("DWG output:\n%s", out)
 	}
 
 	// An SVG input isn't overwritten by its own rendering, and -o/--svg

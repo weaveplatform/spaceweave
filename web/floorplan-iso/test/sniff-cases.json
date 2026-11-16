@@ -50,6 +50,21 @@
    "drawing": true
   },
   {
+   "id": "dwg",
+   "label": "DWG",
+   "exts": [
+    ".dwg"
+   ],
+   "mime": [
+    "image/vnd.dwg",
+    "application/acad",
+    "application/x-dwg",
+    "image/x-dwg"
+   ],
+   "detail": "AutoCAD 2000\u20132018",
+   "drawing": true
+  },
+  {
    "id": "svg",
    "label": "SVG",
    "exts": [
@@ -115,7 +130,7 @@
    "name": "not dxf: other first code",
    "head": "2\nSECTION\n",
    "want": {
-    "refused": "This isn't a file spaceweave reads. Use PNG, JPEG, WebP, DXF or SVG."
+    "refused": "This isn't a file spaceweave reads. Use PNG, JPEG, WebP, DXF, DWG or SVG."
    }
   },
   {
@@ -136,56 +151,119 @@
    "name": "not svg: svgz-ish tag",
    "head": "<svgfoo>",
    "want": {
-    "refused": "This isn't a file spaceweave reads. Use PNG, JPEG, WebP, DXF or SVG."
+    "refused": "This isn't a file spaceweave reads. Use PNG, JPEG, WebP, DXF, DWG or SVG."
    }
   },
   {
    "name": "html",
    "head": "<!doctype html><html><body>",
    "want": {
-    "refused": "This isn't a file spaceweave reads. Use PNG, JPEG, WebP, DXF or SVG."
+    "refused": "This isn't a file spaceweave reads. Use PNG, JPEG, WebP, DXF, DWG or SVG."
    }
   },
   {
    "name": "empty",
    "head": "",
    "want": {
-    "refused": "This isn't a file spaceweave reads. Use PNG, JPEG, WebP, DXF or SVG."
+    "refused": "This isn't a file spaceweave reads. Use PNG, JPEG, WebP, DXF, DWG or SVG."
    }
   },
   {
-   "name": "dwg",
+   "name": "dwg 2000",
+   "head": "AC1015\u0000\u0000\u0000\u0000\u0000\u0006\u0001",
+   "want": {
+    "id": "dwg"
+   }
+  },
+  {
+   "name": "dwg 2004",
+   "head": "AC1018\u0000\u0000\u0000\u0000\u0000\u0006\u0001",
+   "want": {
+    "id": "dwg"
+   }
+  },
+  {
+   "name": "dwg 2010",
+   "head": "AC1024\u0000\u0000\u0000\u0000\u0000\u0006\u0001",
+   "want": {
+    "id": "dwg"
+   }
+  },
+  {
+   "name": "dwg 2013",
    "head": "AC1027\u0000\u0000\u0000\u0000\u0000\u0006\u0001",
    "want": {
-    "refused": "DWG files aren't supported. Save it as DXF from your CAD program."
+    "id": "dwg"
+   }
+  },
+  {
+   "name": "dwg 2018",
+   "head": "AC1032\u0000\u0000\u0000\u0000\u0000\u0006\u0001",
+   "want": {
+    "id": "dwg"
+   }
+  },
+  {
+   "name": "dwg 2007",
+   "head": "AC1021\u0000\u0000\u0000\u0000\u0000\u0006\u0001",
+   "want": {
+    "refused": "This DWG is AutoCAD 2007 format, which isn't supported. Save it as DWG 2018 or 2013, or as DXF."
+   }
+  },
+  {
+   "name": "dwg r14",
+   "head": "AC1014\u0000\u0000\u0000\u0000\u0000\u0006\u0001",
+   "want": {
+    "refused": "This DWG is AutoCAD Release 14 format, which isn't supported. Save it as DWG 2018 or 2013, or as DXF."
+   }
+  },
+  {
+   "name": "dwg r12",
+   "head": "AC1009\u0000\u0000\u0000\u0000\u0000\u0006\u0001",
+   "want": {
+    "refused": "This DWG is AutoCAD Release 11/12 format, which isn't supported. Save it as DWG 2018 or 2013, or as DXF."
    }
   },
   {
    "name": "old dwg",
    "head": "AC1.50\u0000\u0000",
    "want": {
-    "refused": "DWG files aren't supported. Save it as DXF from your CAD program."
+    "refused": "This DWG is AutoCAD Release 2.05 format, which isn't supported. Save it as DWG 2018 or 2013, or as DXF."
+   }
+  },
+  {
+   "name": "dwg 2.10",
+   "head": "AC2.10\u0000\u0000",
+   "want": {
+    "refused": "This DWG is AutoCAD Release 2.10 format, which isn't supported. Save it as DWG 2018 or 2013, or as DXF."
+   }
+  },
+  {
+   "name": "unknown dwg",
+   "head": "AC1033\u0000\u0000\u0000\u0000\u0000\u0006\u0001",
+   "want": {
+    "refused": "This DWG is AutoCAD AC1033 format, which isn't supported. Save it as DWG 2018 or 2013, or as DXF."
    }
   },
   {
    "name": "pdf",
    "head": "%PDF-1.7\n%\u00e2\u00e3\u00cf\u00d3\n",
    "want": {
-    "refused": "PDF files aren't supported. Export the page as PNG, or the drawing as DXF or SVG."
+    "refused": "PDF files aren't supported. Export the page as PNG, or the drawing as DXF, DWG or SVG."
    }
   },
   {
    "name": "pdf after junk",
    "head": "junk before the header\n%PDF-1.4\n",
    "want": {
-    "refused": "PDF files aren't supported. Export the page as PNG, or the drawing as DXF or SVG."
+    "refused": "PDF files aren't supported. Export the page as PNG, or the drawing as DXF, DWG or SVG."
    }
   },
   {
    "name": "dwf",
    "head": "(DWF V06.00)PK",
    "want": {
-    "refused": "DWF files aren't supported. Export the drawing as DXF instead."
+    "refused": "DWF files aren't supported. Export the drawing as DWG or DXF instead."
    }
   },
   {
@@ -274,42 +352,100 @@
    "file": "plan.dxf",
    "head": "hello",
    "want": {
-    "reason": "plan.dxf doesn't look like a DXF file. This isn't a file spaceweave reads. Use PNG, JPEG, WebP, DXF or SVG."
+    "reason": "plan.dxf doesn't look like a DXF file. This isn't a file spaceweave reads. Use PNG, JPEG, WebP, DXF, DWG or SVG."
    }
   },
   {
    "file": "plan.dxf",
    "head": "%PDF-1.7\n%\u00e2\u00e3\u00cf\u00d3\n",
    "want": {
-    "reason": "plan.dxf doesn't look like a DXF file. PDF files aren't supported. Export the page as PNG, or the drawing as DXF or SVG."
+    "reason": "plan.dxf doesn't look like a DXF file. PDF files aren't supported. Export the page as PNG, or the drawing as DXF, DWG or SVG."
    }
   },
   {
    "file": "plan.dwg",
+   "head": "AC1032\u0000\u0000\u0000\u0000\u0000\u0006\u0001",
+   "want": {
+    "id": "dwg",
+    "ok": true
+   }
+  },
+  {
+   "file": "Office.DWG",
+   "head": "AC1015\u0000\u0000\u0000\u0000\u0000\u0006\u0001",
+   "want": {
+    "id": "dwg",
+    "ok": true
+   }
+  },
+  {
+   "file": "plan.dwg",
+   "head": "AC1021\u0000\u0000\u0000\u0000\u0000\u0006\u0001",
+   "want": {
+    "reason": "This DWG is AutoCAD 2007 format, which isn't supported. Save it as DWG 2018 or 2013, or as DXF."
+   }
+  },
+  {
+   "file": "plan.bak",
+   "head": "AC1021\u0000\u0000\u0000\u0000\u0000\u0006\u0001",
+   "want": {
+    "reason": "This DWG is AutoCAD 2007 format, which isn't supported. Save it as DWG 2018 or 2013, or as DXF."
+   }
+  },
+  {
+   "file": "plan.bak",
    "head": "AC1027\u0000\u0000\u0000\u0000\u0000\u0006\u0001",
    "want": {
-    "reason": "DWG files aren't supported. Save it as DXF from your CAD program."
+    "reason": "plan.bak is a DWG file. Rename it to end in .dwg."
+   }
+  },
+  {
+   "file": "plan.dxf",
+   "head": "AC1032\u0000\u0000\u0000\u0000\u0000\u0006\u0001",
+   "want": {
+    "reason": "plan.dxf is named like a DXF file but is a DWG file. Rename it to end in .dwg."
+   }
+  },
+  {
+   "file": "plan.dxf",
+   "head": "AC1014\u0000\u0000\u0000\u0000\u0000\u0006\u0001",
+   "want": {
+    "reason": "plan.dxf doesn't look like a DXF file. This DWG is AutoCAD Release 14 format, which isn't supported. Save it as DWG 2018 or 2013, or as DXF."
+   }
+  },
+  {
+   "file": "plan.dwg",
+   "head": "  0\r\nSECTION\r\n  2\r\nHEADER\r\n",
+   "want": {
+    "reason": "plan.dwg is named like a DWG file but is a DXF file. Rename it to end in .dxf."
+   }
+  },
+  {
+   "file": "plan.dwg",
+   "head": "hello",
+   "want": {
+    "reason": "plan.dwg doesn't look like a DWG file. This isn't a file spaceweave reads. Use PNG, JPEG, WebP, DXF, DWG or SVG."
    }
   },
   {
    "file": "scan.pdf",
    "head": "%PDF-1.7\n%\u00e2\u00e3\u00cf\u00d3\n",
    "want": {
-    "reason": "PDF files aren't supported. Export the page as PNG, or the drawing as DXF or SVG."
+    "reason": "PDF files aren't supported. Export the page as PNG, or the drawing as DXF, DWG or SVG."
    }
   },
   {
    "file": "notes.txt",
    "head": "hello",
    "want": {
-    "reason": ".txt files aren't supported. Use PNG, JPEG, WebP, DXF or SVG."
+    "reason": ".txt files aren't supported. Use PNG, JPEG, WebP, DXF, DWG or SVG."
    }
   },
   {
    "file": "README",
    "head": "\u0089PNG\r\n\u001a\n\u0000\u0000\u0000\rIHDR",
    "want": {
-    "reason": "README has no file extension. Use PNG, JPEG, WebP, DXF or SVG."
+    "reason": "README has no file extension. Use PNG, JPEG, WebP, DXF, DWG or SVG."
    }
   },
   {

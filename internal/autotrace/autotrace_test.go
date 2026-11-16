@@ -91,9 +91,14 @@ func imageJob(t *testing.T, name string) (trace.Job, *plan.Trace) {
 	}, want
 }
 
+// readTrace reads a hand trace: this package's testdata holds the ones
+// internal/plan's fixtures lack (see testdata/gen.mjs).
 func readTrace(t *testing.T, name string) *plan.Trace {
 	t.Helper()
-	b, err := os.ReadFile(filepath.Join("..", "plan", "testdata", name+".trace.json"))
+	b, err := os.ReadFile(filepath.Join("testdata", name+".trace.json"))
+	if errors.Is(err, os.ErrNotExist) {
+		b, err = os.ReadFile(filepath.Join("..", "plan", "testdata", name+".trace.json"))
+	}
 	if err != nil {
 		t.Fatal(err)
 	}

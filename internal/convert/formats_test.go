@@ -123,15 +123,15 @@ func TestCheckKinds(t *testing.T) {
 }
 
 func TestRegistry(t *testing.T) {
-	if got := Names(); got != "PNG, JPEG, WebP, DXF or SVG" {
+	if got := Names(); got != "PNG, JPEG, WebP, DXF, DWG or SVG" {
 		t.Errorf("Names() = %q", got)
 	}
-	for _, name := range []string{"a.png", "B.JPEG", "c.jpg", "d.webp", "e.DXF", "f.svg"} {
+	for _, name := range []string{"a.png", "B.JPEG", "c.jpg", "d.webp", "e.DXF", "f.svg", "g.DWG"} {
 		if !Eligible(name) {
 			t.Errorf("%s should be eligible", name)
 		}
 	}
-	for _, name := range []string{".hidden.png", "a.gif", "a.dwg", "noext"} {
+	for _, name := range []string{".hidden.png", "a.gif", "a.dwf", "noext"} {
 		if Eligible(name) {
 			t.Errorf("%s should not be eligible", name)
 		}
@@ -139,8 +139,11 @@ func TestRegistry(t *testing.T) {
 	if f, ok := ByID("svg"); !ok || !f.Drawing {
 		t.Errorf("ByID(svg) = %+v, %v", f, ok)
 	}
-	if _, ok := ByID("dwg"); ok {
-		t.Error("dwg isn't a format yet")
+	if f, ok := ByID("dwg"); !ok || !f.Drawing {
+		t.Errorf("ByID(dwg) = %+v, %v", f, ok)
+	}
+	if _, ok := ByID("dwf"); ok {
+		t.Error("dwf isn't a format")
 	}
 	for _, f := range Formats {
 		if f.ID == "" || f.Label == "" || len(f.Exts) == 0 || len(f.MIME) == 0 {
@@ -155,7 +158,7 @@ func TestRegistry(t *testing.T) {
 }
 
 func TestArticle(t *testing.T) {
-	for label, want := range map[string]string{"SVG": "an SVG", "PNG": "a PNG", "DXF": "a DXF", "WebP": "a WebP", "HEIC": "an HEIC"} {
+	for label, want := range map[string]string{"SVG": "an SVG", "PNG": "a PNG", "DXF": "a DXF", "WebP": "a WebP", "HEIC": "an HEIC", "DWG": "a DWG"} {
 		if got := article(label); got != want {
 			t.Errorf("article(%q) = %q", label, got)
 		}

@@ -73,6 +73,25 @@ func swings(l *leaf, i int) []swing {
 	switch e := l.e.(type) {
 	case *cad.Arc:
 		add(e.Center, e.Radius, e.Start, ccwEnd(e.Start, e.End)-e.Start, l.m)
+	case *cad.Ellipse:
+		// A door block scaled unevenly, then exploded, leaves its swing as
+		// an elliptical arc; nearly round, it is still the swing, and its
+		// leaf is as long as the ends are from the hinge.
+		if e.Ratio < minEllipse || e.Ratio > 1/minEllipse {
+			break
+		}
+		minor := point{X: -e.Major.Y, Y: e.Major.X}.Mul(e.Ratio)
+		at := func(t float64) point {
+			s, c := math.Sincos(t)
+			return l.m.Apply(e.Center.Add(e.Major.Mul(c)).Add(minor.Mul(s)))
+		}
+		end := ccwEnd(e.Start, e.End)
+		h, e1, e2 := l.m.Apply(e.Center), at(e.Start), at(end)
+		sweep := angleBetween(e1.Sub(h), e2.Sub(h))
+		out = append(out, swing{
+			hinge: h, e1: e1, e2: e2, mid: at((e.Start + end) / 2),
+			rad: (e1.Sub(h).Len() + e2.Sub(h).Len()) / 2, sweep: sweep, leaf: i,
+		})
 	case *cad.Polyline:
 		n := len(e.Vertices)
 		for k, v := range e.Vertices {
@@ -87,6 +106,13 @@ func swings(l *leaf, i int) []swing {
 	}
 	return out
 }
+
+// minEllipse is the least minor-to-major ratio of an elliptical arc read
+// as a door swing.
+const minEllipse = 0.8
+
+// angleBetween is the unsigned angle between two vectors.
+func angleBetween(a, b point) float64 { return math.Abs(math.Atan2(cross(a, b), dot(a, b))) }
 
 func (r *reader) isSwing(s swing, lo, hi float64) bool {
 	return s.sweep >= minSweep && s.sweep <= maxSweep && s.rad >= r.metres(lo) &&
@@ -349,8 +375,14 @@ func (r *reader) looseDoors(walls *grid) []opening {
 		default:
 			continue
 		}
+		lo, hi := minLeaf, maxLeaf
+		if l.role == roleDoor {
+			// A door layer is believed as a door block is: a cupboard's
+			// narrow leaf or a wide accessible one is still a door.
+			lo, hi = minNamedLeaf, maxNamedLeaf
+		}
 		for _, s := range swings(l, i) {
-			if !r.isSwing(s, minLeaf, maxLeaf) {
+			if !r.isSwing(s, lo, hi) {
 				continue
 			}
 			near := lines.near(s.hinge, s.rad)
@@ -469,7 +501,7 @@ func (r *reader) findOpenings() {
 			ops = append(ops, r.span(walls, r.nodePoints(n), n.m, floorgraph.Window))
 		}
 	}
-	for _, group := range r.windowGroups() {
+	for _, group := range r.windows {
 		var pts []point
 		for _, i := range group {
 			pts = append(pts, r.points(i)...)
@@ -485,6 +517,46 @@ func (r *reader) findOpenings() {
 			A: r.toPx(o.a), B: r.toPx(o.b), Kind: o.kind, HingeA: o.hingeA,
 			Leaf: r.toPx(o.leaf), Leafed: o.leafed, Weight: o.weight,
 		})
+	}
+}
+
+// curtainSpan is the longest a loose window, in metres, is taken to be: a
+// window layer's ink that runs on further is curtain walling or a ribbon
+// of glazing, a glass wall rather than an opening in one.
+const curtainSpan = 3.0
+
+// findCurtains splits the window layers' loose ink into windows, kept for
+// findOpenings, and curtain walling, paired here as glass walls. A window
+// is short and sits in a wall; glazing that runs on, or fills a gap with
+// no wall either side (a glazed bay between a façade's pier and a core),
+// is the wall there.
+func (r *reader) findCurtains(layered bool) {
+	walls := r.wallGrid()
+	var curtain []int
+	for _, g := range r.windowGroups() {
+		var box vector.Rect
+		var pts []point
+		for _, i := range g {
+			box = box.Union(r.leaves[i].box)
+			pts = append(pts, r.points(i)...)
+		}
+		if s := box.Size(); math.Max(s.X, s.Y) <= r.metres(curtainSpan) &&
+			r.span(walls, pts, vector.Identity, floorgraph.Window).weight != weightLoneSpan {
+			r.windows = append(r.windows, g)
+			continue
+		}
+		for _, i := range g {
+			r.leaves[i].curtain = true
+		}
+		curtain = append(curtain, g...)
+	}
+	if len(curtain) == 0 {
+		return
+	}
+	slices.Sort(curtain)
+	_, gs, _ := r.piecesOf(curtain, layered, true)
+	for _, c := range clusters(gs) {
+		r.pair(c, r.metres(minGlassGap), r.metres(maxGlassGap), true, weightPair, true)
 	}
 }
 

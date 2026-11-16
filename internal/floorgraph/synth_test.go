@@ -606,10 +606,10 @@ func TestScaleEstimates(t *testing.T) {
 				door(100, 190, DoubleDoor),
 				door(300, 345, Door),
 			}
-		}, 50, "assumed from 3 door widths (0.9 m per leaf)", scaleDoors},
+		}, 52.326, "assumed from 3 door widths (0.86 m per leaf)", scaleDoors},
 		{"doorways", func(in *Input) {
 			in.Openings = []Opening{door(20, 65, Gap), door(100, 145, Gap), door(300, 460, Gap)}
-		}, 50, "assumed from 2 doorway widths (0.9 m each)", scaleGaps},
+		}, 52.326, "assumed from 2 doorway widths (0.86 m each)", scaleGaps},
 		{"thickness", func(in *Input) {
 			in.Walls[4].Thickness = 7.5
 		}, 50, "assumed from the median interior wall thickness (0.15 m)", scaleThickness},

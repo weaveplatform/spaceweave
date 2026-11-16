@@ -92,6 +92,12 @@ func (r *reader) candidate(l *leaf, layered bool) (ok, glass bool) {
 	if l.owner != nil || r.consumed(l) {
 		return false, false
 	}
+	if l.curtain {
+		return true, true
+	}
+	if l.area {
+		return true, false
+	}
 	switch l.role {
 	case roleGlass:
 		return true, true
@@ -108,7 +114,21 @@ func (r *reader) candidate(l *leaf, layered bool) (ok, glass bool) {
 // and collects the hatches that fill walls; without it, it only looks, for
 // estimating a scale before there is one.
 func (r *reader) pieces(layered, final bool) (walls, glass []piece, hatches [][][]point) {
-	for i := range r.leaves {
+	return r.piecesOf(nil, layered, final)
+}
+
+// piecesOf is pieces over the given leaves, or every leaf when ids is nil.
+func (r *reader) piecesOf(
+	ids []int,
+	layered, final bool,
+) (walls, glass []piece, hatches [][][]point) {
+	if ids == nil {
+		ids = make([]int, len(r.leaves))
+		for i := range ids {
+			ids[i] = i
+		}
+	}
+	for _, i := range ids {
 		l := &r.leaves[i]
 		ok, isGlass := r.candidate(l, layered)
 		if !ok {
@@ -149,6 +169,17 @@ func (r *reader) pieces(layered, final bool) (walls, glass []piece, hatches [][]
 				for _, s := range polylineSegments(e) {
 					add(s[0], s[1])
 				}
+			}
+		case *cad.Circle:
+			// A round column: the trace format has no circles, so it is a
+			// square one as wide as the circle, as a tracer would draw it.
+			if d := 2 * e.Radius * l.m.Factor(); final && l.role == roleWall &&
+				d > 0 && d <= r.metres(maxColumn) {
+				c, half := l.m.Apply(e.Center), point{X: d / 2}
+				r.walls = append(r.walls, wall{
+					a: c.Sub(half), b: c.Add(half), thick: d, weight: weightColumn, from: -1,
+				})
+				l.used = true
 			}
 		case *cad.Hatch:
 			if final && (e.Solid || layered) {
@@ -213,6 +244,9 @@ func (r *reader) column(l *leaf, p *cad.Polyline) bool {
 
 func (r *reader) findWalls() {
 	layered := r.layered()
+	if !layered && r.areaRooms() {
+		layered = true
+	}
 	if !layered {
 		r.note("No layer is named for walls, so walls are line pairs on every layer that isn't " +
 			"named for something else; expect stray furniture or fittings among them.")
@@ -228,6 +262,7 @@ func (r *reader) findWalls() {
 	for _, c := range clusters(gs) {
 		r.pair(c, r.metres(minGlassGap), r.metres(maxGlassGap), true, weightPair, true)
 	}
+	r.findCurtains(layered)
 	for i := range r.walls {
 		w := &r.walls[i]
 		mid := w.a.Add(w.b).Mul(0.5)
@@ -239,6 +274,9 @@ func (r *reader) findWalls() {
 		}
 	}
 	r.joinEnds()
+	// After joining, pieces either side of a T meet on its centreline and
+	// leave no gap, so only a real break in one wall is bridged.
+	r.bridgeGaps()
 }
 
 // emitWalls hands the walls over, less lone lines that turned out to be
@@ -339,6 +377,7 @@ func (r *reader) pair(c []piece, minG, maxG float64, glass bool, weight float64,
 	u, n := frame(c)
 	fs := faces(c, u, n, r.metres(collinear))
 	var between [][2]float64
+	var ps []pairing
 	for i := range fs {
 		a := &fs[i]
 		between = between[:0]
@@ -350,10 +389,31 @@ func (r *reader) pair(c []piece, minG, maxG float64, glass bool, weight float64,
 			}
 			gap := b.rho - a.rho
 			shorter := math.Min(a.t1-a.t0, b.t1-b.t0)
-			if gap >= minG && hi-lo >= minOverlap*shorter && !blocked(between, lo, hi) {
-				r.addPair(a, b, lo, hi, u, n, glass, weight)
+			if hi-lo >= minOverlap*shorter && !blocked(between, lo, hi) {
+				switch {
+				case gap >= minG:
+					ps = append(ps, pairing{i: i, j: j, lo: lo, hi: hi})
+				case thin:
+					// Closer than any wall is thick: on its own a lining,
+					// but a wall drawn as a bundle of finish, board and
+					// stud lines has no two neighbours a wall apart. It
+					// counts only as a layer of a wall (see layers).
+					ps = append(ps, pairing{i: i, j: j, lo: lo, hi: hi, sub: true})
+				}
 			}
 			between = append(between, [2]float64{b.t0, b.t1})
+		}
+	}
+	covered := map[int][][2]float64{}
+	for _, g := range r.layers(ps, fs, minG, maxG) {
+		a, b := &fs[g.i], &fs[g.j]
+		r.addPair(a, b, g.lo, g.hi, u, n, glass, weight)
+		for _, k := range append([]int{g.i, g.j}, g.inner...) {
+			covered[k] = append(covered[k], [2]float64{g.lo, g.hi})
+		}
+		for _, k := range g.inner {
+			fs[k].paired = true
+			r.markUsed(fs[k].leaves)
 		}
 	}
 	if !thin {
@@ -363,20 +423,190 @@ func (r *reader) pair(c []piece, minG, maxG float64, glass bool, weight float64,
 	if glass {
 		minLen, thick, w = r.metres(thinGlassLen), r.metres(thinGlass), weightThinGlass
 	}
-	for _, f := range fs {
-		if f.paired || f.t1-f.t0 < minLen {
+	if r.areaPlan {
+		// Every edge of a room outline bounds the room, however short.
+		minLen = minG
+	}
+	for i, f := range fs {
+		stretches := [][2]float64{{f.t0, f.t1}}
+		if f.paired {
+			if !r.areaPlan {
+				continue
+			}
+			// An outline's edge paired with its neighbour's only where
+			// the neighbour runs; the rest of it still bounds a room.
+			stretches = uncovered(f.t0, f.t1, covered[i])
+		}
+		if shadowed(fs, i, minG, r.areaPlan) {
 			continue
 		}
 		from := -1
-		if len(f.leaves) == 1 {
+		if len(f.leaves) == 1 && !f.paired {
 			from = f.leaves[0]
 		}
-		r.walls = append(r.walls, wall{
-			a: u.Mul(f.t0).Add(n.Mul(f.rho)), b: u.Mul(f.t1).Add(n.Mul(f.rho)),
-			thick: thick, glass: glass, weight: w, from: from,
-		})
-		r.markUsed(f.leaves)
+		for _, st := range stretches {
+			if st[1]-st[0] < minLen {
+				continue
+			}
+			r.walls = append(r.walls, wall{
+				a: u.Mul(st[0]).Add(n.Mul(f.rho)), b: u.Mul(st[1]).Add(n.Mul(f.rho)),
+				thick: thick, glass: glass, weight: w, from: from,
+			})
+			r.markUsed(f.leaves)
+		}
 	}
+}
+
+// uncovered is what of t0–t1 the intervals leave.
+func uncovered(t0, t1 float64, cs [][2]float64) [][2]float64 {
+	cs = slices.Clone(cs)
+	slices.SortFunc(cs, func(a, b [2]float64) int { return cmp.Compare(a[0], b[0]) })
+	var out [][2]float64
+	at := t0
+	for _, c := range cs {
+		if c[0] > at {
+			out = append(out, [2]float64{at, math.Min(c[0], t1)})
+		}
+		at = math.Max(at, c[1])
+	}
+	if at < t1 {
+		out = append(out, [2]float64{at, t1})
+	}
+	return out
+}
+
+// pairing is two faces found to be a wall's, over lo–hi along them.
+type pairing struct {
+	i, j   int // faces, i nearer the cluster's start across
+	lo, hi float64
+	sub    bool // closer than a wall is thick
+}
+
+// layer is one wall made of one or more pairings: its outermost faces, the
+// faces inside it, and its stretch.
+type layer struct {
+	pairing
+	inner []int
+}
+
+// layers merges pairings that share a face and run alongside each other
+// into one wall. A wall drawn with a lining, a cavity or a finish line, or
+// a curtain wall drawn as frame, glass and frame, has three or four faces
+// in a row, and every neighbouring two pair up; as separate walls they
+// would leave slits between them that rooms leak through, and a door cut
+// through one of them would leave the others standing. The merged wall
+// spans its outermost faces, unless that would be thicker than any wall
+// (maxG), when the pairings stay apart. Pairings closer than a wall is
+// thick (sub) are kept only inside a merged wall at least minG thick.
+func (r *reader) layers(ps []pairing, fs []face, minG, maxG float64) []layer {
+	parent := make([]int, len(ps))
+	for k := range parent {
+		parent[k] = k
+	}
+	find := func(k int) int {
+		for parent[k] != k {
+			parent[k] = parent[parent[k]]
+			k = parent[k]
+		}
+		return k
+	}
+	byFace := map[int][]int{}
+	for k, p := range ps {
+		byFace[p.i] = append(byFace[p.i], k)
+		byFace[p.j] = append(byFace[p.j], k)
+	}
+	for k, p := range ps {
+		// Only a face that is one pairing's far side and the next one's near
+		// side joins them: two walls meeting a shared face from the same
+		// side are a T, not layers.
+		for _, m := range byFace[p.j] {
+			q := ps[m]
+			if q.i != p.j {
+				continue
+			}
+			lo, hi := overlap(p.lo, p.hi, q.lo, q.hi)
+			// Alongside for most of the longer: a jamb or a stub pairing
+			// across the end of a long wall is not a layer of it.
+			if hi-lo >= minOverlap*math.Max(p.hi-p.lo, q.hi-q.lo) &&
+				fs[q.j].rho-fs[p.i].rho <= maxG {
+				if a, b := find(k), find(m); a != b {
+					parent[max(a, b)] = min(a, b)
+				}
+			}
+		}
+	}
+	groups := map[int][]int{}
+	var roots []int
+	for k := range ps {
+		root := find(k)
+		if _, ok := groups[root]; !ok {
+			roots = append(roots, root)
+		}
+		groups[root] = append(groups[root], k)
+	}
+	out := make([]layer, 0, len(roots))
+	for _, root := range roots {
+		g := groups[root]
+		l := layer{pairing: ps[g[0]]}
+		for _, k := range g[1:] {
+			p := ps[k]
+			if fs[p.i].rho < fs[l.i].rho {
+				l.i = p.i
+			}
+			if fs[p.j].rho > fs[l.j].rho {
+				l.j = p.j
+			}
+			l.lo, l.hi = math.Min(l.lo, p.lo), math.Max(l.hi, p.hi)
+		}
+		if fs[l.j].rho-fs[l.i].rho > maxG {
+			for _, k := range g {
+				if !ps[k].sub {
+					out = append(out, layer{pairing: ps[k]})
+				}
+			}
+			continue
+		}
+		if fs[l.j].rho-fs[l.i].rho < minG {
+			continue
+		}
+		for _, k := range g {
+			for _, f := range [2]int{ps[k].i, ps[k].j} {
+				if f != l.i && f != l.j && !slices.Contains(l.inner, f) {
+					l.inner = append(l.inner, f)
+				}
+			}
+		}
+		out = append(out, l)
+	}
+	return out
+}
+
+// shadowed reports whether another face runs along most of face i closer
+// than a wall is thick: a finish or lining line beside a wall's face, or one
+// line of a band of hatching or louvres. A lone line like that is detail,
+// not a wall drawn single-line.
+//
+// In an area plan (outlines, not line work) two outlines a hair apart are
+// one boundary, so only a face's earlier neighbours shadow it there and the
+// first of them stands for both.
+func shadowed(fs []face, i int, minG float64, outlines bool) bool {
+	f := fs[i]
+	near := func(j int) bool {
+		g := fs[j]
+		lo, hi := overlap(f.t0, f.t1, g.t0, g.t1)
+		return hi-lo >= minOverlap*(f.t1-f.t0)
+	}
+	for j := i - 1; j >= 0 && f.rho-fs[j].rho < minG; j-- {
+		if near(j) {
+			return true
+		}
+	}
+	for j := i + 1; j < len(fs) && fs[j].rho-f.rho < minG; j++ {
+		if near(j) && (!outlines || fs[j].paired) {
+			return true
+		}
+	}
+	return false
 }
 
 // blocked reports whether a face already seen runs along most of lo–hi.

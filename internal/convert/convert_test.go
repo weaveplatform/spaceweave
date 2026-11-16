@@ -1,6 +1,7 @@
 package convert
 
 import (
+	"bytes"
 	"context"
 	"encoding/xml"
 	"errors"
@@ -9,10 +10,12 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/weaveplatform/spaceweave/internal/dwg/dwgtest"
 	"github.com/weaveplatform/spaceweave/internal/dxf/dxftest"
 )
 
@@ -238,6 +241,79 @@ func TestFileTimesOut(t *testing.T) {
 		// The conversion may beat the select; then it simply succeeded.
 		if err != nil {
 			t.Fatal(err)
+		}
+	}
+}
+
+// A DWG renders exactly as the DXF it was written from: the same image,
+// scale and view, so a tracer reading either gets the same plan.
+func TestDWGConvertsLikeItsDXF(t *testing.T) {
+	ctx := context.Background()
+	o := Options{MaxSide: 1000}
+	want, err := File(ctx, write(t, "office.dxf", dxftest.Office(4).Bytes()), t.TempDir(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantPNG, err := os.ReadFile(want.Image)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, v := range dwgtest.Versions {
+		t.Run(v, func(t *testing.T) {
+			got, err := File(ctx, write(t, "office.dwg", dwgtest.Office(v)), t.TempDir(), o)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.Format.ID != DWG.ID || got.Assumed || got.PxPerMetre <= 0 ||
+				got.PxPerMetre != want.PxPerMetre || got.View != want.View ||
+				got.Width != want.Width || got.Height != want.Height {
+				t.Fatalf("DWG %+v\nDXF %+v", got, want)
+			}
+			if !strings.Contains(got.Scale(), "from the drawing's units") {
+				t.Fatal(got.Scale())
+			}
+			png, err := os.ReadFile(got.Image)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(png, wantPNG) {
+				t.Error("the DWG's image differs from the DXF's")
+			}
+			wellFormed(t, got.SVG)
+		})
+	}
+}
+
+func TestDWGRefusals(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	// Named and sniffed as a supported DWG, but nothing after the version
+	// string: the reader's error, labelled as the DWG's.
+	_, err := File(ctx, write(t, "cut.dwg", []byte("AC1032\x00\x00\x00")), dir, Options{})
+	if err == nil || !strings.HasPrefix(err.Error(), "read DWG: ") {
+		t.Errorf("truncated DWG: %v", err)
+	}
+	_, err = File(ctx, write(t, "old.dwg", []byte("AC1021\x00\x00\x00")), dir, Options{})
+	if !errors.Is(err, ErrUnsupported) || !strings.Contains(err.Error(), "AutoCAD 2007") {
+		t.Errorf("R2007: %v", err)
+	}
+}
+
+// The versions Sniff accepts are the ones the reader reads: any other
+// would pass the upload and then fail in the worker, or be refused when
+// it would have read.
+func TestDWGReleasesMatchTheReader(t *testing.T) {
+	for code, rel := range dwgReleases {
+		if rel.read != slices.Contains(dwgtest.Versions, code) {
+			t.Errorf("%s (%s): read=%v, but the DWG writer and reader disagree", code, rel.name, rel.read)
+		}
+		if !isDWG([]byte(code)) {
+			t.Errorf("%s isn't sniffed as a DWG", code)
+		}
+	}
+	for _, v := range dwgtest.Versions {
+		if !dwgReleases[v].read {
+			t.Errorf("%s is read by internal/dwg but refused by Sniff", v)
 		}
 	}
 }

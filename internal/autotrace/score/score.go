@@ -143,6 +143,12 @@ type OpeningMatch struct {
 	// of the same kind, whose middle is within the tolerance on a parallel
 	// wall.
 	Matched, Want, Got int
+	// Located is how many of want's openings of this kind have one of got's
+	// of any kind there: found, if not always told apart.
+	Located int
+	// Swung is how many matched doors and double doors open to the same
+	// side; Hinged how many matched single doors hang from the same end.
+	Swung, Hinged int
 }
 
 // maxSkew is how far, in radians, two walls may disagree in direction and
@@ -159,32 +165,49 @@ func Openings(got, want *plan.Trace, tolPx float64) map[string]OpeningMatch {
 		m.Got++
 		out[o.kind] = m
 	}
-	used := make([]bool, len(g))
+	used, seen := make([]bool, len(g)), make([]bool, len(g))
 	for _, o := range w {
 		m := out[o.kind]
 		m.Want++
-		best, bestD := -1, tolPx
-		for i, c := range g {
-			if used[i] || c.kind != o.kind || skew(c.dir, o.dir) > maxSkew {
-				continue
-			}
-			if d := math.Hypot(c.mid[0]-o.mid[0], c.mid[1]-o.mid[1]); d <= bestD {
-				best, bestD = i, d
-			}
-		}
-		if best >= 0 {
+		if best := nearest(g, used, o, tolPx, true); best >= 0 {
 			used[best] = true
 			m.Matched++
+			c := g[best]
+			if c.swing == o.swing && o.swing != "" {
+				m.Swung++
+			}
+			if o.kind == "door" && c.hinge == o.hinge {
+				m.Hinged++
+			}
+		}
+		if best := nearest(g, seen, o, tolPx, false); best >= 0 {
+			seen[best] = true
+			m.Located++
 		}
 		out[o.kind] = m
 	}
 	return out
 }
 
+// nearest is the unused opening in g closest to o within tol on a parallel
+// wall, of o's kind when sameKind; -1 when there is none.
+func nearest(g []placedOpening, used []bool, o placedOpening, tol float64, sameKind bool) int {
+	best, bestD := -1, tol
+	for i, c := range g {
+		if used[i] || (sameKind && c.kind != o.kind) || skew(c.dir, o.dir) > maxSkew {
+			continue
+		}
+		if d := math.Hypot(c.mid[0]-o.mid[0], c.mid[1]-o.mid[1]); d <= bestD {
+			best, bestD = i, d
+		}
+	}
+	return best
+}
+
 type placedOpening struct {
-	kind string
-	mid  [2]float64
-	dir  float64 // the wall's direction, radians
+	kind, swing, hinge string
+	mid                [2]float64
+	dir                float64 // the wall's direction, radians
 }
 
 func placed(t *plan.Trace) []placedOpening {
@@ -195,10 +218,16 @@ func placed(t *plan.Trace) []placedOpening {
 			continue
 		}
 		for _, o := range w.Openings {
+			hinge := o.Hinge
+			if o.Kind == "door" && hinge == "" {
+				hinge = "a" // the trace format's default
+			}
 			out = append(out, placedOpening{
-				kind: o.Kind,
-				mid:  OnWall(w, (o.A+o.B)/2),
-				dir:  math.Atan2(dy, dx),
+				kind:  o.Kind,
+				swing: o.Swing,
+				hinge: hinge,
+				mid:   OnWall(w, (o.A+o.B)/2),
+				dir:   math.Atan2(dy, dx),
 			})
 		}
 	}

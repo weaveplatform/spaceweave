@@ -207,7 +207,6 @@ func TestSpans(t *testing.T) {
 		{floorgraph.Window, at(20, 20.1), at(21.2, 20.1), weightLoneSpan},
 		{floorgraph.Window, at(5.9, 0), at(6.1, 0), weightSpan},
 		{floorgraph.Window, at(30, 2), at(30, 3.2), weightSpan},
-		{floorgraph.Window, at(40, 0), at(41, 0), weightLoneSpan},
 	}
 	for _, c := range cases {
 		op, ok := findOpening(in, c.a, c.b, 0.01)
@@ -217,6 +216,10 @@ func TestSpans(t *testing.T) {
 	}
 	if len(in.Openings) != len(cases) {
 		t.Errorf("openings %+v", in.Openings)
+	}
+	// Glazing with no wall either side is the wall there, not a window in one.
+	if w, ok := findWall(in, at(40, 0), at(41, 0), 0.01); !ok || !w.Glass {
+		t.Errorf("unhosted glazing: %+v (found %v)", w, ok)
 	}
 }
 

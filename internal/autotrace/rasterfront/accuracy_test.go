@@ -138,9 +138,12 @@ func TestAccuracyOffice(t *testing.T) {
 	}
 }
 
-// The corporate fixture has walls this front end can't see yet: about 12%
-// of the wall length is hairline partitions (0.05 m, 2 px) and 6% slanted,
-// so 0.82 is the ceiling. The floor here guards against regressions. It is
+// The corporate fixture has walls this front end can't see: about 12% of
+// the wall length is lift shafts and risers drawn as free-standing hairline
+// boxes, which meet no wall, and the 2 px partitions slanted at 163° are
+// too thin to band once turned. The hairline partitions that run wall to
+// wall and the thick slanted walls are read. The floor guards against
+// regressions, two points under what this version measures. It is
 // read once, without a scale: a given scale only sizes the door search,
 // which TestReadRoom covers, and the image is large enough to dominate the
 // suite's time under the race detector.
@@ -148,9 +151,9 @@ func TestAccuracyCorporate(t *testing.T) {
 	tr := fixture(t, "corporate")
 	r := measure(t, tr, everything, Options{})
 	t.Logf("corporate: %v", r)
-	if r.recall < 0.78 || r.precision < 0.78 {
+	if r.recall < 0.84 || r.precision < 0.76 {
 		t.Errorf(
-			"corporate: recall %.3f precision %.3f, want ≥ 0.78, ≥ 0.78",
+			"corporate: recall %.3f precision %.3f, want ≥ 0.84, ≥ 0.76",
 			r.recall,
 			r.precision,
 		)
