@@ -216,8 +216,8 @@ function renderPicker() {
         .property('disabled', (p) => p.generated && !READY.has(p.status));
       label.select('.plan-name').text((p) => p.name);
       label.select('.badge')
-        .text((p) => ({ draft: 'Draft', queued: 'Queued', tracing: 'Tracing…' })[p.status] ?? '')
-        .attr('hidden', (p) => (['draft', 'queued', 'tracing'].includes(p.status) ? null : ''));
+        .text((p) => ({ draft: 'Draft', queued: 'Queued', converting: 'Converting…', tracing: 'Tracing…' })[p.status] ?? '')
+        .attr('hidden', (p) => (['draft', 'queued', 'converting', 'tracing'].includes(p.status) ? null : ''));
     });
 }
 
@@ -229,14 +229,21 @@ function renderBlurb(entry) {
   const facts = [{
     draft: 'Draft, not yet reviewed',
     queued: 'Sent back; waiting to be traced again',
+    converting: 'Being converted',
     tracing: 'Being traced again',
   }[entry.status] ?? 'Auto-traced'];
   if (Number.isFinite(entry.confidence)) facts.push(`confidence ${Math.round(entry.confidence * 100)}%`);
+  if (entry.scale?.pxPerMetre > 0 && !entry.scale.assumed) facts.push('scale from the drawing');
   blurb.append('br');
   blurb.append('span').text(`${facts.join(' · ')} · `);
-  blurb.append('a').attr('href', `${entry.dir}overlay.png`).attr('target', '_blank').text('overlay');
-  blurb.append('span').text(' · ');
-  blurb.append('a').attr('href', `${entry.dir}report.json`).attr('target', '_blank').text('report');
+  const links = [['overlay', 'overlay.png'], ['report', 'report.json']];
+  // A drawing keeps its original, and its SVG rendering in colour.
+  if (entry.drawing) links.push(['drawing', entry.drawing]);
+  if (entry.upload && entry.upload !== entry.source) links.push([`original ${String(entry.format).toUpperCase()}`, entry.upload]);
+  links.forEach(([label, file], i) => {
+    if (i) blurb.append('span').text(' · ');
+    blurb.append('a').attr('href', `${entry.dir}${file}`).attr('target', '_blank').text(label);
+  });
 }
 
 // The tracer takes minutes per plan, so a 10 s poll is plenty while it's

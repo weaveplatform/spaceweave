@@ -40,10 +40,11 @@ export ANTHROPIC_API_KEY=…            # or sign in once with `ant auth login`
 go run ./cmd/spaceweave serve         # then open http://127.0.0.1:8000
 ```
 
-Under **Add a plan**, drop a PNG, JPEG or WebP image on the page, choose one,
-or paste a screenshot. The list below the drop zone follows each image through
+Under **Add a plan**, drop a plan on the page, choose one, or paste a
+screenshot. The list below the drop zone follows each plan through
 **Uploaded → Queued → Tracing → Review**, with the agent's turn count and the
-money spent so far while it traces. When it finishes, the plan joins the
+money spent so far while it traces. A drawing gets a **Converting** step first
+(see [Drawings](#drawings)). When it finishes, the plan joins the
 picker marked **Draft**, with its confidence and links to the overlay and the
 report. Open it, then:
 
@@ -59,6 +60,51 @@ it: `--addr 0.0.0.0:8000 --allow-host my-laptop.local`.
 
 Under `tools/serve.py` the page has no API, so it shows how to start
 `spaceweave serve` instead of the drop zone.
+
+### Drawings
+
+These formats are accepted:
+
+| Format | Notes |
+|---|---|
+| PNG, JPEG, WebP | Traced as they are |
+| DXF | ASCII or binary, any AutoCAD version |
+| SVG | Exported from CAD or illustration tools |
+
+The page checks each file before uploading it. The extension has to be one of
+these, and the first bytes have to agree with it, so a renamed file or a format
+we don't read is refused with a reason and costs nothing. The server checks
+again. Common near-misses get specific advice:
+
+- **DWG**: save it as DXF from your CAD program.
+- **PDF**: export the page as PNG, or the drawing as DXF or SVG.
+- **TIFF, GIF, BMP**: export as PNG.
+- **HEIC**: export as JPEG.
+
+DWG and PDF support is in progress.
+
+A drawing is rendered to an image here, in Go, before it is traced. Nothing is
+sent anywhere for this step. The rendering is black ink on white at up to
+4096 px on the long side. Layer colours are dropped so a yellow or cyan layer
+doesn't vanish when the tracer thresholds the image. A stray entity far from
+the plan is left out of the picture.
+
+**Scale from the drawing.** When a DXF states its units (`$INSUNITS`), the
+rendering's scale is exact. The tracer is told it and holds every submission to
+it, so there's no calibrating from dimension strings. When a DXF doesn't state
+its units, they're guessed from the drawing's size, and the tracer checks the
+guess against a door or a dimension. An SVG measured in millimetres has a paper
+scale only, so the tracer calibrates it as usual.
+
+`spaceweave convert` runs the same conversion on its own, which is handy for
+seeing what the tracer will see:
+
+```sh
+go run ./cmd/spaceweave convert office.dxf              # writes office.png and office.svg
+go run ./cmd/spaceweave convert plan.svg -o plan.png --max-px 2048
+```
+
+It prints the size, the scale, and anything it couldn't draw.
 
 ### Without the page
 
@@ -90,7 +136,7 @@ go run ./cmd/spaceweave plans list
 go run ./cmd/spaceweave plans approve <id>                  # drops the Draft badge
 go run ./cmd/spaceweave plans reject <id> --note "The kitchen is missing"
 go run ./cmd/spaceweave plans retry <id>                    # re-run a failed plan
-go run ./cmd/spaceweave trace plan.png                      # one image, no watcher
+go run ./cmd/spaceweave trace plan.png                      # one file, no watcher
 ```
 
 A rejected plan goes back in the queue. The next run gets the note and the
@@ -100,7 +146,9 @@ Each `generated/<id>/` folder holds these files:
 
 | File | Contents |
 |---|---|
-| `source.<ext>` | The uploaded image |
+| `source.<ext>` | The uploaded image, or the PNG rendered from a drawing |
+| `original.<ext>` | An uploaded drawing, as it was sent |
+| `drawing.svg` | A drawing rendered as SVG in its layer colours, linked from the plan's blurb |
 | `plan.json` | The plan in metres, in the same shape as a `js/plans/*.js` module |
 | `trace.json` | The agent's trace, in source pixels |
 | `overlay.png` | The trace drawn over the image |

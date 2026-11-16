@@ -28,10 +28,12 @@ import (
 	"github.com/weaveplatform/spaceweave/internal/buildinfo"
 	"github.com/weaveplatform/spaceweave/internal/catalog"
 	"github.com/weaveplatform/spaceweave/internal/config"
+	"github.com/weaveplatform/spaceweave/internal/convert"
 	"github.com/weaveplatform/spaceweave/internal/inbox"
 	"github.com/weaveplatform/spaceweave/internal/plan"
 	"github.com/weaveplatform/spaceweave/internal/server"
 	"github.com/weaveplatform/spaceweave/internal/trace"
+	"github.com/weaveplatform/spaceweave/internal/vector"
 	"github.com/weaveplatform/spaceweave/internal/worker"
 )
 
@@ -111,7 +113,13 @@ func New(app App) *cobra.Command {
 	p.IntVar(&f.workers, "workers", 0, "plans traced at once")
 	p.BoolVarP(&f.verbose, "verbose", "v", false, "debug logging")
 
-	root.AddCommand(watchCmd(app, f), serveCmd(app, f), traceCmd(app, f), plansCmd(app, f))
+	root.AddCommand(
+		watchCmd(app, f),
+		serveCmd(app, f),
+		traceCmd(app, f),
+		convertCmd(app),
+		plansCmd(app, f),
+	)
 	return root
 }
 
@@ -392,10 +400,10 @@ func serveCmd(app App, f *flags) *cobra.Command {
 
 func traceCmd(app App, f *flags) *cobra.Command {
 	return &cobra.Command{
-		Use:   "trace <image>",
-		Short: "Trace one image now, without the watcher",
-		Long: "Adds the image to the output folder and traces it straight away. " +
-			"An image already in the catalogue isn't traced again; use `plans reject` or `plans retry` for that.",
+		Use:   "trace <image or drawing>",
+		Short: "Trace one image or drawing now, without the watcher",
+		Long: "Adds the file to the output folder and traces it straight away, converting a drawing first. " +
+			"A file already in the catalogue isn't traced again; use `plans reject` or `plans retry` for that.",
 		Args: usageArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			c, err := f.load(cmd, app)
@@ -410,12 +418,8 @@ func traceCmd(app App, f *flags) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if !inbox.Eligible(args[0]) {
-				return fmt.Errorf(
-					"%w: %s is not a .png, .jpg, .jpeg or .webp file",
-					ErrUsage,
-					args[0],
-				)
+			if _, err := checkFile(args[0]); err != nil {
+				return err
 			}
 			e, created, err := store.Ingest(args[0])
 			if err != nil {
@@ -431,9 +435,13 @@ func traceCmd(app App, f *flags) *cobra.Command {
 				)
 				return nil
 			}
+			first := catalog.Tracing
+			if e.Source == "" {
+				first = catalog.Converting
+			}
 			if err := store.Transition(
 				e.ID,
-				catalog.Tracing,
+				first,
 				func(x *catalog.Entry) { x.Attempts++ },
 			); err != nil {
 				return err //nolint:wrapcheck // names itself
@@ -475,6 +483,102 @@ func confidence(e catalog.Entry) string {
 		return "-"
 	}
 	return strconv.FormatFloat(*e.Confidence, 'f', 2, 64)
+}
+
+// checkFile identifies a file and checks its name agrees with its content.
+func checkFile(path string) (convert.Format, error) {
+	f, err := os.Open(path) //nolint:gosec // a path the user gave
+	if err != nil {
+		return convert.Format{}, fmt.Errorf("read input: %w", err) // the *PathError names the path
+	}
+	defer f.Close() //nolint:errcheck // read-only
+	head := make([]byte, convert.SniffLen)
+	n, err := io.ReadFull(f, head)
+	if err != nil && !errors.Is(err, io.ErrUnexpectedEOF) && !errors.Is(err, io.EOF) {
+		return convert.Format{}, fmt.Errorf("read input: %w", err)
+	}
+	format, err := convert.Check(filepath.Base(path), head[:n])
+	if err != nil {
+		return convert.Format{}, fmt.Errorf("%w: %w", ErrUsage, err)
+	}
+	return format, nil
+}
+
+func convertCmd(app App) *cobra.Command {
+	var out, svg string
+	var maxSide int
+	cmd := &cobra.Command{
+		Use:   "convert <drawing>",
+		Short: "Render a DXF or SVG drawing as the PNG the tracer reads, and as SVG",
+		Long: "Renders the drawing the way the tracer will see it: black ink on white, with the scale " +
+			"worked out from the drawing's units where it states them. Nothing is sent anywhere.",
+		Args: usageArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			src := args[0]
+			format, err := checkFile(src)
+			if err != nil {
+				return err
+			}
+			if !format.Drawing {
+				return fmt.Errorf(
+					"%w: %s is already a %s image; only drawings need converting",
+					ErrUsage,
+					src,
+					format.Label,
+				)
+			}
+			base := strings.TrimSuffix(src, filepath.Ext(src))
+			if out == "" {
+				out = base + ".png"
+			}
+			if svg == "" {
+				svg = base + ".svg"
+				if format.ID == convert.SVG.ID {
+					svg = base + ".plan.svg" // don't overwrite the input
+				}
+			}
+			tmp, err := os.MkdirTemp("", "spaceweave-convert-")
+			if err != nil {
+				return fmt.Errorf("convert: %w", err)
+			}
+			defer os.RemoveAll(tmp) //nolint:errcheck // temp dir
+			res, err := convert.File(cmd.Context(), src, tmp, convert.Options{MaxSide: maxSide})
+			if err != nil {
+				return fmt.Errorf("convert %s: %w", src, err)
+			}
+			for from, to := range map[string]string{res.Image: out, res.SVG: svg} {
+				b, err := os.ReadFile(from) //nolint:gosec // our temp dir
+				if err != nil {
+					return fmt.Errorf("convert: %w", err)
+				}
+				// Readable by others, like any image the user saves; the
+				// path is the one they gave.
+				//nolint:gosec // see above
+				if err := os.WriteFile(to, b, 0o644); err != nil {
+					return fmt.Errorf("write %s: %w", to, err)
+				}
+			}
+			w := app.Stdout
+			_, _ = fmt.Fprintf(
+				w,
+				"%s: %s, %d × %d px\n",
+				src,
+				res.Format.Label,
+				res.Width,
+				res.Height,
+			)
+			_, _ = fmt.Fprintf(w, "scale: %s\n", res.Scale())
+			for _, n := range res.Notes {
+				_, _ = fmt.Fprintf(w, "note: %s\n", n)
+			}
+			_, _ = fmt.Fprintf(w, "wrote %s and %s\n", out, svg)
+			return nil
+		},
+	}
+	cmd.Flags().StringVarP(&out, "output", "o", "", "PNG to write (default: next to the drawing)")
+	cmd.Flags().StringVar(&svg, "svg", "", "SVG to write (default: next to the drawing)")
+	cmd.Flags().IntVar(&maxSide, "max-px", vector.DefaultMaxSide, "the image's long edge in pixels")
+	return cmd
 }
 
 func plansCmd(app App, f *flags) *cobra.Command {

@@ -10,15 +10,12 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"slices"
-	"strings"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
-)
 
-// Extensions are the image types the tracer can read.
-var Extensions = []string{".png", ".jpg", ".jpeg", ".webp"}
+	"github.com/weaveplatform/spaceweave/internal/convert"
+)
 
 // DefaultRescan is how often the whole folder is listed again. fsnotify
 // misses events on network and some virtual filesystems, and from editors
@@ -45,15 +42,9 @@ type stamp struct {
 	mod  time.Time
 }
 
-// Eligible reports whether name looks like an image the watcher takes.
-// Dotfiles are skipped: they are usually partial downloads or OS metadata.
-func Eligible(name string) bool {
-	base := filepath.Base(name)
-	if strings.HasPrefix(base, ".") {
-		return false
-	}
-	return slices.Contains(Extensions, strings.ToLower(filepath.Ext(base)))
-}
+// Eligible reports whether name looks like a file the watcher takes: one of
+// convert.Formats, not a dotfile.
+func Eligible(name string) bool { return convert.Eligible(name) }
 
 // newWatcher is swapped in tests to exercise the fallback to rescans.
 var newWatcher = fsnotify.NewWatcher

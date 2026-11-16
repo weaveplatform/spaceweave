@@ -1,0 +1,324 @@
+{
+ "comment": "Shared by internal/convert (Go) and test/formats.test.js: the page's check and the server's must agree. Each string character is one byte.",
+ "formats": [
+  {
+   "id": "png",
+   "label": "PNG",
+   "exts": [
+    ".png"
+   ],
+   "mime": [
+    "image/png"
+   ],
+   "drawing": false
+  },
+  {
+   "id": "jpeg",
+   "label": "JPEG",
+   "exts": [
+    ".jpg",
+    ".jpeg"
+   ],
+   "mime": [
+    "image/jpeg"
+   ],
+   "drawing": false
+  },
+  {
+   "id": "webp",
+   "label": "WebP",
+   "exts": [
+    ".webp"
+   ],
+   "mime": [
+    "image/webp"
+   ],
+   "drawing": false
+  },
+  {
+   "id": "dxf",
+   "label": "DXF",
+   "exts": [
+    ".dxf"
+   ],
+   "mime": [
+    "image/vnd.dxf",
+    "application/dxf",
+    "image/x-dxf"
+   ],
+   "detail": "ASCII or binary",
+   "drawing": true
+  },
+  {
+   "id": "svg",
+   "label": "SVG",
+   "exts": [
+    ".svg"
+   ],
+   "mime": [
+    "image/svg+xml"
+   ],
+   "drawing": true
+  }
+ ],
+ "sniff": [
+  {
+   "name": "png",
+   "head": "\u0089PNG\r\n\u001a\n\u0000\u0000\u0000\rIHDR",
+   "want": {
+    "id": "png"
+   }
+  },
+  {
+   "name": "jpeg",
+   "head": "\u00ff\u00d8\u00ff\u00e0\u0000\u0010JFIF",
+   "want": {
+    "id": "jpeg"
+   }
+  },
+  {
+   "name": "webp",
+   "head": "RIFF$\u0000\u0000\u0000WEBPVP8 ",
+   "want": {
+    "id": "webp"
+   }
+  },
+  {
+   "name": "ascii dxf",
+   "head": "  0\r\nSECTION\r\n  2\r\nHEADER\r\n",
+   "want": {
+    "id": "dxf"
+   }
+  },
+  {
+   "name": "dxf after comments",
+   "head": "999\nmade by a tool\n999\nsecond comment\n0\nSECTION\n",
+   "want": {
+    "id": "dxf"
+   }
+  },
+  {
+   "name": "dxf with a byte-order mark",
+   "head": "\u00ef\u00bb\u00bf0\nSECTION\n2\nENTITIES\n",
+   "want": {
+    "id": "dxf"
+   }
+  },
+  {
+   "name": "binary dxf",
+   "head": "AutoCAD Binary DXF\r\n\u001a\u0000\u0000\u0000SECTION\u0000",
+   "want": {
+    "id": "dxf"
+   }
+  },
+  {
+   "name": "not dxf: other first code",
+   "head": "2\nSECTION\n",
+   "want": {
+    "refused": "This isn't a file spaceweave reads. Use PNG, JPEG, WebP, DXF or SVG."
+   }
+  },
+  {
+   "name": "svg",
+   "head": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1 1\">",
+   "want": {
+    "id": "svg"
+   }
+  },
+  {
+   "name": "svg after prolog",
+   "head": "\u00ef\u00bb\u00bf<?xml version=\"1.0\"?>\n<!-- Generator: Adobe Illustrator -->\n<!DOCTYPE svg PUBLIC \"-//W3C//DTD SVG 1.1//EN\" \"x.dtd\" [\n<!ENTITY a \"b\">\n]>\n<svg\n width=\"1\">",
+   "want": {
+    "id": "svg"
+   }
+  },
+  {
+   "name": "not svg: svgz-ish tag",
+   "head": "<svgfoo>",
+   "want": {
+    "refused": "This isn't a file spaceweave reads. Use PNG, JPEG, WebP, DXF or SVG."
+   }
+  },
+  {
+   "name": "html",
+   "head": "<!doctype html><html><body>",
+   "want": {
+    "refused": "This isn't a file spaceweave reads. Use PNG, JPEG, WebP, DXF or SVG."
+   }
+  },
+  {
+   "name": "empty",
+   "head": "",
+   "want": {
+    "refused": "This isn't a file spaceweave reads. Use PNG, JPEG, WebP, DXF or SVG."
+   }
+  },
+  {
+   "name": "dwg",
+   "head": "AC1027\u0000\u0000\u0000\u0000\u0000\u0006\u0001",
+   "want": {
+    "refused": "DWG files aren't supported. Save it as DXF from your CAD program."
+   }
+  },
+  {
+   "name": "old dwg",
+   "head": "AC1.50\u0000\u0000",
+   "want": {
+    "refused": "DWG files aren't supported. Save it as DXF from your CAD program."
+   }
+  },
+  {
+   "name": "pdf",
+   "head": "%PDF-1.7\n%\u00e2\u00e3\u00cf\u00d3\n",
+   "want": {
+    "refused": "PDF files aren't supported. Export the page as PNG, or the drawing as DXF or SVG."
+   }
+  },
+  {
+   "name": "pdf after junk",
+   "head": "junk before the header\n%PDF-1.4\n",
+   "want": {
+    "refused": "PDF files aren't supported. Export the page as PNG, or the drawing as DXF or SVG."
+   }
+  },
+  {
+   "name": "dwf",
+   "head": "(DWF V06.00)PK",
+   "want": {
+    "refused": "DWF files aren't supported. Export the drawing as DXF instead."
+   }
+  },
+  {
+   "name": "tiff",
+   "head": "II*\u0000\b\u0000",
+   "want": {
+    "refused": "TIFF files aren't supported. Export it as PNG."
+   }
+  },
+  {
+   "name": "big-endian tiff",
+   "head": "MM\u0000*\u0000\u0000",
+   "want": {
+    "refused": "TIFF files aren't supported. Export it as PNG."
+   }
+  },
+  {
+   "name": "gif",
+   "head": "GIF89a\u0001\u0000",
+   "want": {
+    "refused": "GIF files aren't supported. Export it as PNG."
+   }
+  },
+  {
+   "name": "bmp",
+   "head": "BM6\u0000",
+   "want": {
+    "refused": "BMP files aren't supported. Export it as PNG."
+   }
+  },
+  {
+   "name": "heic",
+   "head": "\u0000\u0000\u0000\u0018ftypheic\u0000\u0000",
+   "want": {
+    "refused": "HEIC files aren't supported. Export it as JPEG."
+   }
+  },
+  {
+   "name": "zip",
+   "head": "PK\u0003\u0004\u0014\u0000",
+   "want": {
+    "refused": "ZIP archive files aren't supported. Unzip it and upload the drawing inside."
+   }
+  }
+ ],
+ "check": [
+  {
+   "file": "plan.png",
+   "head": "\u0089PNG\r\n\u001a\n\u0000\u0000\u0000\rIHDR",
+   "want": {
+    "id": "png",
+    "ok": true
+   }
+  },
+  {
+   "file": "Plan.PNG",
+   "head": "\u0089PNG\r\n\u001a\n\u0000\u0000\u0000\rIHDR",
+   "want": {
+    "id": "png",
+    "ok": true
+   }
+  },
+  {
+   "file": "office.dxf",
+   "head": "  0\r\nSECTION\r\n  2\r\nHEADER\r\n",
+   "want": {
+    "id": "dxf",
+    "ok": true
+   }
+  },
+  {
+   "file": "plan.jpg",
+   "head": "\u0089PNG\r\n\u001a\n\u0000\u0000\u0000\rIHDR",
+   "want": {
+    "reason": "plan.jpg is named like a JPEG file but is a PNG file. Rename it to end in .png."
+   }
+  },
+  {
+   "file": "plan.svg",
+   "head": "  0\r\nSECTION\r\n  2\r\nHEADER\r\n",
+   "want": {
+    "reason": "plan.svg is named like an SVG file but is a DXF file. Rename it to end in .dxf."
+   }
+  },
+  {
+   "file": "plan.dxf",
+   "head": "hello",
+   "want": {
+    "reason": "plan.dxf doesn't look like a DXF file. This isn't a file spaceweave reads. Use PNG, JPEG, WebP, DXF or SVG."
+   }
+  },
+  {
+   "file": "plan.dxf",
+   "head": "%PDF-1.7\n%\u00e2\u00e3\u00cf\u00d3\n",
+   "want": {
+    "reason": "plan.dxf doesn't look like a DXF file. PDF files aren't supported. Export the page as PNG, or the drawing as DXF or SVG."
+   }
+  },
+  {
+   "file": "plan.dwg",
+   "head": "AC1027\u0000\u0000\u0000\u0000\u0000\u0006\u0001",
+   "want": {
+    "reason": "DWG files aren't supported. Save it as DXF from your CAD program."
+   }
+  },
+  {
+   "file": "scan.pdf",
+   "head": "%PDF-1.7\n%\u00e2\u00e3\u00cf\u00d3\n",
+   "want": {
+    "reason": "PDF files aren't supported. Export the page as PNG, or the drawing as DXF or SVG."
+   }
+  },
+  {
+   "file": "notes.txt",
+   "head": "hello",
+   "want": {
+    "reason": ".txt files aren't supported. Use PNG, JPEG, WebP, DXF or SVG."
+   }
+  },
+  {
+   "file": "README",
+   "head": "\u0089PNG\r\n\u001a\n\u0000\u0000\u0000\rIHDR",
+   "want": {
+    "reason": "README has no file extension. Use PNG, JPEG, WebP, DXF or SVG."
+   }
+  },
+  {
+   "file": "plan.txt",
+   "head": "\u0089PNG\r\n\u001a\n",
+   "want": {
+    "ok": false,
+    "reason": "plan.txt is a PNG file. Rename it to end in .png."
+   }
+  }
+ ]
+}

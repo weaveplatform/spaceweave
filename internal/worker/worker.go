@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/weaveplatform/spaceweave/internal/catalog"
+	"github.com/weaveplatform/spaceweave/internal/convert"
 	"github.com/weaveplatform/spaceweave/internal/plan"
 	"github.com/weaveplatform/spaceweave/internal/raster"
 	"github.com/weaveplatform/spaceweave/internal/trace"
@@ -47,8 +48,18 @@ type Worker struct {
 	Store   *catalog.Store
 	Options trace.Options
 	Trace   TraceFunc // trace.Run when nil
+	Convert convert.Options
 	Log     *slog.Logger
 	Poll    time.Duration // DefaultPoll when 0
+}
+
+// Conversion is report.json's account of turning a drawing into an image.
+type Conversion struct {
+	Format string   `json:"format"`
+	Width  int      `json:"width"`
+	Height int      `json:"height"`
+	Scale  string   `json:"scale"`
+	Notes  []string `json:"notes,omitempty"`
 }
 
 // Report is report.json: what the reviewer needs to judge a draft, or to see
@@ -59,6 +70,7 @@ type Report struct {
 	Model       string      `json:"model"`
 	Attempt     int         `json:"attempt"`
 	Feedback    string      `json:"feedback,omitempty"`
+	Conversion  *Conversion `json:"conversion,omitempty"`
 	Confidence  float64     `json:"confidence"`
 	Summary     string      `json:"summary,omitempty"`
 	Caveats     []string    `json:"caveats,omitempty"`
@@ -142,13 +154,30 @@ func (w *Worker) Next(ctx context.Context) (bool, error) {
 	return true, w.Process(ctx, e)
 }
 
-// Process traces one claimed plan and records the outcome.
+// Process converts (if it is a drawing) and traces one claimed plan, and
+// records the outcome.
 func (w *Worker) Process(ctx context.Context, e catalog.Entry) error {
 	started := time.Now()
 	log := w.log().With("plan", e.ID, "attempt", e.Attempts)
-	log.Info("tracing")
 	dir := w.Store.PlanDir(e.ID)
 	report := Report{ID: e.ID, Model: w.Options.Model, Attempt: e.Attempts, Feedback: e.Note}
+
+	if e.Status == catalog.Converting {
+		log.Info("converting", "format", e.Format)
+		converted, conv, err := w.convert(ctx, e)
+		report.Conversion = conv
+		switch {
+		case ctx.Err() != nil:
+			log.Info("interrupted; requeued")
+			return w.transition(e.ID, catalog.Queued, nil)
+		case err != nil:
+			return w.fail(e, &report, nil, started, fmt.Errorf("convert %s: %w", e.Original, err))
+		}
+		e = converted
+	} else if f, ok := convert.ByID(e.Format); ok && f.Drawing {
+		report.Conversion = readConversion(filepath.Join(dir, ReportFile))
+	}
+	log.Info("tracing")
 
 	src, err := raster.Load(filepath.Join(dir, e.Source))
 	if err != nil {
@@ -168,6 +197,13 @@ func (w *Worker) Process(ctx context.Context, e catalog.Entry) error {
 	if e.Note != "" {
 		// A reviewer sent this back: start from the trace they reviewed.
 		job.Previous = readTrace(filepath.Join(dir, TraceFile))
+	}
+	if c := report.Conversion; c != nil {
+		job.Drawing = &trace.Drawing{Format: c.Format, Notes: c.Notes}
+		if sc := e.Scale; sc != nil {
+			job.Drawing.PxPerMetre, job.Drawing.Assumed, job.Drawing.PxPerPaperMM = sc.PxPerMetre, sc.Assumed, sc.PxPerPaperMM
+		}
+		job.Meta.Credit = fmt.Sprintf("Uploaded %s, rendered from %s", e.Original, c.Format)
 	}
 
 	//nolint:gosec // inside the output dir
@@ -305,6 +341,52 @@ func (w *Worker) fail(
 			x.CostUSD += cost
 		},
 	)
+}
+
+// convert renders a drawing into the plan's directory and records it,
+// moving the plan on to tracing.
+func (w *Worker) convert(ctx context.Context, e catalog.Entry) (catalog.Entry, *Conversion, error) {
+	dir := w.Store.PlanDir(e.ID)
+	res, err := convert.File(ctx, filepath.Join(dir, e.Upload), dir, w.Convert)
+	if err != nil {
+		return e, nil, err //nolint:wrapcheck // Process names the file
+	}
+	conv := &Conversion{
+		Format: res.Format.Label,
+		Width:  res.Width,
+		Height: res.Height,
+		Scale:  res.Scale(),
+		Notes:  res.Notes,
+	}
+	var scale *catalog.Scale
+	if res.PxPerMetre > 0 || res.PxPerPaperMM > 0 {
+		scale = &catalog.Scale{
+			PxPerMetre:   res.PxPerMetre,
+			Assumed:      res.Assumed,
+			PxPerPaperMM: res.PxPerPaperMM,
+		}
+	}
+	w.log().
+		Info("converted", "plan", e.ID, "width", res.Width, "height", res.Height, "scale", res.Scale())
+	now, err := w.Store.Converted(e.ID, convert.ImageFile, convert.DrawingFile, scale)
+	if err != nil {
+		return e, conv, fmt.Errorf("update catalog: %w", err)
+	}
+	return now, conv, nil
+}
+
+// readConversion recovers a drawing's conversion from its last report, for
+// a retrace that doesn't convert again.
+func readConversion(file string) *Conversion {
+	b, err := os.ReadFile(file) //nolint:gosec // inside the output dir
+	if err != nil {
+		return nil
+	}
+	var r Report
+	if json.Unmarshal(b, &r) != nil {
+		return nil
+	}
+	return r.Conversion
 }
 
 // readTrace loads a previous trace, or nil when there's none to build on.

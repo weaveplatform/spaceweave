@@ -37,7 +37,7 @@
     <section class="stage-wrap" data-skin="model" aria-label="Floor plan model">
       <svg id="stage" role="img" aria-label="Isometric model of a floor plan"></svg>
       <div id="tooltip" class="tooltip" hidden></div>
-      <div class="drop-overlay" aria-hidden="true"><span>Drop to trace this plan</span></div>
+      <div class="drop-overlay" aria-hidden="true"><span class="drop-ok">Drop to trace this plan</span><span class="drop-no">Can't trace this kind of file</span></div>
 
       <div class="dock">
         <button type="button" id="rotate-left" class="icon" title="Rotate left" aria-label="Rotate left">⟲</button>
@@ -76,10 +76,9 @@
 
       <h2 id="add-heading">Add a plan</h2>
       <label class="dropzone" id="dropzone" hidden>
-        <input type="file" id="upload-file" class="visually-hidden" multiple
-               accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp">
+        <input type="file" id="upload-file" class="visually-hidden" multiple>
         <span class="dropzone-icon" aria-hidden="true"></span>
-        <strong>Drop a floor-plan image</strong>
+        <strong>Drop a floor plan</strong>
         <span>or <u>choose a file</u>, or paste one</span>
         <small id="upload-terms"></small>
       </label>

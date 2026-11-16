@@ -1,22 +1,13 @@
-// The page's side of `spaceweave serve`: dropping, choosing or pasting an
-// image uploads it, the pipeline list follows each plan through the tracer,
-// and a draft can be approved or sent back with a note. Under a plain static
-// server the API isn't there, and the page says how to start it instead.
+// The page's side of `spaceweave serve`: dropping, choosing or pasting a
+// plan uploads it, the pipeline list follows each plan through conversion and
+// the tracer, and a draft can be approved or sent back with a note. Under a
+// plain static server the API isn't there, and the page says how to start it
+// instead.
 import { createApi } from './api.js';
 import { describe, inPipeline } from './pipeline.js';
+import { acceptAttr, checkFile, names, pastedName, refusesDrag } from './formats.js';
 
 const d3 = globalThis.d3;
-
-// Must match inbox.Eligible in the Go worker.
-const ACCEPT = /\.(png|jpe?g|webp)$/i;
-const EXT = { 'image/png': '.png', 'image/jpeg': '.jpg', 'image/webp': '.webp' };
-
-// Pasted screenshots arrive as "image.png"; the tracer names the plan from
-// the drawing anyway, but the file name is its first guess.
-function uploadName(file) {
-  if (ACCEPT.test(file.name) && file.name !== 'image.png') return file.name;
-  return EXT[file.type] ? `Pasted plan${EXT[file.type]}` : file.name;
-}
 
 /**
  * @param {object} hooks
@@ -41,13 +32,22 @@ export function initWorkbench({ plans, current, refresh, open }) {
   const note = $('reject-note');
 
   let info = null; // the server's answer to /api/info; null without the API
+  let drawings = new Set(); // ids of the formats converted before tracing
   const uploading = new Map(); // files on their way, shown before the server has an id
   const mine = new Set(); // plans sent from this page, announced when they're done
   let seq = 0;
 
-  function say(message, isError = false) {
-    status.textContent = message;
+  // One line per message, so every refused file in a batch is named.
+  function sayAll(lines, isError = false) {
+    status.replaceChildren(...lines.map((l) => {
+      const line = document.createElement('span');
+      line.textContent = l;
+      return line;
+    }));
     status.classList.toggle('error', isError);
+  }
+  function say(message, isError = false) {
+    sayAll([message], isError);
   }
 
   async function act(fn) {
@@ -59,30 +59,46 @@ export function initWorkbench({ plans, current, refresh, open }) {
     await refresh();
   }
 
-  async function uploadFiles(files) {
+  // Checks every file before uploading any, so a batch with one bad file
+  // says which and why while the good ones go ahead.
+  async function vet(files) {
+    const ok = [];
+    const refused = [];
+    const limit = info.maxUploadBytes;
     for (const file of files) {
-      const name = uploadName(file);
-      if (!ACCEPT.test(name)) {
-        say(`${file.name} isn't a PNG, JPEG or WebP image.`, true);
+      const name = pastedName(file, info.formats);
+      const named = name === file.name ? file : new File([file], name, { type: file.type });
+      if (file.size > limit) {
+        refused.push(`${name}: over the ${Math.round(limit / 2 ** 20)} MB upload limit.`);
         continue;
       }
-      if (file.size > info.maxUploadBytes) {
-        say(`${file.name} is over the ${Math.round(info.maxUploadBytes / 2 ** 20)} MB upload limit.`, true);
-        continue;
-      }
+      const verdict = await checkFile(named, info.formats);
+      if (verdict.ok) ok.push({ file: named, format: verdict.format });
+      else refused.push(verdict.reason.startsWith(name) ? verdict.reason : `${name}: ${verdict.reason}`);
+    }
+    return { ok, refused };
+  }
+
+  async function uploadFiles(files) {
+    const { ok, refused } = await vet(files);
+    if (refused.length) sayAll(refused, true);
+    for (const { file, format } of ok) {
+      const { name } = file;
       const key = `upload-${++seq}`;
-      uploading.set(key, { id: key, name, status: 'uploading' });
+      uploading.set(key, { id: key, name, status: 'uploading', format: format.id });
       update();
       try {
         const { plan, duplicate } = await api.upload(file, name);
-        if (duplicate) {
-          say(`That image was uploaded before, as “${plan.title}” (${plan.status}).`);
-        } else {
-          mine.add(plan.id);
-          say(`“${plan.title}” is queued. Tracing usually takes a few minutes.`);
+        if (!duplicate) mine.add(plan.id);
+        // Refusals stay on screen; the good files' progress shows in the list.
+        if (refused.length === 0) {
+          if (duplicate) say(`That file was uploaded before, as “${plan.title}” (${plan.status}).`);
+          else if (format.drawing) say(`“${plan.title}” is queued. It's converted from ${format.label} first; tracing usually takes a few minutes.`);
+          else say(`“${plan.title}” is queued. Tracing usually takes a few minutes.`);
         }
       } catch (err) {
-        say(`${name}: ${err.message}`, true);
+        refused.push(`${name}: ${err.message}`);
+        sayAll(refused, true);
       } finally {
         uploading.delete(key);
       }
@@ -98,32 +114,37 @@ export function initWorkbench({ plans, current, refresh, open }) {
   });
 
   const carriesFiles = (e) => info && [...(e.dataTransfer?.types ?? [])].includes('Files');
+  // Browsers show a dragged file's MIME type, but not its name, until the
+  // drop; a known type that isn't ours can be refused straight away.
+  const refusedDrag = (e) => refusesDrag([...(e.dataTransfer?.items ?? [])]
+    .filter((i) => i.kind === 'file').map((i) => i.type), info.formats);
   let depth = 0; // dragenter/leave fire for every child crossed
   document.addEventListener('dragenter', (e) => {
     if (!carriesFiles(e)) return;
     depth++;
     document.body.classList.add('dragging');
+    document.body.classList.toggle('drag-refused', refusedDrag(e));
   });
   document.addEventListener('dragleave', (e) => {
     if (!carriesFiles(e)) return;
     depth = Math.max(0, depth - 1);
-    if (depth === 0) document.body.classList.remove('dragging');
+    if (depth === 0) document.body.classList.remove('dragging', 'drag-refused');
   });
   document.addEventListener('dragover', (e) => {
     if (!carriesFiles(e)) return;
     e.preventDefault(); // otherwise the browser opens the file instead
-    e.dataTransfer.dropEffect = 'copy';
+    e.dataTransfer.dropEffect = document.body.classList.contains('drag-refused') ? 'none' : 'copy';
   });
   document.addEventListener('drop', (e) => {
     if (!carriesFiles(e)) return;
     e.preventDefault();
     depth = 0;
-    document.body.classList.remove('dragging');
+    document.body.classList.remove('dragging', 'drag-refused');
     uploadFiles([...e.dataTransfer.files]);
   });
   document.addEventListener('paste', (e) => {
     if (!info || e.target.closest?.('input, textarea')) return;
-    const files = [...(e.clipboardData?.files ?? [])].filter((f) => EXT[f.type]);
+    const files = [...(e.clipboardData?.files ?? [])];
     if (files.length === 0) return;
     e.preventDefault();
     uploadFiles(files);
@@ -188,7 +209,7 @@ export function initWorkbench({ plans, current, refresh, open }) {
         return li;
       })
       .each(function show(d) {
-        const v = describe(d, info?.maxUsd);
+        const v = describe(d, info?.maxUsd, drawings);
         const row = d3.select(this).attr('data-status', d.status);
         row.select('.job-name').text(d.name);
         row.select('.job-attempt').text(v.attempt);
@@ -225,8 +246,11 @@ export function initWorkbench({ plans, current, refresh, open }) {
 
   api.info().then((i) => {
     info = i;
+    drawings = new Set(i.formats.filter((f) => f.drawing).map((f) => f.id));
+    fileInput.accept = acceptAttr(i.formats);
     dropzone.hidden = false;
-    terms.textContent = `PNG, JPEG or WebP, up to ${Math.round(i.maxUploadBytes / 2 ** 20)} MB. `
+    terms.textContent = `${names(i.formats)}, up to ${Math.round(i.maxUploadBytes / 2 ** 20)} MB. `
+      + 'Drawings are turned into an image here first. '
       + `The image is sent to the Claude API (${i.model}); each plan costs up to $${i.maxUsd}.`;
     update();
   }).catch(() => {
