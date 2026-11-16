@@ -1,0 +1,738 @@
+// Package acceptance drives the built spaceweave binary end to end: a real
+// inbox folder, the real node validator, and a fake Messages API standing in
+// for Claude. The binary is built with coverage on, and its coverage lands
+// in SPACEWEAVE_COVERDIR for `make cover` to merge with the unit tests'.
+package acceptance
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"image"
+	"image/color"
+	"image/png"
+	"io"
+	"math"
+	"mime/multipart"
+	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"regexp"
+	"runtime"
+	"strconv"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/weaveplatform/spaceweave/internal/catalog"
+	"github.com/weaveplatform/spaceweave/internal/dxf/dxftest"
+	"github.com/weaveplatform/spaceweave/internal/fakeclaude"
+	"github.com/weaveplatform/spaceweave/internal/server"
+)
+
+var (
+	binary   string
+	repoRoot string
+	coverDir string
+)
+
+func TestMain(m *testing.M) {
+	os.Exit(run(m))
+}
+
+func run(m *testing.M) int {
+	wd, err := os.Getwd()
+	if err != nil {
+		panic(err)
+	}
+	repoRoot = filepath.Join(wd, "..", "..")
+	tmp, err := os.MkdirTemp("", "spaceweave-acceptance-")
+	if err != nil {
+		panic(err)
+	}
+	defer os.RemoveAll(tmp) //nolint:errcheck // temp dir
+	coverDir = os.Getenv("SPACEWEAVE_COVERDIR")
+	if coverDir == "" {
+		// The binary warns on every run without somewhere to write coverage.
+		coverDir = filepath.Join(tmp, "cover")
+		if err := os.Mkdir(coverDir, 0o750); err != nil {
+			panic(err)
+		}
+	}
+	binary = filepath.Join(tmp, "spaceweave")
+	if runtime.GOOS == "windows" {
+		binary += ".exe"
+	}
+	// atomic, because the unit tests run with -race and `go tool covdata`
+	// won't merge counters recorded in different modes.
+	build := exec.Command(
+		"go",
+		"build",
+		"-cover",
+		"-covermode=atomic",
+		"-coverpkg=github.com/weaveplatform/spaceweave/...",
+		"-o",
+		binary,
+		"./cmd/spaceweave",
+	)
+	build.Dir = repoRoot
+	build.Env = append(os.Environ(), "GOWORK=off")
+	if out, err := build.CombinedOutput(); err != nil {
+		fmt.Fprintf(os.Stderr, "build: %v\n%s", err, out)
+		return 1
+	}
+	return m.Run()
+}
+
+// lockedBuffer collects a running process's output for reading mid-run.
+type lockedBuffer struct {
+	mu sync.Mutex
+	b  bytes.Buffer
+}
+
+func (l *lockedBuffer) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.b.Write(p)
+}
+
+func (l *lockedBuffer) String() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.b.String()
+}
+
+type site struct {
+	t      *testing.T
+	dir    string
+	inbox  string
+	output string
+	env    []string
+	api    *fakeclaude.Server
+}
+
+func newSite(t *testing.T, script fakeclaude.Script) *site {
+	t.Helper()
+	if _, err := exec.LookPath("node"); err != nil {
+		t.Skip("node is needed for the plan validator")
+	}
+	dir := t.TempDir()
+	s := &site{
+		t:      t,
+		dir:    dir,
+		inbox:  filepath.Join(dir, "inbox"),
+		output: filepath.Join(dir, "generated"),
+	}
+	if err := os.MkdirAll(s.inbox, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	s.api = fakeclaude.New(script)
+	t.Cleanup(s.api.Close)
+	cfg := fmt.Sprintf(
+		"inbox: %s\noutput: %s\nvalidator: %s\nsettle: 100ms\nlimits:\n  maxTurns: 20\n  maxSubmits: 4\n  maxUsd: 5\n  timeout: 1m\n",
+		s.inbox,
+		s.output,
+		filepath.Join(repoRoot, "web", "floorplan-iso", "tools", "validate.mjs"),
+	)
+	if err := os.WriteFile(filepath.Join(dir, "spaceweave.yaml"), []byte(cfg), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s.env = append(os.Environ(),
+		"ANTHROPIC_BASE_URL="+s.api.URL, "ANTHROPIC_API_KEY=test-key", "GOCOVERDIR="+coverDir)
+	return s
+}
+
+func (s *site) command(args ...string) *exec.Cmd {
+	cmd := exec.Command(binary, args...) //nolint:gosec // the binary under test
+	cmd.Dir = s.dir                      // so spaceweave.yaml is the default config
+	cmd.Env = s.env
+	return cmd
+}
+
+func (s *site) run(args ...string) (string, string, int) {
+	s.t.Helper()
+	var stdout, stderr bytes.Buffer
+	cmd := s.command(args...)
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	err := cmd.Run()
+	code := 0
+	if err != nil {
+		exit, ok := err.(*exec.ExitError) //nolint:errorlint // Run returns it unwrapped
+		if !ok {
+			s.t.Fatal(err)
+		}
+		code = exit.ExitCode()
+	}
+	return stdout.String(), stderr.String(), code
+}
+
+func (s *site) plans() []catalog.Entry {
+	s.t.Helper()
+	out, errOut, code := s.run("plans", "list", "--json")
+	if code != 0 {
+		s.t.Fatalf("plans list: %d %s", code, errOut)
+	}
+	var ps []catalog.Entry
+	if err := json.Unmarshal([]byte(out), &ps); err != nil {
+		s.t.Fatal(err, out)
+	}
+	return ps
+}
+
+func (s *site) waitFor(
+	what string,
+	cond func([]catalog.Entry) bool,
+	log *lockedBuffer,
+) []catalog.Entry {
+	s.t.Helper()
+	deadline := time.Now().Add(30 * time.Second)
+	for {
+		var c catalog.Catalog
+		if b, err := os.ReadFile(
+			filepath.Join(s.output, "catalog.json"),
+		); err == nil && json.Unmarshal(b, &c) == nil &&
+			cond(c.Plans) {
+			return c.Plans
+		}
+		if time.Now().After(deadline) {
+			s.t.Fatalf("timed out waiting for %s; daemon log:\n%s", what, log)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
+// floorPlan draws a 10 m × 5 m room at 20 px/m with 4 px walls.
+func floorPlan(t *testing.T, path string, mark uint8) {
+	t.Helper()
+	img := image.NewGray(image.Rect(0, 0, 200, 100))
+	for y := range 100 {
+		for x := range 200 {
+			c := color.Gray{255}
+			if x < 4 || x >= 196 || y < 4 || y >= 96 {
+				c = color.Gray{0}
+			}
+			img.SetGray(x, y, c)
+		}
+	}
+	img.SetGray(100, 50, color.Gray{mark}) // makes otherwise identical plans distinct
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, buf.Bytes(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func roomTrace() map[string]any { return roomTraceAt(1) }
+
+// roomTraceAt is the studio drawn k times larger in pixels: a 10 × 5 m room
+// at 20k px per metre, for an image whose scale is fixed by its drawing.
+func roomTraceAt(k float64) map[string]any {
+	wall := func(id string, x0, y0, x1, y1 float64, openings ...any) map[string]any {
+		x0, y0, x1, y1 = x0*k, y0*k, x1*k, y1*k
+		w := map[string]any{
+			"id":   id,
+			"kind": "exterior",
+			"from": []float64{x0, y0},
+			"to":   []float64{x1, y1},
+		}
+		if len(openings) > 0 {
+			w["openings"] = openings
+		}
+		return w
+	}
+	return map[string]any{
+		"title": "Studio",
+		"calibration": map[string]any{
+			"pxPerMetre": []float64{20, 20},
+			"evidence":   "door leaf 18 px = 0.9 m",
+		},
+		"thickness": map[string]any{"exterior": 0.2, "interior": 0.1, "glass": 0.05},
+		"entrance":  []float64{2 * k, 50 * k},
+		"walls": []any{
+			wall("n", 2, 2, 198, 2, map[string]any{"a": 60 * k, "b": 120 * k, "kind": "window"}),
+			wall("s", 2, 98, 198, 98),
+			wall(
+				"w",
+				2,
+				2,
+				2,
+				98,
+				map[string]any{
+					"a":     41 * k,
+					"b":     59 * k,
+					"kind":  "door",
+					"swing": "E",
+					"hinge": "a",
+				},
+			),
+			wall("e", 198, 2, 198, 98),
+		},
+		"rooms": []any{
+			map[string]any{
+				"id":    "studio",
+				"name":  "Studio",
+				"zone":  "work",
+				"floor": "carpet",
+				"polygon": [][]float64{
+					{2 * k, 2 * k},
+					{198 * k, 2 * k},
+					{198 * k, 98 * k},
+					{2 * k, 98 * k},
+				},
+			},
+		},
+		"furniture": []any{
+			map[string]any{"type": "desk", "x": 100 * k, "y": 30 * k, "w": 1.6, "d": 0.8},
+			map[string]any{"type": "chair", "x": 100 * k, "y": 45 * k, "facing": 270},
+			map[string]any{"type": "plant", "x": 185 * k, "y": 85 * k},
+		},
+	}
+}
+
+var fixedScale = regexp.MustCompile(`([0-9.]+) px per metre on both axes`)
+
+// claude scripts a model that submits the trace and finishes, and records
+// the opening message of each run so tests can see reviewer feedback arrive.
+type claude struct {
+	mu       sync.Mutex
+	openings []string
+}
+
+func (c *claude) script(_ int, req fakeclaude.Request) fakeclaude.Reply {
+	use := func(name string, in any) fakeclaude.Reply {
+		return fakeclaude.Reply{
+			Content: []fakeclaude.Block{{Name: name, Input: in}}, StopReason: "tool_use",
+			Usage: fakeclaude.Usage{Input: 50000, Output: 5000, CacheRead: 100000},
+		}
+	}
+	if len(req.Messages) == 1 {
+		c.mu.Lock()
+		c.openings = append(c.openings, string(req.Messages[0]))
+		c.mu.Unlock()
+		// Like a real model, trace at the scale the opening states, when it
+		// states one.
+		k := 1.0
+		if m := fixedScale.FindStringSubmatch(string(req.Messages[0])); m != nil {
+			s, _ := strconv.ParseFloat(m[1], 64)
+			k = s / 20
+		}
+		return use("submit_trace", map[string]any{"trace": roomTraceAt(k)})
+	}
+	return use(
+		"finish",
+		map[string]any{
+			"confidence": 0.9,
+			"summary":    "A one-room studio",
+			"caveats":    []string{"Furniture is indicative"},
+		},
+	)
+}
+
+func (c *claude) opening(i int) string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if i >= len(c.openings) {
+		return ""
+	}
+	return c.openings[i]
+}
+
+func TestWatchApproveReject(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("stopping the daemon needs an interrupt signal")
+	}
+	model := &claude{}
+	s := newSite(t, model.script)
+	var log lockedBuffer
+	daemon := s.command("watch", "--workers", "2")
+	daemon.Stdout, daemon.Stderr = &log, &log
+	if err := daemon.Start(); err != nil {
+		t.Fatal(err)
+	}
+	exited := make(chan error, 1)
+	go func() { exited <- daemon.Wait() }()
+	stopped := false
+	defer func() {
+		if !stopped {
+			_ = daemon.Process.Kill()
+			<-exited
+		}
+	}()
+
+	floorPlan(t, filepath.Join(s.inbox, "Studio Flat.png"), 1)
+
+	ps := s.waitFor("a draft", func(ps []catalog.Entry) bool {
+		return len(ps) == 1 && ps[0].Status == catalog.Draft
+	}, &log)
+	id := ps[0].ID
+	dir := filepath.Join(s.output, id)
+
+	// The published plan passes the site's own validator.
+	out, err := exec.Command("node", filepath.Join(repoRoot, "web", "floorplan-iso", "tools", "validate.mjs"),
+		filepath.Join(dir, "plan.json")).
+		Output()
+	if err != nil || strings.TrimSpace(string(out)) != `{"ok":true,"errors":[]}` {
+		t.Fatalf("validate: %v %s", err, out)
+	}
+	var p struct {
+		Source struct {
+			URL    string `json:"url"`
+			Credit string `json:"credit"`
+			Title  string `json:"title"`
+		} `json:"SOURCE"` //nolint:tagliatelle // the site's own key
+		Width float64 `json:"WIDTH"` //nolint:tagliatelle // the site's own key
+	}
+	b, _ := os.ReadFile(filepath.Join(dir, "plan.json"))
+	if err := json.Unmarshal(b, &p); err != nil {
+		t.Fatal(err)
+	}
+	if p.Source.URL != "generated/"+id+"/source.png" ||
+		p.Source.Credit != "Uploaded Studio Flat.png" ||
+		p.Width != 9.8 {
+		t.Fatalf("plan.json: %s", b)
+	}
+	var report map[string]any
+	b, _ = os.ReadFile(filepath.Join(dir, "report.json"))
+	if err := json.Unmarshal(
+		b,
+		&report,
+	); err != nil || report["status"] != "draft" ||
+		report["confidence"] != 0.9 {
+		t.Fatalf("report.json: %s", b)
+	}
+
+	// Approve, then send back with a note: the daemon picks the re-queued
+	// plan up on its own and the note reaches the model.
+	if _, errOut, code := s.run("plans", "approve", id); code != 0 {
+		t.Fatal(errOut)
+	}
+	if got := s.plans()[0].Status; got != catalog.Approved {
+		t.Fatal(got)
+	}
+	if _, errOut, code := s.run(
+		"plans",
+		"reject",
+		id,
+		"--note",
+		"The door is on the wrong wall",
+	); code != 0 {
+		t.Fatal(errOut)
+	}
+	s.waitFor("the second attempt", func(ps []catalog.Entry) bool {
+		return ps[0].Status == catalog.Draft && ps[0].Attempts == 2
+	}, &log)
+	second := model.opening(1)
+	if !strings.Contains(second, "The door is on the wrong wall") ||
+		!strings.Contains(second, `\"title\":\"Studio\"`) {
+		t.Fatalf("feedback didn't reach the model: %.300s", second)
+	}
+
+	// The same image again is recognised; a different one is a new plan.
+	floorPlan(t, filepath.Join(s.inbox, "copy of studio.png"), 1)
+	floorPlan(t, filepath.Join(s.inbox, "annex.png"), 2)
+	s.waitFor("the annex", func(ps []catalog.Entry) bool {
+		return len(ps) == 2 && ps[1].Status == catalog.Draft
+	}, &log)
+
+	if err := daemon.Process.Signal(os.Interrupt); err != nil {
+		t.Fatal(err)
+	}
+	stopped = true
+	select {
+	case err := <-exited:
+		if err != nil {
+			t.Fatalf("daemon exit: %v\n%s", err, &log)
+		}
+	case <-time.After(15 * time.Second):
+		t.Fatal("daemon didn't stop on interrupt")
+	}
+	for _, want := range []string{"already seen", "draft ready", "stopped"} {
+		if !strings.Contains(log.String(), want) {
+			t.Errorf("daemon log lacks %q:\n%s", want, &log)
+		}
+	}
+	if len(s.plans()) != 2 {
+		t.Fatal("the copy was traced again")
+	}
+}
+
+func TestOneOffTraceAndFailure(t *testing.T) {
+	refuse := func(int, fakeclaude.Request) fakeclaude.Reply {
+		return fakeclaude.Reply{
+			StopReason: "refusal",
+			Category:   "cyber",
+			Usage:      fakeclaude.Usage{Input: 1000},
+		}
+	}
+	s := newSite(t, refuse)
+	img := filepath.Join(s.dir, "plan.png")
+	floorPlan(t, img, 3)
+	out, errOut, code := s.run("trace", img)
+	if code != 1 || !strings.Contains(errOut, "trace failed") ||
+		!strings.Contains(errOut, "the model declined (cyber)") {
+		t.Fatalf("%d\n%s\n%s", code, out, errOut)
+	}
+	ps := s.plans()
+	if ps[0].Status != catalog.Failed {
+		t.Fatalf("%+v", ps)
+	}
+	if _, errOut, code := s.run("plans", "retry", ps[0].ID); code != 0 {
+		t.Fatal(errOut)
+	}
+	if _, _, code := s.run("plans", "approve", ps[0].ID); code != 1 {
+		t.Fatal("a queued plan can't be approved")
+	}
+	if _, errOut, code := s.run("trace"); code != 2 || !strings.Contains(errOut, "accepts 1 arg") {
+		t.Fatalf("%d %s", code, errOut)
+	}
+}
+
+// TestServeUploadAndReview is the page's path: upload an image over HTTP,
+// watch it become a draft, open it, and approve or send it back, all against
+// the real site folder.
+func TestServeUploadAndReview(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("stopping the server needs an interrupt signal")
+	}
+	model := &claude{}
+	s := newSite(t, model.script)
+	var log lockedBuffer
+	srv := s.command(
+		"serve",
+		"--addr",
+		"127.0.0.1:0",
+		"--site",
+		filepath.Join(repoRoot, "web", "floorplan-iso"),
+	)
+	srv.Stdout, srv.Stderr = &log, &log
+	if err := srv.Start(); err != nil {
+		t.Fatal(err)
+	}
+	exited := make(chan error, 1)
+	go func() { exited <- srv.Wait() }()
+	stopped := false
+	defer func() {
+		if !stopped {
+			_ = srv.Process.Kill()
+			<-exited
+		}
+	}()
+	var base string
+	for deadline := time.Now().Add(15 * time.Second); base == ""; {
+		if _, rest, ok := strings.Cut(log.String(), "msg=serving url="); ok {
+			base = strings.TrimSuffix(strings.Fields(rest)[0], "/")
+		} else if time.Now().After(deadline) {
+			t.Fatalf("serve didn't start:\n%s", &log)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	get := func(path string) (int, string) {
+		t.Helper()
+		res, err := http.Get(base + path) //nolint:noctx // test
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer res.Body.Close() //nolint:errcheck // test
+		b, _ := io.ReadAll(res.Body)
+		return res.StatusCode, string(b)
+	}
+	post := func(path, contentType string, body io.Reader, header bool) (int, string) {
+		t.Helper()
+		req, _ := http.NewRequestWithContext(context.Background(), http.MethodPost, base+path, body)
+		req.Header.Set("Content-Type", contentType)
+		if header {
+			req.Header.Set(server.RequestHeader, "1")
+		}
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer res.Body.Close() //nolint:errcheck // test
+		b, _ := io.ReadAll(res.Body)
+		return res.StatusCode, string(b)
+	}
+
+	if code, page := get("/"); code != 200 || !strings.Contains(page, `id="dropzone"`) {
+		t.Fatalf("index: %d", code)
+	}
+	if code, js := get("/js/workbench.js"); code != 200 || !strings.Contains(js, "initWorkbench") {
+		t.Fatalf("modules: %d", code)
+	}
+	if code, info := get("/api/info"); code != 200 || !strings.Contains(info, `"maxUsd":5`) {
+		t.Fatalf("info: %d %s", code, info)
+	}
+
+	img := filepath.Join(s.dir, "Upload Studio.png")
+	floorPlan(t, img, 4)
+	data, _ := os.ReadFile(img)
+	upload := func(header bool) (int, string) {
+		var body bytes.Buffer
+		mw := multipart.NewWriter(&body)
+		fw, _ := mw.CreateFormFile("image", "Upload Studio.png")
+		_, _ = fw.Write(data)
+		_ = mw.Close()
+		return post("/api/plans", mw.FormDataContentType(), &body, header)
+	}
+	if code, _ := upload(false); code != http.StatusForbidden {
+		t.Fatalf("an upload without the header must be refused: %d", code)
+	}
+	if code, body := upload(true); code != http.StatusCreated {
+		t.Fatalf("upload: %d %s", code, body)
+	}
+	ps := s.waitFor("a draft", func(ps []catalog.Entry) bool {
+		return len(ps) == 1 && ps[0].Status == catalog.Draft
+	}, &log)
+	id := ps[0].ID
+	if code, catalogJSON := get(
+		"/generated/catalog.json",
+	); code != 200 ||
+		!strings.Contains(catalogJSON, id) {
+		t.Fatalf("catalog: %d", code)
+	}
+	if code, _ := get("/generated/" + id + "/plan.json"); code != 200 {
+		t.Fatalf("plan.json: %d", code)
+	}
+	if code, body := upload(true); code != 200 || !strings.Contains(body, `"duplicate":true`) {
+		t.Fatalf("the same image again: %d %s", code, body)
+	}
+
+	if code, body := post(
+		"/api/plans/"+id+"/approve",
+		"application/json",
+		nil,
+		true,
+	); code != 200 ||
+		!strings.Contains(body, `"status":"approved"`) {
+		t.Fatalf("approve: %d %s", code, body)
+	}
+	if code, body := post("/api/plans/"+id+"/reject", "application/json",
+		strings.NewReader(`{"note":"Put the door on the east wall"}`), true); code != 200 {
+		t.Fatalf("reject: %d %s", code, body)
+	}
+	s.waitFor("the second attempt", func(ps []catalog.Entry) bool {
+		return ps[0].Status == catalog.Draft && ps[0].Attempts == 2
+	}, &log)
+	if !strings.Contains(model.opening(1), "Put the door on the east wall") {
+		t.Fatal("the note from the page didn't reach the model")
+	}
+
+	// A drawing is converted, then traced at the scale its units give.
+	send := func(name string, data []byte) (int, string) {
+		var body bytes.Buffer
+		mw := multipart.NewWriter(&body)
+		fw, _ := mw.CreateFormFile("image", name)
+		_, _ = fw.Write(data)
+		_ = mw.Close()
+		return post("/api/plans", mw.FormDataContentType(), &body, true)
+	}
+	if code, body := send(
+		"Scan.pdf",
+		[]byte("%PDF-1.7\n"),
+	); code != http.StatusUnsupportedMediaType ||
+		!strings.Contains(body, "PDF files aren't supported") {
+		t.Fatalf("pdf: %d %s", code, body)
+	}
+	if code, body := send("Office.dxf", dxftest.Plan().Bytes()); code != http.StatusCreated {
+		t.Fatalf("dxf: %d %s", code, body)
+	}
+	ps = s.waitFor("the drawing's draft", func(ps []catalog.Entry) bool {
+		return len(ps) == 2 && ps[1].Status == catalog.Draft
+	}, &log)
+	drawing := ps[1]
+	if drawing.Format != "dxf" || !drawing.Scale.Exact() || drawing.Source != "source.png" {
+		t.Fatalf("%+v", drawing)
+	}
+	if !strings.Contains(model.opening(2), "states its units") {
+		t.Fatal("the model wasn't told the drawing's scale")
+	}
+	var traced struct {
+		Source struct {
+			PxPerMetre float64 `json:"pxPerMetre"`
+		} `json:"SOURCE"`
+	}
+	code, planJSON := get("/generated/" + drawing.ID + "/plan.json")
+	if err := json.Unmarshal([]byte(planJSON), &traced); code != 200 || err != nil {
+		t.Fatalf("plan.json: %d %v", code, err)
+	}
+	// The fake model submitted 20 px/m; the drawing's own scale wins.
+	if math.Abs(traced.Source.PxPerMetre-drawing.Scale.PxPerMetre) > 1e-9 {
+		t.Fatalf(
+			"SOURCE.pxPerMetre %v, drawing says %v",
+			traced.Source.PxPerMetre,
+			drawing.Scale.PxPerMetre,
+		)
+	}
+	for _, f := range []string{"drawing.svg", "source.png", "original.dxf"} {
+		if code, _ := get("/generated/" + drawing.ID + "/" + f); code != 200 {
+			t.Fatalf("%s: %d", f, code)
+		}
+	}
+
+	if err := srv.Process.Signal(os.Interrupt); err != nil {
+		t.Fatal(err)
+	}
+	stopped = true
+	select {
+	case err := <-exited:
+		if err != nil {
+			t.Fatalf("serve exit: %v\n%s", err, &log)
+		}
+	case <-time.After(15 * time.Second):
+		t.Fatal("serve didn't stop on interrupt")
+	}
+}
+
+// TestLive traces one image with the real API. It costs money, so it runs
+// only with SPACEWEAVE_LIVE=1 and an image in SPACEWEAVE_LIVE_IMAGE.
+func TestLive(t *testing.T) {
+	if os.Getenv("SPACEWEAVE_LIVE") != "1" {
+		t.Skip("set SPACEWEAVE_LIVE=1 (and ANTHROPIC_API_KEY) to trace a real image")
+	}
+	img := os.Getenv("SPACEWEAVE_LIVE_IMAGE")
+	if img == "" {
+		t.Fatal("set SPACEWEAVE_LIVE_IMAGE to a floor-plan image")
+	}
+	s := newSite(
+		t,
+		func(int, fakeclaude.Request) fakeclaude.Reply { return fakeclaude.Reply{Status: 500} },
+	)
+	env := s.env[:0:0]
+	for _, kv := range s.env {
+		if !strings.HasPrefix(kv, "ANTHROPIC_BASE_URL=") &&
+			!strings.HasPrefix(kv, "ANTHROPIC_API_KEY=test") {
+			env = append(env, kv)
+		}
+	}
+	s.env = env
+	ctx, cancel := context.WithTimeout(context.Background(), time.Hour)
+	defer cancel()
+	cmd := exec.CommandContext(
+		ctx,
+		binary,
+		"trace",
+		img,
+		"--max-usd",
+		"5",
+	) //nolint:gosec // the binary under test
+	cmd.Dir, cmd.Env = s.dir, s.env
+	out, err := cmd.CombinedOutput()
+	t.Logf("%s", out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ps := s.plans()
+	if ps[0].Status != catalog.Draft {
+		t.Fatalf("%+v", ps[0])
+	}
+	t.Logf(
+		"confidence %.2f, cost $%.2f, files in %s",
+		*ps[0].Confidence,
+		ps[0].CostUSD,
+		filepath.Join(s.output, ps[0].ID),
+	)
+}

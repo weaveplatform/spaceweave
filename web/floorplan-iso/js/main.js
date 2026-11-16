@@ -1,5 +1,7 @@
 import { PRESETS } from './projection.js';
-import { PLANS, DEFAULT_PLAN } from './plans/index.js';
+import { PLANS, DEFAULT_PLAN, LISTED, READY, loadCatalog } from './plans/index.js';
+import { busy } from './pipeline.js';
+import { initWorkbench } from './workbench.js';
 import { createScene } from './render.js';
 import { SKINS, DEFAULT_SKIN } from './skins.js';
 
@@ -184,18 +186,98 @@ window.addEventListener('resize', () => scene?.fit(state));
 // ---- plan picker
 const planBlurb = document.querySelector('#plan-blurb');
 const sourceLink = document.querySelector('#source-link');
+const traceMethod = document.querySelector('#trace-method');
+const HAND_TRACED = traceMethod.textContent;
 const planName = document.querySelector('#plan-name');
-const planPicker = d3.select('#plans').selectAll('label').data(PLANS).join('label');
-planPicker.append('input').attr('type', 'radio').attr('name', 'plan').attr('value', (p) => p.id);
-planPicker.append('span').text((p) => p.name);
-planPicker.attr('title', (p) => p.blurb);
+
+// Built-in plans plus the tracer's catalogue, which is re-read while the page
+// is open so a newly traced plan appears without a reload.
+let plans = PLANS;
+let current = null;
+let workbench = null;
+
+function renderPicker() {
+  d3.select('#plans').selectAll('label')
+    .data(plans.filter((p) => !p.generated || LISTED.has(p.status)), (p) => p.id)
+    .join((enter) => {
+      const label = enter.append('label');
+      label.append('input').attr('type', 'radio').attr('name', 'plan').attr('value', (p) => p.id)
+        .on('change', (e, p) => loadPlan(p.id));
+      label.append('span').attr('class', 'plan-name');
+      label.append('span').attr('class', 'badge');
+      return label;
+    })
+    .attr('title', (p) => p.blurb)
+    .classed('generated', (p) => p.generated)
+    .classed('pending', (p) => p.generated && !READY.has(p.status))
+    .call((label) => {
+      label.select('input')
+        .property('checked', (p) => p.id === current)
+        .property('disabled', (p) => p.generated && !READY.has(p.status));
+      label.select('.plan-name').text((p) => p.name);
+      label.select('.badge')
+        .text((p) => ({ draft: 'Draft', queued: 'Queued', converting: 'Converting…', tracing: 'Tracing…' })[p.status] ?? '')
+        .attr('hidden', (p) => (['draft', 'queued', 'converting', 'tracing'].includes(p.status) ? null : ''));
+    });
+}
+
+// A generated plan's blurb carries its review status and links to the
+// tracer's evidence, so a draft can be judged without leaving the page.
+function renderBlurb(entry) {
+  const blurb = d3.select(planBlurb).text(entry.blurb);
+  if (!entry.generated) return;
+  const facts = [{
+    draft: 'Draft, not yet reviewed',
+    queued: 'Sent back; waiting to be traced again',
+    converting: 'Being converted',
+    tracing: 'Being traced again',
+  }[entry.status] ?? 'Auto-traced'];
+  if (Number.isFinite(entry.confidence)) facts.push(`confidence ${Math.round(entry.confidence * 100)}%`);
+  if (entry.scale?.pxPerMetre > 0 && !entry.scale.assumed) facts.push('scale from the drawing');
+  blurb.append('br');
+  blurb.append('span').text(`${facts.join(' · ')} · `);
+  const links = [['overlay', 'overlay.png'], ['report', 'report.json']];
+  // A drawing keeps its original, and its SVG rendering in colour.
+  if (entry.drawing) links.push(['drawing', entry.drawing]);
+  if (entry.upload && entry.upload !== entry.source) links.push([`original ${String(entry.format).toUpperCase()}`, entry.upload]);
+  links.forEach(([label, file], i) => {
+    if (i) blurb.append('span').text(' · ');
+    blurb.append('a').attr('href', `${entry.dir}${file}`).attr('target', '_blank').text(label);
+  });
+}
+
+// The tracer takes minutes per plan, so a 10 s poll is plenty while it's
+// idle; while it has work, poll faster so the pipeline's turn and cost
+// counters move.
+let poll = 0;
+function schedule() {
+  clearTimeout(poll);
+  poll = setTimeout(() => { if (!document.hidden) refreshCatalog(); else schedule(); }, busy(plans) ? 2_000 : 10_000);
+}
+
+async function refreshCatalog() {
+  try {
+    plans = [...PLANS, ...(await loadCatalog())];
+  } catch (err) {
+    console.warn('plan catalogue unavailable:', err);
+    schedule();
+    return;
+  }
+  renderPicker();
+  const entry = plans.find((p) => p.id === current);
+  if (entry) renderBlurb(entry);
+  workbench?.update();
+  schedule();
+}
 
 let loading = 0;
 async function loadPlan(id) {
-  const entry = PLANS.find((p) => p.id === id) ?? PLANS[0];
+  const entry = plans.find((p) => p.id === id && (!p.generated || READY.has(p.status))) ?? PLANS[0];
   const ticket = ++loading;
-  planPicker.select('input').property('checked', (p) => p.id === entry.id);
-  planBlurb.textContent = entry.blurb;
+  current = entry.id;
+  renderPicker();
+  renderBlurb(entry);
+  workbench?.update();
   let plan;
   try {
     plan = await entry.load();
@@ -217,6 +299,9 @@ async function loadPlan(id) {
   });
   sourceLink.href = plan.SOURCE.url;
   sourceLink.textContent = plan.SOURCE.credit;
+  traceMethod.textContent = entry.generated
+    ? 'were traced into metres by a Claude agent (the spaceweave worker), which checked its work against an overlay and the site\'s own validator'
+    : HAND_TRACED;
   planName.textContent = plan.SOURCE.title;
   document.querySelector('#stage').setAttribute('aria-label', `Isometric model of the ${plan.SOURCE.title} floor plan`);
   remember('plan', entry.id);
@@ -225,10 +310,16 @@ async function loadPlan(id) {
   scene.fit(state);
   build();
 }
-planPicker.select('input').on('change', (e, p) => loadPlan(p.id));
-
 syncOutputs();
-loadPlan(remembered('plan', (id) => PLANS.some((p) => p.id === id), DEFAULT_PLAN));
+workbench = initWorkbench({
+  plans: () => plans,
+  current: () => current,
+  refresh: refreshCatalog,
+  open: (id) => loadPlan(id),
+});
+await refreshCatalog();
+loadPlan(remembered('plan', (id) => plans.some((p) => p.id === id), DEFAULT_PLAN));
+document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshCatalog(); });
 
 // Exposed for poking at the scene from the console.
 globalThis.floorplan = {

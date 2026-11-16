@@ -1,4 +1,18 @@
-# weaveplatform-template
+# spaceweave
+
+Turns floor-plan images into interactive isometric models. The microsite is in
+[`web/floorplan-iso/`](web/floorplan-iso/README.md). `go run ./cmd/spaceweave serve`
+serves it with a drop zone: upload a plan image, or a DXF or SVG drawing, and
+Claude traces it into the site as a draft for you to approve or send back.
+
+Drawings are rendered in Go by `internal/convert` (with `internal/dxf`,
+`internal/svgdraw`, `internal/cad` and `internal/vector`). No external
+converter is used. [`NOTICE`](NOTICE) lists the third-party material that
+ships in the binary, and what was consulted while writing the readers.
+
+The rest of this README comes from the weaveplatform template.
+
+## weaveplatform-template
 
 The starting point for weaveplatform Go repositories: a blocking quality gate
 (lint, unit tests on Linux, macOS and Windows, govulncheck, cross-compile, and a
@@ -49,8 +63,9 @@ starts from a current snapshot and updates again within minutes of creation.
 
 | Target | What |
 |---|---|
-| `make gate` | Everything CI runs: vet, lint, test, cover, vuln, build |
+| `make gate` | Everything CI runs: vet, lint, test, acceptance, cover, vuln, build |
 | `make test` | Unit tests with `-race -shuffle=on`, coverage to `cover/unit` |
+| `make acceptance` | Builds `spaceweave` with coverage and drives it against a fake Claude API and the real node validator; coverage to `cover/acceptance` |
 | `make cover` | Merges every `cover/*` directory and enforces `.testcoverage.yml` |
 | `make lint` / `make fmt` | golangci-lint with `.golangci.yml` |
 | `make build` | Cross-compiles every `cmd/*` binary for six platforms, CGO disabled |
