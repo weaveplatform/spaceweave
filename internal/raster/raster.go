@@ -47,8 +47,14 @@ func Decode(r io.Reader) (*Source, error) {
 	if err != nil {
 		return nil, fmt.Errorf("decode plan image: %w", err)
 	}
+	return NewSource(img), nil
+}
+
+// NewSource prepares an image already in memory, such as one rendered for a
+// test, exactly as Decode would.
+func NewSource(img image.Image) *Source {
 	gray := toGray(img)
-	return &Source{Image: img, Gray: gray, Threshold: otsu(gray)}, nil
+	return &Source{Image: img, Gray: gray, Threshold: otsu(gray)}
 }
 
 // Size is the image's width and height in pixels.

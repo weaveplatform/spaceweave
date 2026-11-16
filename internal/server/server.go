@@ -49,10 +49,14 @@ const (
 
 // Info is what the page shows about the tracer before you upload, and the
 // formats its pre-upload check accepts.
+//
+// Model and MaxUSD are only for the Claude tracer: a page that saw them
+// would tell people their plans go to the API and cost money.
 type Info struct {
 	Version        string           `json:"version"`
-	Model          string           `json:"model"`
-	MaxUSD         float64          `json:"maxUsd"`
+	Tracer         string           `json:"tracer"`
+	Model          string           `json:"model,omitempty"`
+	MaxUSD         float64          `json:"maxUsd,omitempty"`
 	MaxUploadBytes int64            `json:"maxUploadBytes"`
 	Formats        []convert.Format `json:"formats"`
 }

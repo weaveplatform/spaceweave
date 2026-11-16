@@ -138,6 +138,8 @@ func newEnv(t *testing.T, script fakeclaude.Script) *env {
 		vars: map[string]string{
 			"SPACEWEAVE_INBOX":  filepath.Join(dir, "inbox"),
 			"SPACEWEAVE_OUTPUT": filepath.Join(dir, "generated"),
+			// These tests drive the Claude tracer through the fake API.
+			"SPACEWEAVE_TRACER": "claude",
 		},
 		stdout: &bytes.Buffer{}, stderr: &syncBuffer{},
 	}

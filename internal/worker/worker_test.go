@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/weaveplatform/spaceweave/internal/catalog"
+	"github.com/weaveplatform/spaceweave/internal/config"
 	"github.com/weaveplatform/spaceweave/internal/plan"
 	"github.com/weaveplatform/spaceweave/internal/trace"
 )
@@ -77,7 +78,7 @@ func TestDraftIsPublished(t *testing.T) {
 	var got trace.Job
 	var opts trace.Options
 	var midway *catalog.Progress
-	w := &Worker{Store: store, Options: trace.Options{Model: "claude-opus-5-5"},
+	w := &Worker{Store: store, Tracer: config.TracerClaude, Options: trace.Options{Model: "claude-opus-5-5"},
 		Trace: func(_ context.Context, o trace.Options, j trace.Job) (*trace.Result, error) {
 			got, opts = j, o
 			_, _ = o.Transcript.Write([]byte("{}\n"))
@@ -238,7 +239,7 @@ func TestFailures(t *testing.T) {
 			if tr == nil {
 				tr = func(context.Context, trace.Options, trace.Job) (*trace.Result, error) { return good(), nil }
 			}
-			w := &Worker{Store: store, Trace: tr}
+			w := &Worker{Store: store, Trace: tr, Tracer: config.TracerClaude}
 			if err := w.Process(context.Background(), claim(t, store)); err != nil {
 				t.Fatal("a failed trace is recorded, not returned:", err)
 			}

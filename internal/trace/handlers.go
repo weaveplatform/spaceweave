@@ -305,39 +305,29 @@ func (r *run) submit(ctx context.Context, raw []byte) (content, error) {
 		return nil, err
 	}
 	r.result.Submits++
-	pinned := r.pin(&in.Trace)
-	s := &submission{trace: &in.Trace}
-	s.problems = plan.Check(s.trace)
-	s.overlay = raster.Overlay(r.job.Image.Image, plan.Shapes(s.trace))
+	f, err := Finalize(ctx, r.job, &in.Trace, r.opts.Validator)
+	if err != nil {
+		// The model can't fix a broken validator or encoder; stop rather
+		// than let it spend the budget resubmitting.
+		r.fatal = err
+		return nil, err
+	}
+	s := &submission{
+		trace:    f.Trace,
+		plan:     f.Plan,
+		planJSON: f.PlanJSON,
+		overlay:  f.Overlay,
+		problems: f.Problems,
+	}
 	r.last = s
 
 	var b strings.Builder
 	fmt.Fprintf(&b, "Submission %d of %d. ", r.result.Submits, r.opts.Limits.MaxSubmits)
-	if pinned != "" {
-		b.WriteString(pinned + " ")
+	if f.Pinned != "" {
+		b.WriteString(f.Pinned + " ")
 	}
-	if len(s.problems) == 0 {
-		p, err := plan.Convert(s.trace, r.job.Meta)
-		if err != nil {
-			s.problems = []string{err.Error()}
-		} else {
-			s.plan = p
-			s.planJSON, err = json.Marshal(p)
-			if err != nil {
-				return nil, fmt.Errorf("encode plan: %w", err)
-			}
-			ctx, cancel := context.WithTimeout(ctx, validateTimeout)
-			defer cancel()
-			verdict, err := r.opts.Validator.Validate(ctx, s.planJSON)
-			if err != nil {
-				// The model can't fix a broken validator; stop rather than let
-				// it spend the budget resubmitting.
-				r.fatal = fmt.Errorf("validate plan: %w", err)
-				return nil, r.fatal
-			}
-			s.problems = verdict
-			fmt.Fprintf(&b, "In metres: %s. ", plan.Describe(p))
-		}
+	if f.Plan != nil {
+		fmt.Fprintf(&b, "In metres: %s. ", plan.Describe(f.Plan))
 	}
 	if s.valid() {
 		r.lastGood = s
@@ -358,37 +348,6 @@ func (r *run) submit(ctx context.Context, raw []byte) (content, error) {
 		return nil, fmt.Errorf("encode overlay: %w", err)
 	}
 	return content{text(b.String()), pngContent(png)}, nil
-}
-
-// pinTolerance is how far a submitted scale may differ from a drawing's
-// before the model is told it was replaced.
-const pinTolerance = 0.01
-
-// pin fixes the trace's scale to the drawing's when the drawing states its
-// units. The model is told so when its own value was off, so it isn't left
-// wondering why the overlay moved.
-func (r *run) pin(t *plan.Trace) string {
-	d := r.job.Drawing
-	if !d.exact() {
-		return ""
-	}
-	was := t.Calibration.PxPerMetre
-	t.Calibration.PxPerMetre = [2]float64{d.PxPerMetre, d.PxPerMetre}
-	if !strings.Contains(strings.ToLower(t.Calibration.Evidence), "drawing's units") {
-		t.Calibration.Evidence = strings.TrimSpace(
-			"From the drawing's units. " + t.Calibration.Evidence,
-		)
-	}
-	for _, v := range was {
-		if math.Abs(v-d.PxPerMetre) > pinTolerance*d.PxPerMetre {
-			return fmt.Sprintf(
-				"calibration.pxPerMetre was %v; it is fixed to the drawing's %.4f.",
-				was,
-				d.PxPerMetre,
-			)
-		}
-	}
-	return ""
 }
 
 func (r *run) finishTool(raw []byte) (content, error) {

@@ -50,6 +50,10 @@ acceptance:
 	@rm -rf $(COVER_DIR)/acceptance && mkdir -p $(COVER_DIR)/acceptance
 	SPACEWEAVE_COVERDIR=$(CURDIR)/$(COVER_DIR)/acceptance $(GO) test -count=1 ./test/acceptance/...
 
+## eval: print the automatic tracer's accuracy on plan images drawn from the hand traces
+eval:
+	$(GO) test -count=1 -run 'Accuracy' -v ./internal/autotrace | grep -v '^=== RUN'
+
 ## cover: merge every cover/* directory and enforce .testcoverage.yml (>=95% total, >=90% per package)
 cover:
 	@dirs=$$(find $(COVER_DIR) -mindepth 1 -maxdepth 1 -type d ! -name '.merged' | paste -sd, -); \
@@ -80,4 +84,4 @@ build:
 ## gate: everything CI runs, in order
 gate: vet lint test acceptance cover vuln build
 
-.PHONY: help init fmt lint vet test acceptance cover vuln build gate
+.PHONY: help init fmt lint vet test acceptance eval cover vuln build gate

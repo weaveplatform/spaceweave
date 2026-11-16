@@ -223,3 +223,78 @@ func TestPlanRoundTrips(t *testing.T) {
 		)
 	}
 }
+
+// count tallies a drawing's model-space entities by type, expanding
+// nothing.
+func count(t *testing.T, d *Doc) (*cad.Document, map[string]int) {
+	t.Helper()
+	doc, err := dxf.Read(bytes.NewReader(d.Bytes()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := dxf.Read(bytes.NewReader(d.Binary()))
+	if err != nil || !reflect.DeepEqual(doc, b) {
+		t.Fatalf("binary reads differently (%v)", err)
+	}
+	n := map[string]int{}
+	for _, e := range doc.Model {
+		n[strings.TrimPrefix(reflect.TypeOf(e).String(), "*cad.")]++
+	}
+	return doc, n
+}
+
+func TestOffice(t *testing.T) {
+	doc, n := count(t, Office(4))
+	want := map[string]int{"Line": 32, "Hatch": 1, "Insert": 21, "MText": 2, "Text": 1, "Dimension": 1}
+	if !reflect.DeepEqual(n, want) {
+		t.Errorf("Office model %v, want %v", n, want)
+	}
+	if doc.Units != cad.Millimeters || len(doc.Blocks) != 14 {
+		t.Errorf("units %v, %d blocks", doc.Units, len(doc.Blocks))
+	}
+	// The entrance door carries a tag, the room tag a name.
+	var tags []string
+	for _, e := range doc.Model {
+		if in, ok := e.(*cad.Insert); ok {
+			for _, a := range in.Attribs {
+				tags = append(tags, a.Content)
+			}
+		}
+	}
+	if !reflect.DeepEqual(tags, []string{"D01", "Kitchen"}) {
+		t.Errorf("attributes %q", tags)
+	}
+	if doc, _ := count(t, Office(-1)); doc.Units != cad.Unitless {
+		t.Errorf("Office(-1) units %v", doc.Units)
+	}
+	if len(OfficeRooms) != 4 {
+		t.Errorf("OfficeRooms %v", OfficeRooms)
+	}
+}
+
+func TestUnlayeredAndGrid(t *testing.T) {
+	doc, n := count(t, Unlayered(4))
+	if n["Line"] != 12 || n["Insert"] != 1 || n["Text"] != 2 || doc.Blocks["*U3"] == nil {
+		t.Errorf("Unlayered model %v", n)
+	}
+	_, n = count(t, Grid(2, 3))
+	// Faces: 4 rows of 2 faces broken at 1 crossing and, in 3 rows, 2
+	// doors; 3 columns of 2 faces broken at 2 crossings.
+	if n["Line"] != 3*2*(2+2)+2*2+3*2*3 || n["Insert"] != 6 || n["Text"] != 6 {
+		t.Errorf("Grid model %v", n)
+	}
+}
+
+func TestEntityHelpers(t *testing.T) {
+	if got := Arc("L", 1, 2, 3, 0, 90); !reflect.DeepEqual(got, E("ARC", 8, "L", 10, 1.0, 20, 2.0, 40, 3.0, 50, 0.0, 51, 90.0)) {
+		t.Errorf("Arc = %+v", got)
+	}
+	if got := Insert("L", "B", 1, 2, 45, 41, -1.0); !reflect.DeepEqual(got,
+		E("INSERT", 8, "L", 2, "B", 10, 1.0, 20, 2.0, 50, 45.0, 41, -1.0)) {
+		t.Errorf("Insert = %+v", got)
+	}
+	if got := Text("L", 1, 2, 0.5, "hi", 72, 1); !reflect.DeepEqual(got,
+		E("TEXT", 8, "L", 10, 1.0, 20, 2.0, 40, 0.5, 1, "hi", 72, 1)) {
+		t.Errorf("Text = %+v", got)
+	}
+}

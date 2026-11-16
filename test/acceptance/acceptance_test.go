@@ -114,7 +114,32 @@ type site struct {
 	api    *fakeclaude.Server
 }
 
+// newSite is a site traced by the Claude tracer, against the fake API.
 func newSite(t *testing.T, script fakeclaude.Script) *site {
+	t.Helper()
+	s := newSiteWith(t, "claude")
+	s.api = fakeclaude.New(script)
+	t.Cleanup(s.api.Close)
+	s.env = append(s.env, "ANTHROPIC_BASE_URL="+s.api.URL, "ANTHROPIC_API_KEY=test-key")
+	return s
+}
+
+// newAutoSite is a site traced automatically, with no API key anywhere in
+// its environment: the proof that the default needs none.
+func newAutoSite(t *testing.T) *site {
+	t.Helper()
+	s := newSiteWith(t, "auto")
+	env := s.env[:0:0]
+	for _, kv := range s.env {
+		if !strings.HasPrefix(kv, "ANTHROPIC_") {
+			env = append(env, kv)
+		}
+	}
+	s.env = env
+	return s
+}
+
+func newSiteWith(t *testing.T, tracer string) *site {
 	t.Helper()
 	if _, err := exec.LookPath("node"); err != nil {
 		t.Skip("node is needed for the plan validator")
@@ -129,10 +154,9 @@ func newSite(t *testing.T, script fakeclaude.Script) *site {
 	if err := os.MkdirAll(s.inbox, 0o750); err != nil {
 		t.Fatal(err)
 	}
-	s.api = fakeclaude.New(script)
-	t.Cleanup(s.api.Close)
 	cfg := fmt.Sprintf(
-		"inbox: %s\noutput: %s\nvalidator: %s\nsettle: 100ms\nlimits:\n  maxTurns: 20\n  maxSubmits: 4\n  maxUsd: 5\n  timeout: 1m\n",
+		"tracer: %s\ninbox: %s\noutput: %s\nvalidator: %s\nsettle: 100ms\nlimits:\n  maxTurns: 20\n  maxSubmits: 4\n  maxUsd: 5\n  timeout: 1m\n",
+		tracer,
 		s.inbox,
 		s.output,
 		filepath.Join(repoRoot, "web", "floorplan-iso", "tools", "validate.mjs"),
@@ -140,8 +164,7 @@ func newSite(t *testing.T, script fakeclaude.Script) *site {
 	if err := os.WriteFile(filepath.Join(dir, "spaceweave.yaml"), []byte(cfg), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	s.env = append(os.Environ(),
-		"ANTHROPIC_BASE_URL="+s.api.URL, "ANTHROPIC_API_KEY=test-key", "GOCOVERDIR="+coverDir)
+	s.env = append(os.Environ(), "GOCOVERDIR="+coverDir)
 	return s
 }
 

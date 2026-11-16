@@ -55,7 +55,11 @@ type Result struct {
 	PxPerPaperMM float64
 	// Trimmed is how many stray items far from the rest were left out.
 	Trimmed int
-	Notes   []string
+	// View maps the drawing's coordinates to the image's pixels, so a
+	// tracer reading the drawing itself puts things where the image shows
+	// them.
+	View  vector.Affine
+	Notes []string
 }
 
 // Scale describes the result's scale for people and for the tracer.
@@ -159,6 +163,7 @@ func convert(r io.Reader, format Format, dir string, o Options) (*Result, error)
 		Height:  ras.Image.Bounds().Dy(),
 		Trimmed: ras.Trimmed,
 		Notes:   d.Notes,
+		View:    ras.View(),
 	}
 	if d.Unit > 0 {
 		perMetre := ras.PxPerUnit / d.Unit

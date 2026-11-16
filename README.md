@@ -3,7 +3,14 @@
 Turns floor-plan images into interactive isometric models. The microsite is in
 [`web/floorplan-iso/`](web/floorplan-iso/README.md). `go run ./cmd/spaceweave serve`
 serves it with a drop zone: upload a plan image, or a DXF or SVG drawing, and
-Claude traces it into the site as a draft for you to approve or send back.
+it is traced into the site as a draft for you to approve or send back.
+
+Tracing is deterministic and needs no API key: the same file gives the same
+plan every time, and nothing leaves the machine. `internal/autotrace` reads a
+DXF's entities (wall layers, door blocks, room text, exact units) and an
+image's pixels (wall bands, openings, door arcs), and `internal/floorgraph`
+joins the walls into a graph and finds the rooms. Set `tracer: claude` to have
+a Claude agent trace instead.
 
 Drawings are rendered in Go by `internal/convert` (with `internal/dxf`,
 `internal/svgdraw`, `internal/cad` and `internal/vector`). No external
@@ -65,7 +72,8 @@ starts from a current snapshot and updates again within minutes of creation.
 |---|---|
 | `make gate` | Everything CI runs: vet, lint, test, acceptance, cover, vuln, build |
 | `make test` | Unit tests with `-race -shuffle=on`, coverage to `cover/unit` |
-| `make acceptance` | Builds `spaceweave` with coverage and drives it against a fake Claude API and the real node validator; coverage to `cover/acceptance` |
+| `make acceptance` | Builds `spaceweave` with coverage and drives it, with no API key and against a fake Claude API, using the real node validator; coverage to `cover/acceptance` |
+| `make eval` | Prints the automatic tracer's accuracy on plan images drawn from the hand traces |
 | `make cover` | Merges every `cover/*` directory and enforces `.testcoverage.yml` |
 | `make lint` / `make fmt` | golangci-lint with `.golangci.yml` |
 | `make build` | Cross-compiles every `cmd/*` binary for six platforms, CGO disabled |

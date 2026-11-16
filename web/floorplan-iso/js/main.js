@@ -299,9 +299,10 @@ async function loadPlan(id) {
   });
   sourceLink.href = plan.SOURCE.url;
   sourceLink.textContent = plan.SOURCE.credit;
-  traceMethod.textContent = entry.generated
-    ? 'were traced into metres by a Claude agent (the spaceweave worker), which checked its work against an overlay and the site\'s own validator'
-    : HAND_TRACED;
+  traceMethod.textContent = !entry.generated ? HAND_TRACED
+    : entry.tracer === 'claude'
+      ? 'were traced into metres by a Claude agent (the spaceweave worker), which checked its work against an overlay and the site\'s own validator'
+      : 'were traced into metres automatically by the spaceweave worker, which reads the walls, openings and rooms from the image or drawing and checks the result against the site\'s own validator';
   planName.textContent = plan.SOURCE.title;
   document.querySelector('#stage').setAttribute('aria-label', `Isometric model of the ${plan.SOURCE.title} floor plan`);
   remember('plan', entry.id);

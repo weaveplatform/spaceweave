@@ -44,7 +44,7 @@ func TestPinFixesAnExactScale(t *testing.T) {
 	tr := &plan.Trace{
 		Calibration: plan.Calibration{PxPerMetre: [2]float64{20, 25}, Evidence: "door 0.9 m"},
 	}
-	msg := r.pin(tr)
+	msg := pin(r.job.Drawing, tr)
 	if tr.Calibration.PxPerMetre != [2]float64{25, 25} ||
 		tr.Calibration.Evidence != "From the drawing's units. door 0.9 m" {
 		t.Fatalf("%+v", tr.Calibration)
@@ -54,7 +54,7 @@ func TestPinFixesAnExactScale(t *testing.T) {
 	}
 	// Within tolerance, and already citing the units: pinned quietly, and
 	// the evidence isn't prefixed twice.
-	if msg := r.pin(
+	if msg := pin(r.job.Drawing,
 		tr,
 	); msg != "" ||
 		strings.Count(tr.Calibration.Evidence, "drawing's units") != 1 {
@@ -63,7 +63,7 @@ func TestPinFixesAnExactScale(t *testing.T) {
 	for _, d := range []*Drawing{nil, {PxPerMetre: 25, Assumed: true}, {PxPerPaperMM: 3}} {
 		r := &run{job: Job{Drawing: d}}
 		tr := &plan.Trace{Calibration: plan.Calibration{PxPerMetre: [2]float64{20, 20}}}
-		if msg := r.pin(tr); msg != "" || tr.Calibration.PxPerMetre != [2]float64{20, 20} {
+		if msg := pin(r.job.Drawing, tr); msg != "" || tr.Calibration.PxPerMetre != [2]float64{20, 20} {
 			t.Errorf("%+v isn't pinned: %q %+v", d, msg, tr.Calibration)
 		}
 	}

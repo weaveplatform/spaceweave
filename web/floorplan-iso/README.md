@@ -15,8 +15,8 @@ The images are linked, not copied, because they belong to their publishers.
 Each plan module's header comment records how its scale was measured.
 
 New plans don't need tracing by hand: drop an image on the page (or into a
-folder) and the `spaceweave` worker traces it with Claude and adds it to the
-picker as a draft. See [Adding plans automatically](#adding-plans-automatically).
+folder) and the `spaceweave` worker traces it and adds it to the picker as a
+draft. See [Adding plans automatically](#adding-plans-automatically).
 
 This is a static site with no build step and no npm dependencies. D3 7.9.0 loads
 from jsDelivr, pinned with a subresource-integrity hash.
@@ -35,27 +35,27 @@ node --test 'test/*.test.js'     # projection, geometry, every plan's invariants
 tracer alongside it:
 
 ```sh
-# from the repository root
-export ANTHROPIC_API_KEY=…            # or sign in once with `ant auth login`
+# from the repository root; no API key needed
 go run ./cmd/spaceweave serve         # then open http://127.0.0.1:8000
 ```
 
 Under **Add a plan**, drop a plan on the page, choose one, or paste a
 screenshot. The list below the drop zone follows each plan through
-**Uploaded → Queued → Tracing → Review**, with the agent's turn count and the
-money spent so far while it traces. A drawing gets a **Converting** step first
+**Uploaded → Queued → Tracing → Review**. A drawing gets a **Converting** step first
 (see [Drawings](#drawings)). When it finishes, the plan joins the
 picker marked **Draft**, with its confidence and links to the overlay and the
 report. Open it, then:
 
 - **Approve** drops the Draft badge.
-- **Send back…** asks what the next pass should fix. The plan is traced again,
-  starting from the rejected trace with your note as guidance.
+- **Send back…** asks what the next pass should fix. The automatic tracer
+  gives the same trace again (it doesn't read notes, and says so in the
+  caveats); with `tracer: claude` the agent starts from the rejected trace
+  with your note as guidance.
 - **Retry** appears on a plan that failed.
 
 The server answers only to `localhost`-style host names, and the API refuses
-requests that don't come from the page itself, because every upload costs
-money. To reach it from another machine, listen on that interface and name
+requests that don't come from the page itself, because any page open in the
+browser can reach a local server. To reach it from another machine, listen on that interface and name
 it: `--addr 0.0.0.0:8000 --allow-host my-laptop.local`.
 
 Under `tools/serve.py` the page has no API, so it shows how to start
@@ -119,15 +119,49 @@ cd web/floorplan-iso && python3 tools/serve.py      # terminal 2
 cp ~/Downloads/some-plan.png floorplans/inbox/      # terminal 3
 ```
 
-**Uploaded images are sent to the Claude API** (Anthropic) to be traced. Don't
-drop in anything you aren't allowed to share with a third-party service.
+### How plans are traced
 
-The agent works the way the hand tracing did. It views crops with pixel rulers,
-measures wall faces with ink-run scans, and calibrates each axis separately.
-It then submits a trace and reads back two checks: the site's own validator
-(`tools/validate.mjs`, the same invariants as `test/plans.test.js`) and the trace
-drawn over the image. It repeats until both are clean, then reports a
-confidence and the caveats.
+By default (`tracer: auto`) plans are traced on the machine running
+`spaceweave`, with no model and no API key, and the same file always gives the
+same `plan.json`:
+
+- **A DXF is read as CAD entities.** Walls are pairs of parallel lines on wall
+  layers (`A-WALL`, `WALL`, `MUR`, …, or any layer when none is named so).
+  Doors are blocks with a swing arc, which give the hinge and swing; windows
+  are blocks on glazing layers; room names are the text inside each room;
+  furniture blocks are matched to the site's furniture by name. The scale is
+  exact when the drawing states its units.
+- **An image is read from its pixels.** Walls are the thick strokes, found
+  with a distance transform and traced as horizontal and vertical bands.
+  Gaps between collinear walls become doors (when a swing arc is drawn),
+  windows (thin lines across) or plain openings. The scale comes from the
+  drawing when the image was rendered from one, and otherwise from door
+  widths (taken as 0.9 m), marked as assumed.
+- **Both** go through the same core: walls are snapped, joined at corners and
+  T-junctions, and split into a planar graph; its faces are the rooms; walls
+  on the outer face are exterior; rooms are named, zoned and floored from
+  their labels. The result passes the same checks as a hand trace (the site's
+  validator, `tools/validate.mjs`) before it is published, with a confidence
+  computed from the evidence and caveats saying what was guessed.
+
+Accuracy on plan images drawn from the hand traces (`make eval`; walls within
+3 px):
+
+| Plan | Wall recall / precision | Rooms | Openings | Scale error |
+|---|---|---|---|---|
+| Office | 1.00 / 0.96 | 11 of 13 | 22 of 22 | −6% (assumed from doors) |
+| Corporate | 0.81 / 0.87 | 30 of 58 | 68 of 95 | +3% (assumed from doors) |
+
+What the image reader doesn't do yet: slanted or curved walls, walls drawn as
+two thin lines (including most glass partitions), hatched walls, and room
+names (images get "Room N" until OCR lands). These are the next changes.
+
+With `tracer: claude`, a Claude agent traces instead, the way the hand
+tracing was done: it views crops with pixel rulers, measures wall faces, and
+submits traces until the validator and the overlay are both clean. **Images
+are then sent to the Claude API** (Anthropic), so don't drop in anything you
+aren't allowed to share with a third-party service, and set
+`ANTHROPIC_API_KEY` (or sign in with `ant auth login`).
 
 The review buttons have command-line equivalents:
 
@@ -139,8 +173,9 @@ go run ./cmd/spaceweave plans retry <id>                    # re-run a failed pl
 go run ./cmd/spaceweave trace plan.png                      # one file, no watcher
 ```
 
-A rejected plan goes back in the queue. The next run gets the note and the
-rejected trace, and corrects that trace rather than starting over.
+A rejected plan goes back in the queue. With `tracer: claude` the next run
+gets the note and the rejected trace, and corrects that trace rather than
+starting over.
 
 Each `generated/<id>/` folder holds these files:
 
@@ -150,12 +185,13 @@ Each `generated/<id>/` folder holds these files:
 | `original.<ext>` | An uploaded drawing, as it was sent |
 | `drawing.svg` | A drawing rendered as SVG in its layer colours, linked from the plan's blurb |
 | `plan.json` | The plan in metres, in the same shape as a `js/plans/*.js` module |
-| `trace.json` | The agent's trace, in source pixels |
+| `trace.json` | The trace, in source pixels |
 | `overlay.png` | The trace drawn over the image |
-| `report.json` | Confidence, caveats, calibration evidence, remaining problems, tokens and cost |
-| `transcript.jsonl` | One line per agent turn: its text, tool calls and the results (no images) |
+| `report.json` | The tracer, confidence, caveats, calibration evidence, remaining problems, and (Claude only) tokens and cost |
+| `transcript.jsonl` | Claude only: one line per agent turn, with its text, tool calls and the results (no images) |
 
-**Cost.** A trace runs on Claude Opus 5.5 at high effort. Expect a few dollars
+**Cost.** The automatic tracer costs nothing. With `tracer: claude` a trace
+runs on Claude Opus 5.5 at high effort. Expect a few dollars
 for a simple plan and up to about $15 for a dense floor. Each run stops at
 whichever limit it hits first:
 
@@ -170,8 +206,9 @@ published, with the reason in its caveats. Otherwise the plan is marked failed.
 **Configuration.** Settings come from the defaults, then `spaceweave.yaml`, then
 `SPACEWEAVE_*` environment variables, then flags. Later sources override earlier
 ones. [`spaceweave.example.yaml`](../../spaceweave.example.yaml) lists every key.
-Unknown keys are rejected, so a misspelt limit can't be silently ignored. The
-API key is never a setting: the Anthropic SDK reads `ANTHROPIC_API_KEY` or an
+Unknown keys are rejected, so a misspelt limit can't be silently ignored.
+`tracer` is `auto` (the default) or `claude`; the model, effort, limits and
+prices apply only to `claude`. The API key is never a setting: the Anthropic SDK reads `ANTHROPIC_API_KEY` or an
 `ant auth login` profile. Node must be on the `PATH`, because every submission
 runs `tools/validate.mjs`.
 
@@ -248,10 +285,10 @@ Corporate floor is about 1,100 prisms at roughly 30 ms.
 
 ## Limits of the trial
 
-- The four built-in plans were traced by hand. The `spaceweave` worker automates
-  the same process with a vision model rather than a vectoriser. It is only as
-  good as the agent's reading of the image, which is why its plans arrive as
-  drafts for a person to approve.
+- The four built-in plans were traced by hand. The `spaceweave` worker
+  traces new plans automatically, but only as well as it can read them (see
+  the accuracy table above), which is why its plans arrive as drafts for a
+  person to approve.
 - Furniture is made of blocks, so round items are 6- to 16-sided prisms.
 - The painter's ordering is exact for disjoint convex footprints. Chairs tucked
   under desks fall back to a centre-depth guess, which can be visibly wrong at

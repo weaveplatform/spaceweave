@@ -92,9 +92,11 @@ func New(app App) *cobra.Command {
 	root := &cobra.Command{
 		Use:   "spaceweave",
 		Short: "Trace floor-plan images into the isometric microsite",
-		Long: "spaceweave watches a folder for floor-plan images, has Claude trace each one into a plan, " +
+		Long: "spaceweave watches a folder for floor-plan images and drawings, traces each one into a plan, " +
 			"and publishes it to the microsite as a draft for review.\n\n" +
-			"Images are sent to the Claude API. The API key comes from ANTHROPIC_API_KEY or an `ant auth login` profile.",
+			"Tracing runs here and gives the same plan for the same file every time; nothing is sent anywhere. " +
+			"With `tracer: claude` a Claude agent traces instead: images are then sent to the Claude API, and the " +
+			"API key comes from ANTHROPIC_API_KEY or an `ant auth login` profile.",
 		Version:       buildinfo.Version(),
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -191,8 +193,11 @@ func openStore(c config.Config) (*catalog.Store, error) {
 }
 
 // newWorker wires the tracer to the configuration. It checks node and the
-// validator script up front: without them every trace would run to its
-// first submission, spend money, and then fail.
+// validator script up front: without them every trace would fail at the
+// end, and a Claude trace would spend money first.
+//
+// Only the Claude tracer gets an API client, so the automatic tracer never
+// reads ANTHROPIC_API_KEY and can't send a plan anywhere by mistake.
 func newWorker(
 	app App,
 	c config.Config,
@@ -212,18 +217,28 @@ func newWorker(
 		}
 		v = plan.NodeValidator{Node: c.Node, Script: c.Validator}
 	}
-	return &worker.Worker{
-		Store: store,
-		Log:   log,
-		Options: trace.Options{
-			Client:    anthropic.NewClient(app.ClientOptions...),
-			Model:     c.Model,
-			Effort:    c.Effort,
-			Limits:    c.Limits,
-			Prices:    c.Prices,
-			Validator: v,
-		},
-	}, nil
+	w := &worker.Worker{
+		Store:   store,
+		Log:     log,
+		Tracer:  c.Tracer,
+		Options: trace.Options{Validator: v},
+	}
+	if c.Tracer == config.TracerClaude {
+		w.Trace = trace.Run
+		w.Options.Client = anthropic.NewClient(app.ClientOptions...)
+		w.Options.Model, w.Options.Effort = c.Model, c.Effort
+		w.Options.Limits, w.Options.Prices = c.Limits, c.Prices
+	}
+	return w, nil
+}
+
+// info is what the page is told about the tracer.
+func info(c config.Config) server.Info {
+	i := server.Info{Version: buildinfo.Version(), Tracer: c.Tracer}
+	if c.Tracer == config.TracerClaude {
+		i.Model, i.MaxUSD = c.Model, c.Limits.MaxUSD
+	}
+	return i
 }
 
 // daemon is what watch and serve share: the inbox watcher feeding the
@@ -280,8 +295,20 @@ func (d *daemon) poke() {
 // run runs the watcher, the workers and any extra services until ctx is done
 // or one of them stops, which stops the rest.
 func (d *daemon) run(ctx context.Context, extra ...func(context.Context) error) error {
-	d.log.Info("watching", "inbox", d.c.Inbox, "output", d.c.Output, "model", d.c.Model,
-		"workers", d.c.Workers, "maxUsd", d.c.Limits.MaxUSD)
+	args := []any{
+		"inbox",
+		d.c.Inbox,
+		"output",
+		d.c.Output,
+		"workers",
+		d.c.Workers,
+		"tracer",
+		d.c.Tracer,
+	}
+	if d.c.Tracer == config.TracerClaude {
+		args = append(args, "model", d.c.Model, "maxUsd", d.c.Limits.MaxUSD)
+	}
+	d.log.Info("watching", args...)
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	services := append([]func(context.Context) error{
@@ -325,8 +352,8 @@ func serveCmd(app App, f *flags) *cobra.Command {
 		Long: "Serves the microsite. Images dropped on the page (or into the inbox) are traced " +
 			"and published as drafts, which can be approved or sent back from the page. " +
 			"Runs until interrupted.\n\n" +
-			"Only loopback host names are answered unless others are allowed, because every " +
-			"upload spends money on the Claude API.",
+			"Only loopback host names are answered unless others are allowed, because any page in " +
+			"the browser can reach a local server (and, with `tracer: claude`, every upload spends money).",
 		Args: usageArgs(0),
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			d, err := f.daemon(cmd, app)
@@ -364,11 +391,7 @@ func serveCmd(app App, f *flags) *cobra.Command {
 				Hosts: hosts,
 				Wake:  d.poke,
 				Log:   d.log,
-				Info: server.Info{
-					Version: buildinfo.Version(),
-					Model:   d.c.Model,
-					MaxUSD:  d.c.Limits.MaxUSD,
-				},
+				Info:  info(d.c),
 			}
 			hs := &http.Server{Handler: srv.Handler(), ReadHeaderTimeout: 10 * time.Second}
 			d.log.Info("serving", "url", "http://"+ln.Addr().String()+"/", "site", s.Site)

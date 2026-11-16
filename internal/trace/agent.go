@@ -23,6 +23,7 @@ import (
 	"github.com/weaveplatform/spaceweave/internal/config"
 	"github.com/weaveplatform/spaceweave/internal/plan"
 	"github.com/weaveplatform/spaceweave/internal/raster"
+	"github.com/weaveplatform/spaceweave/internal/vector"
 )
 
 //go:embed prompt.md
@@ -81,6 +82,11 @@ type Job struct {
 	Feedback string    // a reviewer's note on the previous attempt
 	Previous *plan.Trace
 	Drawing  *Drawing // set when the image was rendered from a drawing
+	// Original is the uploaded drawing the image was rendered from, and View
+	// maps its coordinates to the image's pixels; both are empty for an
+	// image upload. A tracer that reads the drawing itself needs both.
+	Original string
+	View     *vector.Affine
 }
 
 // Drawing is what a drawing said about the image rendered from it.
