@@ -43,6 +43,9 @@ type Input struct {
 	Coverage float64
 	// Notes are caveats the front end wants passed on, in its own words.
 	Notes []string
+	// Spaces are the outlines of a space plan placed on the drawing (see
+	// space_input.go); empty without one.
+	Spaces []Space
 }
 
 // Segment is a stretch of wall centreline.

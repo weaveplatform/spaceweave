@@ -232,15 +232,39 @@ func (r *reader) areaRooms() bool {
 			return false
 		}
 	}
-	byLayer := map[string][]outline{}
+	byLayer, best, desks := r.areaLayers()
+	if best == "" {
+		return false
+	}
+	if r.known {
+		r.desks = byLayer[desks]
+	}
+	for _, o := range byLayer[best] {
+		r.leaves[o.leaf].area = true
+	}
+	r.areaPlan = true
+	r.note(
+		"The drawing has no walls; rooms were read from the %d outlines on layer %q, their edges "+
+			"taken as walls. Where two areas meet with no wall drawn, the boundary between them "+
+			"is a wall in the plan too.",
+		len(byLayer[best]), best,
+	)
+	return true
+}
+
+// areaLayers groups the outlines on area layers by layer, and picks the
+// layer of room outlines and the layer of workplace outlines among them:
+// "" for either when there is none. Areas are judged in metres, so the
+// unit must be settled first.
+func (r *reader) areaLayers() (byLayer map[string][]outline, best, desks string) {
+	byLayer = map[string][]outline{}
 	for _, o := range r.outlines() {
 		l := &r.leaves[o.leaf]
 		if l.owner == nil && l.info.area {
 			byLayer[l.layer] = append(byLayer[l.layer], o)
 		}
 	}
-	best, bestArea := "", 0.0
-	desks, deskN := "", 0
+	bestArea, deskN := 0.0, 0
 	for layer, os := range byLayer {
 		if len(os) < minAreaLabels {
 			continue
@@ -267,23 +291,7 @@ func (r *reader) areaRooms() bool {
 			}
 		}
 	}
-	if best == "" {
-		return false
-	}
-	if r.known {
-		r.desks = byLayer[desks]
-	}
-	for _, o := range byLayer[best] {
-		r.leaves[o.leaf].area = true
-	}
-	r.areaPlan = true
-	r.note(
-		"The drawing has no walls; rooms were read from the %d outlines on layer %q, their edges "+
-			"taken as walls. Where two areas meet with no wall drawn, the boundary between them "+
-			"is a wall in the plan too.",
-		len(byLayer[best]), best,
-	)
-	return true
+	return byLayer, best, desks
 }
 
 // findDesks places a desk on each workplace outline of an area plan, as

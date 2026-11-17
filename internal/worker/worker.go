@@ -104,6 +104,8 @@ type Report struct {
 	// Layers how each of its layers was read, by name.
 	Profile string          `json:"profile,omitempty"`
 	Layers  []profile.Layer `json:"layers,omitempty"`
+	// Spaces is how the floor package's space plan was read and placed.
+	Spaces *trace.Spaces `json:"spaces,omitempty"`
 }
 
 func (w *Worker) tracer() string {
@@ -246,6 +248,8 @@ func (w *Worker) Process(ctx context.Context, e catalog.Entry) error {
 		}
 	}
 
+	job.Spaces, job.References = attachments(dir, e)
+
 	set, name, err := w.Profiles.Set()
 	if err != nil {
 		// A hand-edited profile that doesn't parse would otherwise be
@@ -286,6 +290,7 @@ func (w *Worker) Process(ctx context.Context, e catalog.Entry) error {
 	}
 	report.Turns, report.Submits, report.Usage, report.CostUSD = res.Turns, res.Submits, res.Usage, res.CostUSD
 	report.Stopped, report.Problems, report.Layers = res.Stopped, res.Problems, res.Layers
+	report.Spaces = res.Spaces
 
 	if ctx.Err() != nil {
 		// Shutting down: put it back rather than publish or fail a run that
@@ -427,6 +432,24 @@ func (w *Worker) convert(ctx context.Context, e catalog.Entry) (catalog.Entry, *
 		return e, conv, fmt.Errorf("update catalog: %w", err)
 	}
 	return now, conv, nil
+}
+
+// attachments are the package's files besides the drawing, by role, where
+// the tracer can read them.
+func attachments(dir string, e catalog.Entry) (spaces, references []trace.Attachment) {
+	for _, f := range e.Files {
+		a := trace.Attachment{
+			Path:   filepath.Join(dir, filepath.FromSlash(f.Upload)),
+			Format: f.Format,
+		}
+		switch f.Role {
+		case catalog.RoleSpaces:
+			spaces = append(spaces, a)
+		case catalog.RoleReference:
+			references = append(references, a)
+		}
+	}
+	return spaces, references
 }
 
 // readConversion recovers a drawing's conversion from its last report, for

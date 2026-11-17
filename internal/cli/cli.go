@@ -304,8 +304,39 @@ func (f *flags) daemon(cmd *cobra.Command, app App) (*daemon, error) {
 			d.poke()
 			return nil
 		},
+		Attach: d.attach,
 	}
 	return d, nil
+}
+
+// attach adds an inbox file to the plan traced from the drawing beside it.
+// A plan being converted or traced can't take it yet; the watcher offers it
+// again until the run ends, and the plan is traced again with it.
+func (d *daemon) attach(drawing, path, role string) error {
+	plan, err := d.store.PlanOf(drawing)
+	if err != nil {
+		return err //nolint:wrapcheck // logged by the watcher with the file names
+	}
+	e, added, err := d.store.Attach(plan.ID, path, role)
+	if errors.Is(err, catalog.ErrTransition) {
+		// An approved plan waits for a reviewer to send it back; one being
+		// converted or traced only for the run to end.
+		if now, getErr := d.store.Get(plan.ID); getErr == nil && now.Status != catalog.Approved {
+			return inbox.ErrBusy
+		}
+	}
+	if err != nil {
+		return err //nolint:wrapcheck // logged by the watcher with the file names
+	}
+	if !added {
+		d.log.Info("already attached", "file", path, "plan", e.ID)
+		return nil
+	}
+	d.log.Info("attached", "file", path, "plan", e.ID, "role", role)
+	if e.Status == catalog.Queued {
+		d.poke()
+	}
+	return nil
 }
 
 // poke wakes an idle worker. The channel holds one wake-up; more would only

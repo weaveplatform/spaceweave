@@ -41,9 +41,13 @@ vet:
 	$(GO) vet ./...
 
 ## test: unit tests (race, shuffle); coverage to cover/unit
+# The timeout is per package. Under race and coverage, internal/autotrace's
+# image tracing takes 5–8 minutes on Windows CI runners, whose speed varies
+# about twofold between runs, so go test's default 10 minutes failed at
+# random there.
 test:
 	@rm -rf $(COVER_DIR)/unit && mkdir -p $(COVER_DIR)/unit
-	$(GO) test -race -shuffle=on -count=1 -cover -coverpkg=$(MODULE)/... $(UNIT_PKGS) -args -test.gocoverdir=$(CURDIR)/$(COVER_DIR)/unit
+	$(GO) test -race -shuffle=on -count=1 -timeout 25m -cover -coverpkg=$(MODULE)/... $(UNIT_PKGS) -args -test.gocoverdir=$(CURDIR)/$(COVER_DIR)/unit
 
 ## acceptance: build the binary with coverage and drive it end to end (needs node); coverage to cover/acceptance
 acceptance:
