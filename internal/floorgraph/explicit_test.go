@@ -130,3 +130,68 @@ func TestContainingZoneKeepsSmallerRooms(t *testing.T) {
 		t.Fatal("substantial source clipping wasn't reported")
 	}
 }
+
+func TestPackageSpaceBeyondInferredFloor(t *testing.T) {
+	// An unclosed bay is pruned from the wall graph's outer face. Its
+	// registered outline still supplies floor supported by the drawing.
+	in := Input{
+		Size: [2]int{700, 450},
+		Walls: append(box(0, 0, 500, 400),
+			wall(500, 0, 650, 0), wall(650, 0, 650, 100)),
+		Scale:  scale50,
+		Spaces: []Space{explicitBox(500, 0, 650, 100, "Bay", "01", plan.KindRoom)},
+	}
+	r := mustBuild(t, in)
+	if bay := roomNamed(t, r, "Bay"); !near(areaM(bay), 6, 0.01) {
+		t.Fatalf("registered bay lost floor: %.3f m²", areaM(bay))
+	}
+}
+
+func TestPackageSpaceResidualWidth(t *testing.T) {
+	in := officeFloor()
+	// Cutting the inferred office back by 20 cm leaves a wall-face strip,
+	// not a second office. Uncovered usable floor still needs inference.
+	in.Spaces = []Space{explicitBox(0, 0, 190, 200, "Registered office", "01", plan.KindRoom)}
+	r := mustBuild(t, in)
+	if names := roomNames(r); len(names) != 2 || slices.Contains(names, "Office") {
+		t.Fatalf("clipping promoted a wall strip to a room: %v", names)
+	}
+	roomNamed(t, r, openPlanName)
+
+	// A deliberately supplied narrow space has semantic evidence that an
+	// inferred clipping fragment lacks, so it must retain its identity.
+	in.Spaces = []Space{explicitBox(0, 0, 10, 400, "Service strip", "02", plan.KindZone)}
+	if strip := roomNamed(t, mustBuild(t, in), "Service strip"); !near(areaM(strip), 1.6, 0.01) {
+		t.Fatalf("explicit narrow space changed: %.3f m²", areaM(strip))
+	}
+}
+
+func TestPackageSpaceImageBounds(t *testing.T) {
+	in := Input{
+		Size: [2]int{600, 450},
+		Walls: append(box(0, 0, 500, 400),
+			wall(500, 0, 650, 0), wall(650, 0, 650, 100)),
+		Scale:  scale50,
+		Spaces: []Space{explicitBox(500, 0, 650, 100, "Bay", "01", plan.KindRoom)},
+	}
+	r := mustBuild(t, in)
+	if bay := roomNamed(t, r, "Bay"); !near(areaM(bay), 4, 0.01) {
+		t.Fatalf("source escaped image bounds: %.3f m²", areaM(bay))
+	}
+	if !slices.ContainsFunc(r.Caveats, func(c string) bool {
+		return strings.Contains(c, "image boundary")
+	}) {
+		t.Fatal("image clipping was not reported")
+	}
+}
+
+func TestPackageSpaceWithoutClosedWalls(t *testing.T) {
+	in := Input{
+		Walls:  []Segment{wall(0, 0, 500, 0), wall(500, 0, 500, 400)},
+		Scale:  scale50,
+		Spaces: []Space{explicitBox(0, 0, 500, 400, "Documented floor", "01", plan.KindZone)},
+	}
+	if rm := roomNamed(t, mustBuild(t, in), "Documented floor"); !near(areaM(rm), 80, 0.01) {
+		t.Fatalf("source lost because walls did not close: %.3f m²", areaM(rm))
+	}
+}

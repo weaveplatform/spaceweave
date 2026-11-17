@@ -31,6 +31,38 @@ type Spaces struct {
 	MeanBoundaryErrorPx float64 `json:"meanBoundaryErrorPx"`
 }
 
+// SpaceConflict identifies materially overlapping reference outlines. An
+// enclosing gross outline and its smaller spaces cannot all be preserved
+// unchanged in a disjoint output. Report these separately without relaxing
+// the identity threshold or silently editing the reference polygons.
+type SpaceConflict struct {
+	First          int     `json:"first"`
+	Second         int     `json:"second"`
+	FirstFraction  float64 `json:"firstFraction"`
+	SecondFraction float64 `json:"secondFraction"`
+}
+
+// SpaceConflicts reports intersections exceeding both one pixel squared
+// and 1% of the smaller reference. Tiny drafting overlaps remain below
+// this diagnostic's threshold; it is not a geometry-validity test.
+func SpaceConflicts(reference *plan.Trace) []SpaceConflict {
+	inter, areas, _ := overlaps(reference.Rooms, reference.Rooms)
+	var out []SpaceConflict
+	for i := range areas {
+		for j := i + 1; j < len(areas); j++ {
+			shared := inter[i][j]
+			if shared <= math.Max(1, 0.01*math.Min(areas[i], areas[j])) {
+				continue
+			}
+			out = append(out, SpaceConflict{
+				First: i, Second: j,
+				FirstFraction: shared / areas[i], SecondFraction: shared / areas[j],
+			})
+		}
+	}
+	return out
+}
+
 // SpaceIdentity matches at IoU >= 0.9, independently of name and kind.
 // Augmenting paths maximize cardinality so a duplicate prediction cannot
 // claim the same reference twice. Higher IoU breaks otherwise equal choices.

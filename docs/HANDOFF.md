@@ -115,33 +115,45 @@ state plainly what gap remains.
 
 ## Step 3b implementation and measured trials
 
-Implemented on `feat/tracing-quality-trials` (not merged when updated). Read
+The first implementation merged in PR #19. Tracer-8 refinements are on
+`fix/registered-space-boundaries`. Read
 [the research and results](research/tracing-quality.md) before further tuning.
 `make quality` runs report-only CAD and raster ablations. Private CAD inputs
 still need `SPACEWEAVE_DWG_DIR`; output artifacts use `SPACEWEAVE_EVAL_OUT`.
 
 Registered spaces now precede inferred residual floor, keep their kind and
-number, and are clipped to the outline and voids. Smaller source spaces precede
+number, and are clipped to the image bounds and voids. They can supply floor
+beyond an incomplete wall-derived outline, including when no walls close.
+Inferred clipping remainders retain the existing 0.4 m minimum equivalent width;
+explicit narrow spaces remain. Smaller source spaces precede
 large enclosing zones. Source boundaries are preserved by default: both tested
 wall-snapping policies reduced strict polygon matches. Crossings and substantial
 clipping are reported for review. Partial packages with one or two outlines
 are accepted. Semantic name/number layers exclude generic metadata from names.
-Tracer version is 7; the five existing golden hashes stay unchanged, and full
-and partial package hashes were added.
+Tracer version is 8; the five original golden hashes stay unchanged, and full
+and partial package hashes were refreshed.
 
 The 99% goal is still open. All-five-floor source-preserving outputs pass the
-site validator; room/zone recall is 76.2–98.2% against raw supplied polygons at
-IoU 0.9, with additional inferred service spaces reducing precision. These are
+site validator; room/zone recall is 98.0–98.4% against raw supplied polygons at
+IoU 0.9, with precision 84.9–90.0%. Floor 00 improved from 48/63 to 62/63 matches;
+44 narrow inferred fragments were removed across the five floors without losing
+a match. Each floor retains one unmatched enclosing source outline overlapping
+its smaller spaces. Trials expose those conflicts without altering references.
+Additional inferred service spaces also reduce precision. These are
 one-to-one all-space scores without the old wall exclusion mask, and must not
 be compared directly with the room-only table above. No independent gold review
 or human correction-time trial has been completed. Raster face recovery remains
 opt-in for experiments because its precision regresses on several plans.
 
-Validation: complete local `make gate` passed on Go 1.27.4 (97.7% merged
-coverage, all six cross-compilation targets, no vulnerabilities), plus 140 site
-tests and Chrome Plan/3D checks for all five private floors. The Go toolchain
+Validation: tracer 8's 132 trial configurations pass the Node validator; all
+112 raster score rows and the five floors' wall/door scores remain unchanged.
+All 141 site tests and Chrome Plan/3D checks passed for the regenerated drafts.
+The complete local tracer-8 `make gate` passed on Go 1.27.4 (97.7% merged coverage,
+every package ≥90%, all six cross-compilation targets, no vulnerabilities).
+Semantic diagnostics also pass. The Go toolchain
 selection fixes the pre-existing standard-library advisory GO-2026-6859.
-Draft PR: #19. Cross-platform execution remains CI's responsibility.
+PR #19's cross-platform CI passed before merge. The follow-up refinement still
+needs its own cross-platform CI; local cross-compilation does not replace it.
 
 Next priorities: independently adjudicate overlapping source outlines and
 missing room identities; diagnose wall-recall losses and unplaced openings;

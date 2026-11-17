@@ -18,19 +18,9 @@ func (b *builder) packageSpaces() error {
 	if len(b.in.Spaces) == 0 {
 		return nil
 	}
-	outline, err := ringGeometry(b.g.poly(b.fs[b.outer].verts))
+	bounds, err := b.spaceBounds()
 	if err != nil {
-		return fmt.Errorf("space outline: %w", err)
-	}
-	for _, v := range b.voids {
-		hole, e := ringGeometry(v)
-		if e != nil {
-			return fmt.Errorf("space void: %w", e)
-		}
-		outline, err = geom.Difference(outline, hole)
-		if err != nil {
-			return fmt.Errorf("subtract space void: %w", err)
-		}
+		return err
 	}
 	walls, _ := b.barriers()
 	inputs := slices.Clone(b.in.Spaces)
@@ -56,7 +46,7 @@ func (b *builder) packageSpaces() error {
 			return cmpPoint(Point{X: p[0], Y: p[1]}, Point{X: q[0], Y: q[1]})
 		})
 	})
-	remaining := outline
+	remaining, reserved := bounds.floor, bounds.voids
 	var explicit []room
 	for _, sp := range inputs {
 		ring := make([]Point, len(sp.Polygon))
@@ -99,7 +89,13 @@ func (b *builder) packageSpaces() error {
 			return fmt.Errorf("registered space: %w", e)
 		}
 		before := g.Area()
-		g, e = geom.Intersection(g, remaining)
+		if !bounds.image.IsEmpty() {
+			g, e = geom.Intersection(g, bounds.image)
+			if e != nil {
+				return fmt.Errorf("bound registered space: %w", e)
+			}
+		}
+		g, e = geom.Difference(g, reserved)
 		if e != nil {
 			return fmt.Errorf("clip registered space: %w", e)
 		}
@@ -109,7 +105,7 @@ func (b *builder) packageSpaces() error {
 			b.shared = append(
 				b.shared,
 				fmt.Sprintf(
-					"Space %q lost %.2f m² where it overlapped another space, a void or the exterior; review its source outline.",
+					"Space %q lost %.2f m² where it overlapped another space, a void or the image boundary; review its source outline.",
 					sp.Number,
 					changed,
 				),
@@ -126,6 +122,10 @@ func (b *builder) packageSpaces() error {
 			r.name = strings.TrimSpace(sp.Number)
 		}
 		explicit = append(explicit, b.geometryRooms(g, r)...)
+		reserved, e = geom.Union(reserved, g)
+		if e != nil {
+			return fmt.Errorf("reserve explicit space: %w", e)
+		}
 		remaining, e = geom.Difference(remaining, g)
 		if e != nil {
 			return fmt.Errorf("reserve registered space: %w", e)
@@ -152,6 +152,46 @@ func (b *builder) packageSpaces() error {
 	return nil
 }
 
+type spaceBounds struct {
+	floor, voids, image geom.Geometry
+}
+
+func (b *builder) spaceBounds() (spaceBounds, error) {
+	var bounds spaceBounds
+	var err error
+	if b.outer >= 0 {
+		bounds.floor, err = ringGeometry(b.g.poly(b.fs[b.outer].verts))
+		if err != nil {
+			return bounds, fmt.Errorf("space outline: %w", err)
+		}
+	}
+	for _, v := range b.voids {
+		hole, e := ringGeometry(v)
+		if e != nil {
+			return bounds, fmt.Errorf("space void: %w", e)
+		}
+		bounds.floor, err = geom.Difference(bounds.floor, hole)
+		if err != nil {
+			return bounds, fmt.Errorf("subtract space void: %w", err)
+		}
+		bounds.voids, err = geom.Union(bounds.voids, hole)
+		if err != nil {
+			return bounds, fmt.Errorf("reserve space void: %w", err)
+		}
+	}
+	// A pruned or unclosed wall bay can lie outside the inferred outer
+	// face. Registered spaces supply floor evidence there; the image, not
+	// that incomplete face, bounds their coordinates.
+	if b.in.Size[0] > 0 && b.in.Size[1] > 0 {
+		w, h := float64(b.in.Size[0]), float64(b.in.Size[1])
+		bounds.image, err = ringGeometry([]Point{{}, {X: w}, {X: w, Y: h}, {Y: h}})
+		if err != nil {
+			return bounds, fmt.Errorf("space image bounds: %w", err)
+		}
+	}
+	return bounds, nil
+}
+
 func (b *builder) geometryRooms(g geom.Geometry, template room) []room {
 	var out []room
 	for _, part := range g.Dump() {
@@ -170,8 +210,12 @@ func (b *builder) geometryRooms(g geom.Geometry, template room) []room {
 		}
 		r := template
 		r.poly = bridge(rings[0], rings[1:])
-		r.areaM, _ = faceSize(r.poly, b.sc.sx, b.sc.sy)
-		if r.areaM <= minRoomArea {
+		var width float64
+		r.areaM, width = faceSize(r.poly, b.sc.sx, b.sc.sy)
+		// Clipping can turn an otherwise usable inferred room into a thin
+		// wall band. Apply the same size rule as initial room inference;
+		// supplied spaces have identity evidence and keep their width.
+		if r.areaM <= minRoomArea || !r.explicit && width < minRoomWidth {
 			continue
 		}
 		r.c = centroid(r.poly)

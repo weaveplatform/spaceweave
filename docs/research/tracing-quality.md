@@ -1,6 +1,6 @@
 # Deterministic CAD and raster tracing quality
 
-Research, baseline and implementation trials recorded 17 November 2026. The 99% per-floor target is not achieved. The complete local `make gate` passed on Go 1.27.4, including all six cross-compilation targets; total merged coverage is 97.7%.
+Research, baseline and implementation trials recorded 17 November 2026. The 99% per-floor target is not achieved. Tracer 8 raises selected-mode recall to 98.0–98.4% and precision to 84.9–90.0%; these measure preservation of supplied space plans, not independent discovery. Its complete local `make gate` passed on Go 1.27.4 with 97.7% merged coverage, every package ≥90%, no vulnerabilities and all six platform builds.
 
 ## Scope and evidence
 
@@ -221,6 +221,42 @@ Treat 99% as a per-floor goal with a named metric and denominator, not as the ex
 
 ## Measured implementation results
 
+### Refinement: tracer 8
+
+Two minimized regressions explain the largest remaining first-wave errors. An unclosed wall bay is pruned from the graph's outer face, so clipping registered spaces to that face deletes documented floor. Separately, subtracting source spaces from an inferred room can leave a long wall-face band above the minimum area, even though it fails the width rule used during initial inference. The overlay previously accepted those bands as rooms.
+
+Registered spaces now supply floor beyond an incomplete inferred outer face, bounded by the source image when its size is known. Voids and smaller supplied spaces retain priority; residual inference stays within its original floor. Registered spaces are also accepted when wall evidence encloses no face at all. Inferred remainders must satisfy the existing 0.4 m equivalent-width rule; explicitly supplied narrow spaces retain their semantic identity. These changes do not add physical walls or invent missing source boundaries. They trust registration and supplied space geometry, so independently checking those sources remains necessary. Sources: [overlay and bounds](../../internal/floorgraph/explicit.go), [room construction](../../internal/floorgraph/build.go), [regression fixtures](../../internal/floorgraph/explicit_test.go).
+
+The reference polygons, IoU ≥ .9 threshold, one-to-one matching and name eligibility are unchanged. Results compare tracer 7 to tracer 8 on the same five packages:
+
+| Floor | Matched before → after | Predictions before → after | Recall % before → after | Precision % before → after | Exact identities before → after |
+|---|---|---|---|---|---|
+| 00 | 48/63 → 62/63 | 71 → 73 | 76.2 → 98.4 | 67.6 → 84.9 | 45/57 → 56/57 |
+| 01 | 50/51 → 50/51 | 61 → 56 | 98.0 → 98.0 | 82.0 → 89.3 | 46/47 → 46/47 |
+| 02 | 54/55 → 54/55 | 66 → 60 | 98.2 → 98.2 | 81.8 → 90.0 | 48/49 → 48/49 |
+| 03 | 53/54 → 53/54 | 65 → 59 | 98.1 → 98.1 | 81.5 → 89.8 | 48/49 → 48/49 |
+| 04 | 52/53 → 52/53 | 80 → 59 | 98.1 → 98.1 | 65.0 → 88.1 | 46/47 → 46/47 |
+
+The boundary-only trial recovered the same 14 floor-00 matches, with prediction counts 79/61/66/65/80. Adding the width rule removed 6/5/6/6/21 predictions without losing a match: 44 narrow inferred remainders. Across the two changes, unmatched predictions fall from 86 to 36 and unmatched references from 19 to 5. These are benchmark mismatches, not independently adjudicated false rooms: some remaining inferred service spaces may be valid but absent from the source space plan. No broad deletion of undocumented cupboards or service areas was applied.
+
+Current room-kind matches are 48/49, 42/42, 47/47, 43/43 and 38/38; zone-kind matches are 14/14, 8/9, 7/8, 10/11 and 14/15. Each floor's remaining unmatched reference is its large enclosing source outline. It overlaps smaller supplied spaces and must lose that floor to keep output interiors disjoint. The scorer now emits `referenceConflicts` with source indices and both overlap fractions, for intersections above one pixel squared and 1% of the smaller outline. The five source sets have 62/50/55/53/52 such pairs. This diagnostic neither rewrites references nor awards extra matches. Source: [conflict diagnostics](../../internal/autotrace/score/spaces.go).
+
+All 20 CAD configurations now pass both geometry construction and the Node site validator. Counts below are matched/predicted; the reference denominators remain 63/51/55/54/53. The older invalid adaptive-overlay results below describe tracer 7 and do not apply to this run. Snapping still loses many matches, so unsnapped preservation remains the default.
+
+| Floor | Architecture only | Package: adaptive walls | Package: unsnapped | Package: 300 mm |
+|---|---|---|---|---|
+| 00 | 4/82 | 36/73 | 62/73 | 36/73 |
+| 01 | 14/56 | 31/58 | 50/56 | 30/57 |
+| 02 | 11/60 | 29/60 | 54/60 | 28/60 |
+| 03 | 9/57 | 31/60 | 53/59 | 30/63 |
+| 04 | 7/61 | 31/61 | 52/59 | 28/60 |
+
+All five selected-mode wall/door scores and opening-placement counters are unchanged. All 112 raster configurations validate, with every scored field unchanged in both automatic and assisted modes. The combined run has 132 valid configurations. A final CAD rerun after refactoring reproduces all 20 configurations' scores and validation. The five pre-existing goldens remain unchanged; the two package goldens were refreshed for tracer 8. New regressions cover an unclosed bay, image clipping, inference without closed walls, narrow residual removal, preservation of explicit narrow spaces and source-overlap diagnostics. Chrome checks passed for all five regenerated drafts in 3D and Plan views, with overlays, reports and registration checked and no uncaught browser errors. All 141 microsite tests and semantic diagnostics passed. The complete tracer-8 `make gate` passed: vet, lint, race/shuffle, accuracy/goldens, acceptance, coverage (97.7%, 13337/13655 statements; every package ≥90%), vulnerability scan and all six platform builds. Cross-platform execution for this follow-up remains CI's responsibility; PR #19's earlier three-OS gate passed before its merge.
+
+**The 99% target remains open on every floor.** Priorities are independent adjudication of enclosing versus net space geometry, retained inferred service areas, and the five unmatched identities; then measured wall/opening recovery and a persistent correction workflow. Source-preservation recall must not be presented as unassisted floorplan accuracy.
+
+### First implementation trial: tracer 7
+
 The final completed `make quality` run contains 132 rows: 20 CAD configurations and 112 raster configurations (28 fixture/variant cases × 2 assistance modes × 2 raster algorithms, or 56 paired algorithm comparisons). All 112 raster configurations reported `valid=ok`, including the Node validator in this run. The report-only CAD test also completed, but deliberately retained one invalid and one rejected experimental configuration. A passing report-only test is therefore not a statement that every candidate was valid. The complete local repository gate subsequently passed on the final source with Go 1.27.4; see the toolchain validation below.
 
 The selected production behavior is `package-none`: preserve registered source boundaries without snapping. Smaller explicit polygons are processed first to protect enclosed rooms. The shared overlay clips explicit geometry against the floor and voids, reserves the explicit floor before inference, then clips inferred space to the remainder. Supplied partial packages containing one or two outlines are accepted; the architectural area-polygon fallback retains its minimum of three outlines. This consumes supplied geometry; it is not independent discovery of those spaces. Source: [explicit-space overlay](../../internal/floorgraph/explicit.go), [snap options](../../internal/floorgraph/space_input.go), [CAD area fallback](../../internal/autotrace/cadfront/areas.go).
@@ -333,7 +369,7 @@ The five pre-existing golden plan hashes are unchanged, and two package-space fi
 
 ### Outstanding work and target status
 
-**The 99% per-floor target is not achieved.** Selected-mode all-space recall is 76.2%, 98.0%, 98.2%, 98.1% and 98.1%; precision is 67.6%, 82.0%, 81.8%, 81.5% and 65.0%. All five floors fall short even with supplied semantic polygons. Room-only matches on floors 01–04 are complete in this assisted mode, but that excludes the remaining zones and extra predictions and must not be presented as achieving the overall target. Floor 00, residual splits, extra inferred spaces and exact-name misses require further investigation.
+**The 99% per-floor target is not achieved.** Current tracer-8 all-space recall is 98.4%, 98.0%, 98.2%, 98.1% and 98.1%; precision is 84.9%, 89.3%, 90.0%, 89.8% and 88.1%. All five floors fall short even with supplied semantic polygons. Room-only matches on floors 01–04 are complete in this assisted mode, but that excludes the remaining enclosing outlines and extra predictions and must not be presented as achieving the overall target. Resolve source overlap semantics and independently review retained service spaces and exact-name misses. The historical work table below records the first implementation; the tracer-8 refinement above supersedes its CAD validity and score limitations.
 
 | Work | Established outcome | Remaining limitation |
 |---|---|---|
@@ -369,5 +405,7 @@ stopped at the existing Go 1.27.3 standard-library advisory
 The patched run passed race/shuffle, accuracy/goldens, acceptance and both
 coverage thresholds (**97.7% total**), and `govulncheck` reports no vulnerabilities.
 The complete patched-toolchain `make gate` exited successfully, including all
-six local cross-compilation targets. CI cross-compilation also passed; the
-remaining cross-platform CI jobs may still be running at publication.
+six local cross-compilation targets. PR #19 subsequently passed the three-OS
+unit matrix, cross-compilation, acceptance and the coverage gate before merge.
+The tracer-8 refinement above has its own local validation and requires a new
+CI run.
