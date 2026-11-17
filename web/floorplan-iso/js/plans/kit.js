@@ -10,6 +10,8 @@
 //   ENTRANCE   [x, y] the build animation grows outward from
 //   THICKNESS  { exterior, interior, glass } metres
 //   walls, rooms, floorPatches, furniture
+//              a room may give kind: 'zone' for a named open-plan area with no
+//              walls of its own; without one it is a room, enclosed by walls
 //
 // Coordinates are metres with the origin at the top-left of the bounding box,
 // x to the right and y DOWN, like the source image, so the top-down view

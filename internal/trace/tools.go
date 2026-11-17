@@ -77,8 +77,8 @@ func traceSchema() map[string]any {
 	room := map[string]any{
 		"type": "object",
 		"properties": map[string]any{
-			"id": str, "name": str, "zone": enum(plan.Zones...), "floor": enum(plan.Floors...),
-			"polygon": polygon, "label": point,
+			"id": str, "name": str, "kind": enum(plan.Kinds...), "zone": enum(plan.Zones...),
+			"floor": enum(plan.Floors...), "polygon": polygon, "label": point,
 		},
 		"required": []string{"id", "name", "zone", "floor", "polygon"},
 	}

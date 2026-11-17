@@ -16,6 +16,7 @@ var (
 	}
 	openingColour   = color.RGBA{44, 160, 44, 255}
 	roomColour      = color.RGBA{123, 63, 228, 255}
+	zoneColour      = color.RGBA{227, 119, 194, 255}
 	furnitureColour = color.RGBA{255, 127, 14, 255}
 	outlineColour   = color.RGBA{0, 0, 0, 255}
 	voidColour      = color.RGBA{127, 127, 127, 255}
@@ -46,6 +47,10 @@ func Shapes(t *Trace) []raster.Shape {
 		at := centroid(r.Polygon)
 		if r.Label != nil {
 			at = *r.Label
+		}
+		if r.Kind == KindZone {
+			out = append(out, zoneShapes(r, at, k)...)
+			continue
 		}
 		out = append(
 			out,
@@ -125,6 +130,43 @@ func Shapes(t *Trace) []raster.Shape {
 		)
 	}
 	return out
+}
+
+// zoneShapes draws a zone's edge dashed, in its own colour, so a wall-less
+// zone can't be mistaken for a room whose walls the tracer missed: one shape
+// per dash (raster strokes only solid lines), then the label on its own. A
+// dash is 0.4 m with a 0.3 m gap, at k px/m.
+func zoneShapes(r Room, at [2]float64, k float64) []raster.Shape {
+	on, off := 0.4*k, 0.3*k
+	var out []raster.Shape
+	n := len(r.Polygon)
+	phase := 0.0 // how far into the current dash-and-gap cycle the edge starts
+	for i := range n {
+		p, q := r.Polygon[i], r.Polygon[(i+1)%n]
+		length := math.Hypot(q[0]-p[0], q[1]-p[1])
+		if length == 0 {
+			continue
+		}
+		lerp := func(d float64) raster.Point {
+			f := d / length
+			return raster.Point{p[0] + f*(q[0]-p[0]), p[1] + f*(q[1]-p[1])}
+		}
+		// Dashes carry on round corners rather than restarting, so short
+		// edges still show a pattern.
+		for d := -phase; d < length; d += on + off {
+			a, b := math.Max(d, 0), math.Min(d+on, length)
+			if b > a {
+				out = append(out, raster.Shape{
+					Points:  []raster.Point{lerp(a), lerp(b)},
+					Width:   2,
+					Color:   zoneColour,
+					Opacity: 0.8,
+				})
+			}
+		}
+		phase = math.Mod(phase+length, on+off)
+	}
+	return append(out, raster.Shape{Color: zoneColour, Text: r.Name, At: at})
 }
 
 // itemShape is a furniture footprint: a rectangle of the item's size in

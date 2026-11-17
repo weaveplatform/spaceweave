@@ -20,6 +20,19 @@ const HATCHED = new Set(['wall', 'cabinet', 'counter', 'appliance', 'door', 'pli
 
 const ZONE_NAMES = { meet: 'Meeting', work: 'Work', social: 'Social', service: 'Service' };
 
+// A zone is open plan: a tint of its use's colour over the slab, edged with a
+// dash and no walls, so it reads as an area rather than a room whose walls
+// went missing. A room is filled solid by its use and floor finish.
+export const isZone = (r) => r.kind === 'zone';
+export function spaceFill(r, palette, mix) {
+  if (isZone(r)) return palette.zone[r.zone];
+  if (r.floor === 'tile') return palette.floor.tile;
+  if (r.floor === 'wood') return mix(palette.zone[r.zone], palette.floor.wood, 0.45);
+  return palette.zone[r.zone];
+}
+export const spaceClass = (r) => (isZone(r) ? 'zone' : 'room');
+export const spaceTip = (r) => `${ZONE_NAMES[r.zone]}${isZone(r) ? ' · open plan' : ''} · ${r.area.toFixed(1)} m²`;
+
 const fmt = (v) => (Math.round(v * PX_PER_M * 10) / 10).toString();
 const pathOf = (pts) => `M${pts.map((p) => `${fmt(p[0])},${fmt(p[1])}`).join('L')}Z`;
 
@@ -140,9 +153,10 @@ export function createScene({ svg: svgEl, tooltip: tooltipEl, styleRoot, plan, o
 
   const rooms = plan.rooms.map((r) => ({ ...r, area: polygonArea(r.polygon), c: r.label ?? centroid(r.polygon) }));
 
-  // Tile grid lines, clipped to each tiled rectangle.
+  // Tile grid lines, clipped to each tiled rectangle. A zone is a tint, not a
+  // finish, so it gets none.
   const tileLines = [];
-  for (const area of [...plan.rooms, ...plan.floorPatches].filter((r) => r.floor === 'tile')) {
+  for (const area of [...plan.rooms.filter((r) => !isZone(r)), ...plan.floorPatches].filter((r) => r.floor === 'tile')) {
     const xs = area.polygon.map((p) => p[0]);
     const ys = area.polygon.map((p) => p[1]);
     const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
@@ -218,7 +232,8 @@ export function createScene({ svg: svgEl, tooltip: tooltipEl, styleRoot, plan, o
       .on('pointerleave', () => { hovered = null; drawHover(); tooltip.attr('hidden', true); })
       .on('click', (e, r) => zoomToRoom(r)))
       .attr('d', (r) => pathOf(floorPts(r.polygon)))
-      .attr('fill', (r) => (r.floor === 'tile' ? palette.floor.tile : r.floor === 'wood' ? d3.interpolateRgb(palette.zone[r.zone], palette.floor.wood)(0.45) : palette.zone[r.zone]));
+      .attr('class', spaceClass)
+      .attr('fill', (r) => spaceFill(r, palette, (a, b, t) => d3.interpolateRgb(a, b)(t)));
 
     gTiles.selectAll('path.patch').data(plan.floorPatches, (p) => p.id).join('path').attr('class', 'patch')
       .attr('d', (p) => pathOf(floorPts(p.polygon)))
@@ -278,7 +293,8 @@ export function createScene({ svg: svgEl, tooltip: tooltipEl, styleRoot, plan, o
 
     // Labels
     const roomLabels = state.labels ? rooms : [];
-    gLabels.selectAll('text.room').data(roomLabels, (r) => r.id).join('text').attr('class', 'room')
+    gLabels.selectAll('text.room').data(roomLabels, (r) => r.id).join('text')
+      .attr('class', (r) => `room${isZone(r) ? ' zone' : ''}`)
       .attr('transform', (r) => {
         const [sx, sy] = view.project(r.c[0], r.c[1], 0.05);
         return `translate(${fmt(sx)},${fmt(sy)})`;
@@ -317,7 +333,7 @@ export function createScene({ svg: svgEl, tooltip: tooltipEl, styleRoot, plan, o
     const [x, y] = d3.pointer(e, svgEl.parentElement);
     tooltip.attr('hidden', null)
       .style('left', `${x + 14}px`).style('top', `${y + 14}px`)
-      .html(`<strong>${r.name}</strong><span>${ZONE_NAMES[r.zone]} · ${r.area.toFixed(1)} m²</span>`);
+      .html(`<strong>${r.name}</strong><span>${spaceTip(r)}</span>`);
   }
 
   // ---- camera
