@@ -27,6 +27,9 @@ const (
 	// hull) a void may take. An edge with a gap wider than the seal floods
 	// the floor round it: a leak, not a void, and the floor stays.
 	maxVoidShare = 0.5
+	// voidLabelReach is how far, in metres, a room-name label may be from
+	// a void's point and still be the void's own label.
+	voidLabelReach = 1.0
 )
 
 // voidEdges finds each void's outline and returns it as void segments. It
@@ -61,9 +64,10 @@ func (b *builder) voidEdges(walls []seg) []seg {
 	}
 	building := math.Abs(signedArea(hull(pts)))
 	m := newMask(walls, ink, voidCell*pxm, voidSeal*pxm)
+	names := m.nameCells(b.in.Labels, at, voidLabelReach*pxm)
 	var out []seg
 	for _, p := range at {
-		ring := m.flood(p, maxVoidShare*building, voidSeal*pxm)
+		ring := m.flood(p, maxVoidShare*building, voidSeal*pxm, names)
 		if len(ring) < 3 {
 			b.voidMissed++
 			continue
@@ -77,6 +81,33 @@ func (b *builder) voidEdges(walls []seg) []seg {
 		}
 	}
 	slices.SortFunc(out, cmpSeg)
+	return out
+}
+
+// nameCells are the cells of the room names that are no void's own: a
+// flood that reaches one has leaked out of the void through a gap wider
+// than the seal and across a floor closed further out (the more gaps
+// elsewhere doorways close, the likelier), so it is floor, not a hole in
+// it. A name behind walls inside the void, a stair or lift core's, is
+// never reached: only the open floor round it is flooded; nor does a
+// small room's name (a stair, a lift) stop it, as those stand in atria
+// unwalled. The void's own label lies within reach of one of the points
+// at.
+func (m *mask) nameCells(labels []Label, at []Point, reach float64) map[int]bool {
+	out := map[int]bool{}
+	for _, l := range labels {
+		// A stair or lift may stand in an atrium with no walls round it.
+		if l.Kind != LabelName || hasWord(nameWords(l.Text), smallRoomWords) {
+			continue
+		}
+		own := false
+		for _, p := range at {
+			own = own || dist(l.At, p) <= reach
+		}
+		if i, j := m.index(l.At); !own && i >= 0 && j >= 0 && i < m.w && j < m.h {
+			out[j*m.w+i] = true
+		}
+	}
 	return out
 }
 
@@ -142,9 +173,9 @@ func (m *mask) centre(i, j int) Point {
 
 // flood fills the open cells reachable from p and returns the region's
 // outline, grown back by the seal and simplified, or nil when p is
-// blocked, or the region reaches the grid's border or is larger than
-// limit px².
-func (m *mask) flood(p Point, limit, seal float64) []Point {
+// blocked, or the region reaches the grid's border or a cell in stop or
+// is larger than limit px².
+func (m *mask) flood(p Point, limit, seal float64, stop map[int]bool) []Point {
 	i, j := m.index(p)
 	if i < 0 || j < 0 || i >= m.w || j >= m.h || m.blocked[j*m.w+i] {
 		return nil
@@ -156,7 +187,7 @@ func (m *mask) flood(p Point, limit, seal float64) []Point {
 	for k := 0; k < len(queue); k++ {
 		c := queue[k]
 		x, y := c%m.w, c/m.w
-		if x == 0 || y == 0 || x == m.w-1 || y == m.h-1 || len(queue) > maxCells {
+		if x == 0 || y == 0 || x == m.w-1 || y == m.h-1 || len(queue) > maxCells || stop[c] {
 			return nil
 		}
 		for _, n := range [4]int{c - 1, c + 1, c - m.w, c + m.w} {

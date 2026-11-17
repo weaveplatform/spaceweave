@@ -128,7 +128,7 @@ func (b *builder) graph() error {
 	segs = mergeCollinear(snap(segs, dominantDirections(segs)))
 	b.ops, b.badOps, b.oddOps = cleanOpenings(b.in.Openings)
 	segs = mergeCollinear(joinOpenings(segs, b.ops))
-	b.segs = closeCorners(segs)
+	b.segs = anchorEnds(closeCorners(segs))
 	b.segs = append(b.segs, b.voidEdges(b.segs)...)
 	b.g = node(b.segs)
 	if len(b.g.edges) == 0 {

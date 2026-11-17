@@ -208,7 +208,7 @@ func TestStatedArea(t *testing.T) {
 		"3 sq ft":     3 * sqFt,
 		"40 sqm":      40,
 		"Room 12 m²":  0,
-		"2C-185":      0,
+		"4D-321":      0,
 		"0 m2":        0,
 		"12 metres":   0,
 		"1.2.3 sf":    0,

@@ -19,6 +19,17 @@ func unit(v point) point {
 	return point{}
 }
 
+// distToSeg is the distance from p to the segment ab.
+func distToSeg(p, a, b point) float64 {
+	ab := b.Sub(a)
+	l2 := dot(ab, ab)
+	if l2 == 0 {
+		return p.Sub(a).Len()
+	}
+	t := math.Max(0, math.Min(1, dot(p.Sub(a), ab)/l2))
+	return p.Sub(a.Add(ab.Mul(t))).Len()
+}
+
 // inverse undoes m; ok is false when m squashes the plane flat.
 func inverse(m vector.Affine) (vector.Affine, bool) {
 	det := m.A*m.D - m.B*m.C
