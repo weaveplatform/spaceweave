@@ -67,15 +67,30 @@ type Opening struct {
 	Head  float64 `json:"head,omitempty"`
 }
 
-// Room is a named floor area; Polygon and Label are pixels.
+// Room is a named floor area; Polygon and Label are pixels. Kind is
+// KindRoom (or empty) for a space enclosed by walls and KindZone for an
+// open-plan area with no walls of its own. Zone, despite the name, is the
+// space's use (meet, work, ...), which colours it whatever its kind.
 type Room struct {
 	ID      string       `json:"id"`
 	Name    string       `json:"name"`
+	Kind    string       `json:"kind,omitempty"`
 	Zone    string       `json:"zone"`
 	Floor   string       `json:"floor"`
 	Polygon [][2]float64 `json:"polygon"`
 	Label   *[2]float64  `json:"label,omitempty"`
 }
+
+// Space kinds. A room without one is KindRoom, so every plan traced before
+// zones existed means what it did; the site's KINDS (test/invariants.mjs)
+// must list the same.
+const (
+	KindRoom = "room"
+	KindZone = "zone"
+)
+
+// Kinds are the space kinds a room may give.
+var Kinds = []string{KindRoom, KindZone}
 
 // Patch is a floor finish laid over part of a room, e.g. kitchen tiles.
 type Patch struct {

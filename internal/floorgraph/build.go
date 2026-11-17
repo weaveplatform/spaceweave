@@ -271,6 +271,9 @@ func (b *builder) rooms() {
 		if !r.labeled {
 			r.label = qp(pole(r.poly, 1))
 		}
+		// A meeting or training room this big is still behind walls.
+		zone, _ := classify(r.name)
+		r.open = r.areaM >= openPlanArea && zone != "meet"
 	}
 }
 
@@ -542,8 +545,12 @@ func (b *builder) trace() *plan.Trace {
 	for i, r := range b.rs {
 		zone, floor := classify(r.name)
 		label := pt(r.label)
+		kind := ""
+		if r.open {
+			kind = plan.KindZone
+		}
 		t.Rooms = append(t.Rooms, plan.Room{
-			ID: fmt.Sprintf("r%d", i+1), Name: r.name, Zone: zone, Floor: floor,
+			ID: fmt.Sprintf("r%d", i+1), Name: r.name, Kind: kind, Zone: zone, Floor: floor,
 			Polygon: polyOut(r.poly), Label: &label,
 		})
 	}

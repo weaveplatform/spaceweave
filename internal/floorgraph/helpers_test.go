@@ -1,7 +1,9 @@
 package floorgraph
 
 import (
+	"fmt"
 	"math"
+	"slices"
 	"testing"
 
 	"github.com/weaveplatform/spaceweave/internal/plan"
@@ -62,18 +64,17 @@ func checkResult(t *testing.T, r *Result) {
 // siteCheck is the geometry of web/floorplan-iso/test/invariants.mjs's
 // checkPlan, in Go so the fuzz test can run it: walls over 5 cm with their
 // ends in the outline (0.2 m slack), openings on their wall, rooms and voids
-// over 0.5 m² inside the outline (0.15 m slack), no room labelled inside a
-// void, rooms and voids not overlapping, and an exterior wall.
+// over 0.5 m² with their corners in the outline (0.15 m slack), a known kind
+// for every room, no room labelled inside a void, and an exterior wall; and
+// no room or zone sharing more than overlapSlack with another, with a void
+// or with the world outside the outline.
 func siteCheck(p *plan.Plan) []string {
 	var errs []string
 	outline := p.Outline
 	if outline == nil {
 		outline = [][2]float64{{0, 0}, {p.Width, 0}, {p.Width, p.Depth}, {0, p.Depth}}
 	}
-	poly := make([]Point, len(outline))
-	for i, o := range outline {
-		poly[i] = P(o[0], o[1])
-	}
+	poly := points(outline)
 	in := func(o [2]float64, slack float64) bool {
 		for _, i := range []float64{0, -1, 1} {
 			for _, j := range []float64{0, -1, 1} {
@@ -108,16 +109,26 @@ func siteCheck(p *plan.Plan) []string {
 	if !ext {
 		errs = append(errs, "no exterior walls")
 	}
-	total := 0.0
-	for _, r := range p.Rooms {
-		rp := make([]Point, len(r.Polygon))
-		for i, o := range r.Polygon {
-			rp[i] = P(o[0], o[1])
+	var voids [][][2]float64
+	for _, v := range p.Voids {
+		for _, o := range v {
+			if !in(o, 0.15) {
+				errs = append(errs, "void outside the outline")
+			}
 		}
-		a := math.Abs(signedArea(rp))
-		total += a
-		if !(len(rp) >= 3 && a > 0.5) {
+		if !(len(v) >= 3 && polyArea(v) >= 0.5) {
+			errs = append(errs, "void under 0.5 m²")
+		}
+		voids = append(voids, v)
+	}
+	var spaces []plan.MRoom
+	for _, r := range p.Rooms {
+		if r.Kind != "" && !slices.Contains(plan.Kinds, r.Kind) {
+			errs = append(errs, "room "+r.ID+" kind "+r.Kind)
+		}
+		if !(len(r.Polygon) >= 3 && polyArea(r.Polygon) > 0.5) {
 			errs = append(errs, "room "+r.ID+" under 0.5 m²")
+			continue
 		}
 		for _, o := range r.Polygon {
 			if !in(o, 0.15) {
@@ -125,35 +136,45 @@ func siteCheck(p *plan.Plan) []string {
 				break
 			}
 		}
-	}
-	var voids [][]Point
-	for _, v := range p.Voids {
-		vp := make([]Point, len(v))
-		for j, o := range v {
-			vp[j] = P(o[0], o[1])
-			if !in(o, 0.15) {
-				errs = append(errs, "void outside the outline")
-			}
-		}
-		a := math.Abs(signedArea(vp))
-		total += a
-		if !(len(vp) >= 3 && a >= 0.5) {
-			errs = append(errs, "void under 0.5 m²")
-		}
-		voids = append(voids, vp)
-	}
-	for _, r := range p.Rooms {
 		for _, v := range voids {
-			if r.Label != nil && inside(P(r.Label[0], r.Label[1]), v) {
+			if r.Label != nil && inside(P(r.Label[0], r.Label[1]), points(v)) {
 				errs = append(errs, "room "+r.ID+" labelled in a void")
 			}
 		}
+		spaces = append(spaces, r)
 	}
-	if total > math.Abs(signedArea(poly))*1.02 {
-		errs = append(errs, "rooms overlap")
+	for i, r := range spaces {
+		a := polyArea(r.Polygon)
+		if out := a - overlapArea(r.Polygon, outline); out > overlapSlack(a, polyArea(outline)) {
+			errs = append(errs, fmt.Sprintf("room %s has %.2f m² outside the outline", r.ID, out))
+		}
+		for _, v := range voids {
+			if o := overlapArea(r.Polygon, v); o > overlapSlack(a, polyArea(v)) {
+				errs = append(errs, fmt.Sprintf("room %s covers %.2f m² of a void", r.ID, o))
+			}
+		}
+		for _, q := range spaces[i+1:] {
+			if o := overlapArea(r.Polygon, q.Polygon); o > overlapSlack(a, polyArea(q.Polygon)) {
+				errs = append(errs, fmt.Sprintf("rooms %s and %s overlap by %.2f m²", r.ID, q.ID, o))
+			}
+		}
 	}
 	return errs
 }
+
+// overlapSlack is how much floor two polygons may share before invariants.mjs
+// calls it an overlap: its OVERLAP_SLACK, a tracing slip.
+func overlapSlack(a, b float64) float64 { return math.Max(0.25, 0.005*math.Min(a, b)) }
+
+func points(poly [][2]float64) []Point {
+	out := make([]Point, len(poly))
+	for i, o := range poly {
+		out[i] = P(o[0], o[1])
+	}
+	return out
+}
+
+func polyArea(poly [][2]float64) float64 { return math.Abs(signedArea(points(poly))) }
 
 func roomNames(r *Result) []string {
 	var out []string

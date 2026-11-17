@@ -283,6 +283,11 @@ h1 { margin: 0; font-size: 17px; letter-spacing: -0.01em; }
 .solids path.glass { fill-opacity: var(--glass-opacity); stroke: var(--glass); stroke-opacity: 0.9; }
 .base path { stroke: var(--edge); stroke-opacity: 0.2; stroke-width: 0.6; vector-effect: non-scaling-stroke; }
 .floors path { stroke: var(--floor-edge); stroke-opacity: 0.18; stroke-width: 0.6; vector-effect: non-scaling-stroke; cursor: pointer; }
+/* A zone: open plan with no walls of its own, a lighter tint with a dashed edge. */
+.floors path.zone {
+  fill-opacity: var(--zone-tint, 0.65);
+  stroke: var(--floor-edge); stroke-opacity: 0.55; stroke-width: 1.2; stroke-dasharray: 5 4;
+}
 .tiles path { pointer-events: none; }
 .shadow path { fill: #000; opacity: var(--shadow-opacity); filter: url(#soft-shadow); pointer-events: none; }
 .tiles .grid { fill: none; stroke: var(--tile-line); stroke-width: 0.6; vector-effect: non-scaling-stroke; }
@@ -305,6 +310,7 @@ h1 { margin: 0; font-size: 17px; letter-spacing: -0.01em; }
   text-transform: var(--label-case);
 }
 .labels text.room { font-size: calc(var(--label-size) / var(--zoom-k, 1)); font-weight: 600; letter-spacing: 0.01em; }
+.labels text.room.zone { font-style: italic; font-weight: 500; }
 .labels .person text { font-size: calc(10.5px / var(--zoom-k, 1)); dominant-baseline: auto; }
 .labels .person line { stroke: var(--label-ink); stroke-opacity: 0.45; stroke-width: 1; }
 

@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 // Draws a traced plan back over its source image so tracing errors are
 // visible at a glance: walls (red exterior, blue interior, cyan glass), door and
-// window openings (green), room outlines with names (purple), voids (grey) and
-// furniture footprints (orange). Output is SVG in source-image pixels; rasterise it to
+// window openings (green), room outlines with names (purple), zones (pink,
+// finely dashed: open-plan areas with no walls), voids (grey) and furniture
+// footprints (orange). internal/plan/overlay.go uses the same colours. Output is SVG in source-image pixels; rasterise it to
 // look at it, e.g.
 //
 //   node tools/overlay.mjs js/plans/pt-clinic.js ~/plans/clinic.png /tmp/clinic.svg
@@ -49,9 +50,11 @@ if (flags.includes('--grid')) {
 }
 
 for (const r of plan.rooms) {
-  out.push(`<polygon points="${pts(r.polygon)}" fill="#7b3fe4" fill-opacity="0.08" stroke="#7b3fe4" stroke-width="2" stroke-dasharray="6 4"/>`);
+  const zone = r.kind === 'zone';
+  const c = zone ? '#e377c2' : '#7b3fe4';
+  out.push(`<polygon points="${pts(r.polygon)}" fill="${c}" fill-opacity="${zone ? 0.12 : 0.08}" stroke="${c}" stroke-width="2" stroke-dasharray="${zone ? '2 4' : '6 4'}"/>`);
   const [lx, ly] = r.label ?? [r.polygon.reduce((s, p) => s + p[0], 0) / r.polygon.length, r.polygon.reduce((s, p) => s + p[1], 0) / r.polygon.length];
-  out.push(`<text x="${X(lx)}" y="${Y(ly)}" font-size="${k * 0.35}" fill="#7b3fe4" text-anchor="middle" font-weight="bold">${esc(r.name)}</text>`);
+  out.push(`<text x="${X(lx)}" y="${Y(ly)}" font-size="${k * 0.35}" fill="${c}" text-anchor="middle" font-weight="bold"${zone ? ' font-style="italic"' : ''}>${esc(r.name)}</text>`);
 }
 
 for (const v of plan.VOIDS ?? []) {

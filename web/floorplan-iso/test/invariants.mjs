@@ -3,11 +3,22 @@
 // submission), so the worker and the site's tests can't disagree about what a
 // valid plan is. Returns messages instead of throwing so a tracer gets every
 // problem from one submission, not just the first.
-import { furniturePrisms, wallPrisms, balustradePrisms, pointInPolygon, polygonArea, projectPrism, BLOCKY } from '../js/geometry.js';
+import { furniturePrisms, wallPrisms, balustradePrisms, pointInPolygon, polygonArea, overlapArea, projectPrism, BLOCKY } from '../js/geometry.js';
 import { makeView, PRESETS } from '../js/projection.js';
 
 export const ZONES = new Set(['meet', 'work', 'social', 'service']);
 export const FLOORS = new Set(['carpet', 'wood', 'tile']);
+// A room is enclosed by walls; a zone is a named open-plan area with no walls
+// of its own (circulation, a desk neighbourhood). A room without a kind is a
+// room, so plans written before zones existed keep their meaning.
+export const KINDS = new Set(['room', 'zone']);
+// How much two spaces, or a space and a void or the world outside the
+// outline, may share before it is an error: a hand trace's corners land a few
+// centimetres off, so the larger of a quarter of a square metre (half the
+// smallest room allowed, so a whole room can't hide in it) and 0.5% of the
+// smaller polygon. The hand-traced suites and corporate floors have slips of
+// 0.09 and 0.13 m². internal/floorgraph's siteCheck uses the same numbers.
+export const OVERLAP_SLACK = { area: 0.25, share: 0.005 };
 const REQUIRED = ['SOURCE', 'WIDTH', 'DEPTH', 'ENTRANCE', 'THICKNESS', 'walls', 'rooms', 'floorPatches', 'furniture'];
 // Enough for a tracer to fix the pattern without flooding its context.
 const MAX_ERRORS = 60;
@@ -63,36 +74,62 @@ export function checkPlan(plan) {
     if (!(inside(w.from, 0.2) && inside(w.to, 0.2))) fail(`wall ${w.id} ${at(w.from)}→${at(w.to)} has an end outside the outline`);
   }
 
-  // ---- voids: holes in the slab (an atrium, a light well). Rooms leave them
-  // out, so they count toward the building's area alongside the rooms.
-  const voids = plan.VOIDS ?? [];
-  if (!Array.isArray(voids)) fail('VOIDS must be a list of polygons');
-  let voidArea = 0;
-  for (const [i, v] of (Array.isArray(voids) ? voids : []).entries()) {
+  // ---- voids: holes in the slab (an atrium, a light well). No space covers
+  // one, or its floor would be drawn over the hole.
+  const voids = Array.isArray(plan.VOIDS) ? plan.VOIDS : [];
+  if (!Array.isArray(plan.VOIDS ?? [])) fail('VOIDS must be a list of polygons');
+  const holes = [];
+  for (const [i, v] of voids.entries()) {
     if (!(Array.isArray(v) && v.length >= 3 && polygonArea(v) > 0.5)) {
       fail(`void ${i} needs at least 3 corners and 0.5 m² of area`);
       continue;
     }
-    voidArea += polygonArea(v);
     if (!v.every((p) => inside(p))) fail(`void ${i} has a corner outside the outline`);
+    holes.push({ i, poly: v, area: polygonArea(v) });
   }
-  const inVoid = (p) => (Array.isArray(voids) ? voids : []).findIndex((v) => v.length >= 3 && pointInPolygon(p, v));
+  const inVoid = (p) => holes.find((h) => pointInPolygon(p, h.poly))?.i ?? -1;
 
-  // ---- rooms
+  // ---- rooms and zones
   const roomIds = new Set();
+  const spaces = [];
   for (const r of plan.rooms) {
     if (roomIds.has(r.id)) fail(`room id ${r.id} is repeated`);
     roomIds.add(r.id);
+    const kind = r.kind ?? 'room';
+    if (!KINDS.has(kind)) fail(`room ${r.id}: kind must be one of ${[...KINDS]}, got ${kind}`);
     if (!(r.name && ZONES.has(r.zone) && FLOORS.has(r.floor))) fail(`room ${r.id}: needs a name, a zone (${[...ZONES]}) and a floor (${[...FLOORS]})`);
-    if (!(r.polygon?.length >= 3 && polygonArea(r.polygon) > 0.5)) fail(`room ${r.id} has under 0.5 m² of area`);
-    else if (!r.polygon.every((p) => inside(p))) fail(`room ${r.id} has a corner outside the outline`);
-    // The label is the one point a room promises is inside it.
-    if (r.label && inVoid(r.label) >= 0) fail(`room ${r.id} is labelled inside void ${inVoid(r.label)}`);
+    if (!(r.polygon?.length >= 3 && polygonArea(r.polygon) > 0.5)) {
+      fail(`${kind} ${r.id} has under 0.5 m² of area`);
+      continue;
+    }
+    if (!r.polygon.every((p) => inside(p))) fail(`${kind} ${r.id} has a corner outside the outline`);
+    // The label is the one point a space promises is inside it.
+    if (r.label && inVoid(r.label) >= 0) fail(`${kind} ${r.id} is labelled inside void ${inVoid(r.label)}`);
+    spaces.push({ ...spaceBox(r.polygon), id: r.id, kind, poly: r.polygon, area: polygonArea(r.polygon) });
   }
-  const total = plan.rooms.reduce((s, r) => s + (r.polygon?.length >= 3 ? polygonArea(r.polygon) : 0), 0);
-  if (total > polygonArea(outline) * 1.02) fail(`rooms total ${total.toFixed(1)} m² but the building is ${polygonArea(outline).toFixed(1)} m²: rooms overlap`);
-  else if (total + voidArea > polygonArea(outline) * 1.02) {
-    fail(`rooms (${total.toFixed(1)} m²) and voids (${voidArea.toFixed(1)} m²) are more than the building's ${polygonArea(outline).toFixed(1)} m²: a room covers a void`);
+  const slack = (a, b) => Math.max(OVERLAP_SLACK.area, OVERLAP_SLACK.share * Math.min(a, b));
+  const outlineArea = polygonArea(outline);
+  for (const s of spaces) {
+    const out = s.area - overlapArea(s.poly, outline);
+    if (out > slack(s.area, outlineArea)) fail(`${s.kind} ${s.id} has ${out.toFixed(2)} m² outside the outline`);
+    for (const h of holes) {
+      const o = overlapArea(s.poly, h.poly);
+      if (o > slack(s.area, h.area)) fail(`${s.kind} ${s.id} covers ${o.toFixed(2)} m² of void ${h.i}`);
+    }
+  }
+  // Rooms tile the floor between their walls and zones fill what is left, so
+  // no two spaces of either kind may share floor. Sorting by left edge and
+  // stopping at the first space that starts right of this one ends keeps it
+  // well under quadratic for a floor of a few hundred spaces.
+  spaces.sort((p, q) => p.x0 - q.x0);
+  for (let i = 0; i < spaces.length; i++) {
+    const a = spaces[i];
+    for (let j = i + 1; j < spaces.length && spaces[j].x0 < a.x1; j++) {
+      const b = spaces[j];
+      if (!(b.y0 < a.y1 && a.y0 < b.y1)) continue;
+      const o = overlapArea(a.poly, b.poly);
+      if (o > slack(a.area, b.area)) fail(`${a.kind} ${a.id} and ${b.kind} ${b.id} overlap by ${o.toFixed(2)} m²`);
+    }
   }
 
   // ---- furniture
@@ -120,4 +157,10 @@ export function checkPlan(plan) {
   });
 
   return errors;
+}
+
+function spaceBox(poly) {
+  const xs = poly.map((p) => p[0]);
+  const ys = poly.map((p) => p[1]);
+  return { x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys) };
 }

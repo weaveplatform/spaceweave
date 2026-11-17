@@ -26,7 +26,11 @@ Everything you point at is in **source-image pixels**: x to the right, y down, o
    - `hinge` is `a` or `b`: which end the single leaf hangs from.
    - A `window` may give `sill` and `head` in metres.
    - Use `opening` for a gap with no leaf, such as an archway, lift doors or an open alcove.
-5. **Rooms.** One polygon per room, following wall centrelines. Rooms must not overlap each other. Give each room:
+5. **Rooms and zones.** One polygon per named space. A space is one of two kinds:
+   - a **room** (the default; `kind` may be left out): enclosed by walls, its polygon following their centrelines.
+   - a **zone** (`kind: "zone"`): a named open-plan area with no walls of its own, such as circulation, a desk neighbourhood or an open office. Draw its edge where the plan shows it (a change of floor, a label's extent, the line between two named areas), and never add walls for it.
+
+   No two spaces may overlap, whatever their kind: zones fill the floor the rooms leave, not the floor under them. Give each space:
    - The name written on the plan.
    - A zone:
      - `meet`: meeting and conference rooms.
@@ -38,7 +42,7 @@ Everything you point at is in **source-image pixels**: x to the right, y down, o
 7. **Submit and check.** `submit_trace` replaces your previous submission with the one you send, so send the whole trace every time. It replies with:
    - structural problems
    - the site's validator errors, which are in metres after conversion
-   - a picture of your trace drawn over the image: red exterior, blue interior and cyan glass walls; green openings; purple rooms; orange furniture.
+   - a picture of your trace drawn over the image: red exterior, blue interior and cyan glass walls; green openings; purple rooms; dashed pink zones; orange furniture.
 
    Submit early: walls and calibration first, before rooms and furniture, so a scale or origin mistake shows up while it is cheap to fix. Zoom into the overlay with `view_overlay` to check alignment wherever lines are dense. `get_trace` returns your last submission if it has dropped out of view.
 8. **Finish.** When the latest submission has no problems and the overlay lines up, call `finish`:
@@ -65,7 +69,9 @@ walls            [{ id, kind, from: [x, y], to: [x, y], thickness?, ext?, openin
                  ext is how far the wall runs past each end (metres): the default is half
                  its thickness, which closes corners; 0 stops overlap where it meets
                  another wall end-on
-rooms            [{ id, name, zone, floor, polygon: [[x, y], ...], label?: [x, y] }]
+rooms            [{ id, name, kind?, zone, floor, polygon: [[x, y], ...], label?: [x, y] }]
+                 kind is "room" (the default) or "zone" (open plan, no walls of its own);
+                 zone is the space's use (meet, work, social, service), for either kind
 floorPatches     optional [{ id, name, floor, polygon }]: e.g. a tiled kitchen area
                  inside a carpeted room
 furniture        [{ type, x, y, ...fields for its type }]: x, y is the centre

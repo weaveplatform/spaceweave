@@ -2,8 +2,37 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { makeView, PRESETS } from '../js/projection.js';
 import {
-  solidRuns, splitRun, wallPrisms, balustradePrisms, BALUSTRADE, prism, rectPoly, projectPrism, compareFootprints, orderItems, signedArea, DOOR_HEAD,
+  solidRuns, splitRun, wallPrisms, balustradePrisms, BALUSTRADE, prism, rectPoly, projectPrism, compareFootprints, orderItems, signedArea, overlapArea, DOOR_HEAD,
 } from '../js/geometry.js';
+
+const near = (a, b, msg) => assert.ok(Math.abs(a - b) < 1e-9, `${msg}: ${a} vs ${b}`);
+const sq = (x0, y0, x1, y1) => [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
+
+test('overlapArea is the floor two polygons share, whatever their winding', () => {
+  near(overlapArea(sq(0, 0, 4, 4), sq(2, 1, 6, 3)), 4, 'overlapping squares');
+  near(overlapArea(sq(0, 0, 4, 4), [...sq(2, 1, 6, 3)].reverse()), 4, 'opposite winding');
+  near(overlapArea(sq(0, 0, 4, 4), sq(1, 1, 2, 2)), 1, 'one inside the other');
+  near(overlapArea(sq(0, 0, 4, 4), sq(5, 0, 6, 4)), 0, 'apart');
+  // A diamond over a square: the square's corners stick out as four
+  // triangles of 0.5 each.
+  near(overlapArea([[2, 0], [4, 2], [2, 4], [0, 2]], sq(0, 0, 4, 4)), 8, 'diamond');
+  near(overlapArea([[2, 0], [4, 2], [2, 4], [0, 2]], sq(1, 1, 3, 3)), 4, 'square in a diamond');
+  // Crossing slanted edges inside one slab: a bow-tie shaped overlap.
+  near(overlapArea([[0, 0], [2, 0], [0, 2]], [[0, 0], [2, 0], [2, 2]]), 1, 'two triangles');
+  // An L-shape round a square it doesn't cover.
+  const ell = [[0, 0], [4, 0], [4, 1], [1, 1], [1, 4], [0, 4]];
+  near(overlapArea(ell, sq(1, 1, 4, 4)), 0, 'concave neighbour');
+  near(overlapArea(ell, sq(0, 0, 4, 4)), 7, 'concave inside');
+});
+
+test('spaces that only share an edge or a corner overlap by nothing', () => {
+  near(overlapArea(sq(0, 0, 2, 2), sq(2, 0, 4, 2)), 0, 'shared side');
+  near(overlapArea(sq(0, 0, 2, 2), sq(0, 2, 2, 4)), 0, 'shared top');
+  near(overlapArea(sq(0, 0, 2, 2), sq(2, 2, 4, 4)), 0, 'shared corner');
+  near(overlapArea(sq(0, 0, 2, 2), sq(1, 2, 3, 4)), 0, 'part of a side');
+  near(overlapArea([[0, 0], [3, 0], [0, 3]], [[3, 0], [3, 3], [0, 3]]), 0, 'shared diagonal');
+  near(overlapArea([[0, 0], [1, 0]], sq(0, 0, 2, 2)), 0, 'a line has no area');
+});
 
 const opts = { thickness: { exterior: 0.15, interior: 0.1, glass: 0.05 }, width: 10, depth: 10 };
 

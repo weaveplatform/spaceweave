@@ -45,6 +45,87 @@ export function pointInPolygon([x, y], poly) {
   return inside;
 }
 
+// The area two polygons share (either winding, even-odd fill). Both are cut
+// into horizontal slabs at every vertex height; inside a slab no edge starts
+// or ends, so each polygon is a row of trapezoids and the overlap's width is
+// piecewise linear in y, integrated exactly. That keeps rooms which only
+// share a wall line at an overlap of 0 (± rounding), where a point-sampled or
+// area-sum test can't tell touching from overlapping. internal/floorgraph's
+// overlapArea is the same algorithm in Go; keep them in step.
+export function overlapArea(a, b) {
+  const box = (p) => {
+    let [x0, y0, x1, y1] = [Infinity, Infinity, -Infinity, -Infinity];
+    for (const [x, y] of p) {
+      x0 = Math.min(x0, x); x1 = Math.max(x1, x);
+      y0 = Math.min(y0, y); y1 = Math.max(y1, y);
+    }
+    return [x0, y0, x1, y1];
+  };
+  const [ax0, ay0, ax1, ay1] = box(a);
+  const [bx0, by0, bx1, by1] = box(b);
+  const lo = Math.max(ay0, by0);
+  const hi = Math.min(ay1, by1);
+  if (!(lo < hi && Math.max(ax0, bx0) < Math.min(ax1, bx1))) return 0;
+  const ys = [...new Set([...a, ...b].map((p) => p[1]).filter((y) => y > lo && y < hi))].sort((p, q) => p - q);
+  const cuts = [lo, ...ys, hi];
+  // Each crossing edge's x at the slab's bottom and top, sorted by x at its
+  // middle; consecutive pairs bound the polygon's trapezoids.
+  const traps = (p, y0, y1) => {
+    const ym = (y0 + y1) / 2;
+    const xs = [];
+    for (let i = 0, j = p.length - 1; i < p.length; j = i++) {
+      const [px, py] = p[j];
+      const [qx, qy] = p[i];
+      if (py > ym !== qy > ym) {
+        const at = (y) => px + ((y - py) * (qx - px)) / (qy - py);
+        xs.push([at(ym), at(y0), at(y1)]);
+      }
+    }
+    xs.sort((u, v) => u[0] - v[0]);
+    const out = [];
+    for (let k = 0; k + 1 < xs.length; k += 2) out.push([xs[k][1], xs[k + 1][1], xs[k][2], xs[k + 1][2]]);
+    return out;
+  };
+  let area = 0;
+  for (let s = 0; s + 1 < cuts.length; s++) {
+    const [y0, y1] = [cuts[s], cuts[s + 1]];
+    if (!(y1 > y0)) continue;
+    const ta = traps(a, y0, y1);
+    if (!ta.length) continue;
+    const tb = traps(b, y0, y1);
+    for (const u of ta) for (const v of tb) area += (y1 - y0) * sharedWidth(u, v);
+  }
+  return area;
+}
+
+// The integral over t in [0, 1] of the width two trapezoids share, each
+// given as [left, right] x at t = 0 then at t = 1. The width is linear
+// between the points where any two of the four edges cross, so it is exact
+// to sample it there and add up trapezoids.
+function sharedWidth([al0, ar0, al1, ar1], [bl0, br0, bl1, br1]) {
+  const edges = [[al0, al1], [ar0, ar1], [bl0, bl1], [br0, br1]];
+  const ts = [0, 1];
+  for (let i = 0; i < 4; i++) {
+    for (let j = i + 1; j < 4; j++) {
+      const d0 = edges[i][0] - edges[j][0];
+      const d1 = edges[i][1] - edges[j][1];
+      if (d0 !== d1) {
+        const t = d0 / (d0 - d1);
+        if (t > 0 && t < 1) ts.push(t);
+      }
+    }
+  }
+  ts.sort((p, q) => p - q);
+  const w = (t) => {
+    const l = Math.max(al0 + (al1 - al0) * t, bl0 + (bl1 - bl0) * t);
+    const r = Math.min(ar0 + (ar1 - ar0) * t, br0 + (br1 - br0) * t);
+    return Math.max(0, r - l);
+  };
+  let s = 0;
+  for (let k = 0; k + 1 < ts.length; k++) s += ((w(ts[k]) + w(ts[k + 1])) / 2) * (ts[k + 1] - ts[k]);
+  return s;
+}
+
 // Grows a simple polygon by d along its edge normals (mitred corners), for
 // the slab under the outer face of the exterior walls.
 export function offsetPolygon(poly, d) {

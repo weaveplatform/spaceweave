@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import * as office from '../js/plans/roomsketcher-office.js';
 import { checkPlan } from './invariants.mjs';
 
+const rect = (x0, y0, x1, y1) => [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
 const copy = () => structuredClone(Object.fromEntries(Object.entries(office)));
 const expectError = (plan, pattern) => {
   const errors = checkPlan(plan);
@@ -58,7 +59,76 @@ test('room mistakes', () => {
   expectError(plan, /under 0.5 m²/);
   expectError(plan, /corner outside the outline/);
   expectError(plan, /is repeated/);
-  expectError(plan, /rooms overlap/);
+  expectError(plan, /room sarah and room dup-0 overlap by 6\.94 m²/);
+});
+
+test('spaces are rooms unless they say they are zones', () => {
+  const plan = copy();
+  // The open office has no walls between it and the conference room's door:
+  // a zone. Its outline is unchanged, so it still tiles with the rooms.
+  plan.rooms.find((r) => r.id === 'open-office').kind = 'zone';
+  plan.rooms.find((r) => r.id === 'mike').kind = 'room';
+  assert.deepEqual(checkPlan(plan), []);
+  plan.rooms[0].kind = 'corridor';
+  expectError(plan, /room meetings: kind must be one of room,zone, got corridor/);
+});
+
+test('spaces may share an edge or a tracing slip, never floor', () => {
+  const plan = copy();
+  const byId = (id) => plan.rooms.find((r) => r.id === id);
+  // Mike's office reaches 4 cm into Sarah's: 0.13 m², a slip.
+  byId('mike').polygon = rect(14.82, 0, 17.19, 3.17);
+  assert.deepEqual(checkPlan(plan), []);
+  // Half a metre is a room drawn over another.
+  byId('mike').polygon = rect(14.82, 0, 17.65, 3.17);
+  expectError(plan, /room mike and room sarah overlap by 1\.58 m²/);
+});
+
+test('zones may not overlap each other or a room', () => {
+  const plan = copy();
+  const byId = (id) => plan.rooms.find((r) => r.id === id);
+  byId('open-office').kind = 'zone';
+  byId('coffee').kind = 'zone';
+  byId('coffee').polygon = rect(0, 6, 10.64, 9.53);
+  expectError(plan, /zone coffee and zone open-office overlap by 5\.19 m²/);
+  expectError(plan, /room conference and zone coffee overlap by 3\.22 m²/);
+  byId('coffee').polygon = rect(0, 6.79, 10.64, 9.53);
+  byId('retreat').polygon = rect(10, 6.79, 14.82, 9.53);
+  byId('retreat').label = [12.6, 8.25];
+  expectError(plan, /zone coffee and room retreat overlap by 1\.75 m²/);
+});
+
+test('a zone stays inside the building and out of its voids', () => {
+  const plan = copy();
+  const zone = plan.rooms.find((r) => r.id === 'open-office');
+  zone.kind = 'zone';
+  // Each corner within the outline's 15 cm slack, but the whole north edge
+  // 14 cm out: 1.2 m² of floor that isn't there.
+  zone.polygon = zone.polygon.map(([x, y]) => [x, y === 0 ? -0.14 : y]);
+  expectError(plan, /zone open-office has 1\.21 m² outside the outline/);
+  zone.polygon = zone.polygon.map(([x, y]) => [x, Math.max(0, y)]);
+  plan.VOIDS = [rect(8, 1, 10, 3)];
+  expectError(plan, /zone open-office covers 4\.00 m² of void 0/);
+  zone.label = [9, 2];
+  expectError(plan, /zone open-office is labelled inside void 0/);
+});
+
+test('a floor of hundreds of spaces is checked quickly', () => {
+  const plan = copy();
+  // A 20 × 10 grid of 0.9 m cells over the open office and coffee room,
+  // every one sharing its edges with its neighbours.
+  plan.rooms = [];
+  for (let i = 0; i < 20; i++) {
+    for (let j = 0; j < 10; j++) {
+      plan.rooms.push({
+        id: `c${i}-${j}`, name: 'Cell', zone: 'work', floor: 'carpet', kind: (i + j) % 2 ? 'zone' : 'room',
+        polygon: rect(0.5 + i * 0.9, 0.3 + j * 0.9, 1.4 + i * 0.9, 1.2 + j * 0.9),
+      });
+    }
+  }
+  const t0 = performance.now();
+  assert.deepEqual(checkPlan(plan), []);
+  assert.ok(performance.now() - t0 < 1000);
 });
 
 test('a void is a hole in the floor that no room covers', () => {
@@ -77,7 +147,7 @@ test('void mistakes', () => {
   expectError(plan, /void 1 needs at least 3 corners/);
   expectError(plan, /void 2 has a corner outside the outline/);
   expectError(plan, /room file is labelled inside void 0/);
-  expectError(plan, /a room covers a void/);
+  expectError(plan, /room server covers 2\.49 m² of void 0/);
   plan.VOIDS = [[[0, 0], [NaN, 0], [1, 1]]];
   expectError(plan, /NaN, Infinity or null/);
   plan.VOIDS = 'atrium';
