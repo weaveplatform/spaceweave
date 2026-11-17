@@ -459,3 +459,32 @@ func TestIngestRefusesUnknownFormats(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestRetrace(t *testing.T) {
+	s, _ := open(t)
+	e, _, err := s.Ingest(image(t, "a.png", "pixels"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.Review(e.ID, Retrace, ""); !errors.Is(err, ErrTransition) {
+		t.Fatalf("a queued plan is retraced anyway: %v", err)
+	}
+	for _, to := range []Status{Tracing, Draft} {
+		if err := s.Transition(e.ID, to, func(x *Entry) { x.Note = "from last time" }); err != nil {
+			t.Fatal(err)
+		}
+	}
+	was, now, err := s.Review(e.ID, Retrace, "ignored")
+	if err != nil || was != Draft || now.Status != Queued || now.Note != "" {
+		t.Fatalf("a draft goes back with no note: %v %+v %v", was, now, err)
+	}
+	if _, ok, _ := s.Claim(); !ok {
+		t.Fatal("claimed")
+	}
+	if err := s.Transition(e.ID, Failed, func(x *Entry) { x.Error = "no walls" }); err != nil {
+		t.Fatal(err)
+	}
+	if _, now, err := s.Review(e.ID, Retrace, ""); err != nil || now.Error != "" || now.Status != Queued {
+		t.Fatalf("a failure goes back too: %+v %v", now, err)
+	}
+}

@@ -60,7 +60,7 @@ func TestBlockRole(t *testing.T) {
 		{"*U12", "A-WALL", roleNone},
 	}
 	for _, c := range cases {
-		if got := blockRole(c.block, c.layer); got != c.want {
+		if got := layerBlockRole(c.block, c.layer); got != c.want {
 			t.Errorf("blockRole(%q, %q) = %v, want %v", c.block, c.layer, got, c.want)
 		}
 	}

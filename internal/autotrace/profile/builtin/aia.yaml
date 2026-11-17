@@ -1,0 +1,51 @@
+# AIA CAD Layer Guidelines / US National CAD Standard: a discipline letter
+# or two, then four-letter major and minor groups ("A-WALL-FULL",
+# "A-FLOR-EVTR", "S-COLS"). Each rule asks for that shape and one of the
+# groups, so a group means the same wherever it falls, and the order is the
+# generic profile's: doors and windows before glazing, glazing before
+# walls. Dimensions, text and identifiers (A-ANNO-DIMS, A-AREA-IDEN) are
+# read by the generic profile's higher-priority rules first.
+#
+# Changing a rule here changes traces: bump autotrace.Version and expect
+# the golden hashes to move.
+description: AIA CAD Layer Guidelines and the US National CAD Standard.
+rules:
+  - role: door
+    regex: '^[a-z]{1,2}-'
+    words: [DOOR]
+  - role: window
+    regex: '^[a-z]{1,2}-'
+    words: [WIND]
+  - role: glass
+    regex: '^[a-z]{1,2}-'
+    words: [GLAZ]
+  - role: wall
+    regex: '^[a-z]{1,2}-'
+    words: [WALL]
+  - role: structure
+    regex: '^[a-z]{1,2}-'
+    words: [COLS]
+  - role: sanitary
+    note: Plumbing fixtures (P-SANR-FIXT, A-FLOR-PFIX) are sanitary fittings.
+    regex: '^[a-z]{1,2}-'
+    words: [SANR, SANI, PFIX]
+  - role: furniture
+    note: Casework is cupboards and counters.
+    regex: '^[a-z]{1,2}-'
+    words: [FURN, CASE]
+  - role: area
+    regex: '^[a-z]{1,2}-'
+    words: [AREA]
+  - role: stairs
+    regex: '^[a-z]{1,2}-'
+    words: [STRS]
+  - role: lift
+    regex: '^[a-z]{1,2}-'
+    words: [EVTR]
+  - role: services
+    regex: '^[a-z]{1,2}-'
+    words: [EQPM, FIXT, POWR, COMM]
+  - role: not-wall
+    note: Overhead, handrails, level changes and ceilings run in pairs like walls.
+    regex: '^[a-z]{1,2}-'
+    words: [OVHD, HRAL, LEVL, CLNG, ROOF]

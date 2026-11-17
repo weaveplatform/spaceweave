@@ -361,6 +361,7 @@ func TestUsageAndConfigErrors(t *testing.T) {
 		{[]string{"plans", "approve"}, 2, "accepts 1 arg"},
 		{[]string{"plans", "list", "extra"}, 2, "accepts 0 arg"},
 		{[]string{"watch", "--workers", "0"}, 2, "workers must be 1–8"},
+		{[]string{"watch", "--profile", "Acme Ltd"}, 2, "profile: invalid profile name"},
 		{[]string{"trace", notes}, 2, ".txt files aren't supported"},
 		{[]string{"convert", notes}, 2, ".txt files aren't supported"},
 		{[]string{"convert", pngFile}, 2, "only drawings need converting"},
@@ -479,7 +480,9 @@ func TestServe(t *testing.T) {
 	defer cancel()
 	exited := make(chan int, 1)
 	go func() {
-		exited <- Execute(ctx, e.app(), []string{"serve", "--addr", "127.0.0.1:0", "--site", site, "--allow-host", "studio.local"})
+		exited <- Execute(ctx, e.app(), []string{
+			"serve", "--addr", "127.0.0.1:0", "--site", site, "--allow-host", "studio.local", "--profile", "acme",
+		})
 	}()
 	base := servedURL(t, e.stderr, exited)
 
@@ -491,6 +494,16 @@ func TestServe(t *testing.T) {
 	_ = res.Body.Close()
 	if !strings.Contains(string(page), "plans") {
 		t.Fatalf("index: %s", page)
+	}
+	// The configured profile is the one the page saves layer roles into.
+	res, err = http.Get(base + "/api/info")
+	if err != nil {
+		t.Fatal(err)
+	}
+	info, _ := io.ReadAll(res.Body)
+	_ = res.Body.Close()
+	if !strings.Contains(string(info), `"profile":"acme","profiles":true`) {
+		t.Fatalf("info: %s", info)
 	}
 
 	img := filepath.Join(e.dir, "Box.png")

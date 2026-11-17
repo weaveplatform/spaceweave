@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/weaveplatform/spaceweave/internal/autotrace"
+	"github.com/weaveplatform/spaceweave/internal/autotrace/profile"
 	"github.com/weaveplatform/spaceweave/internal/catalog"
 	"github.com/weaveplatform/spaceweave/internal/config"
 	"github.com/weaveplatform/spaceweave/internal/convert"
@@ -57,6 +58,11 @@ type Worker struct {
 	Tracer string
 	Log    *slog.Logger
 	Poll   time.Duration // DefaultPoll when 0
+	// Profiles are the client layer profiles; nil reads drawings by the
+	// built-in profiles alone. The one in use is read afresh for every
+	// trace, so a role changed from the page applies to the retrace it
+	// queues.
+	Profiles *profile.Library
 }
 
 // Conversion is report.json's account of turning a drawing into an image.
@@ -94,6 +100,10 @@ type Report struct {
 	Usage       trace.Usage `json:"usage"`
 	CostUSD     float64     `json:"costUsd"`
 	Seconds     float64     `json:"seconds"`
+	// Profile is the client layer profile the drawing was read with, and
+	// Layers how each of its layers was read, by name.
+	Profile string          `json:"profile,omitempty"`
+	Layers  []profile.Layer `json:"layers,omitempty"`
 }
 
 func (w *Worker) tracer() string {
@@ -236,6 +246,14 @@ func (w *Worker) Process(ctx context.Context, e catalog.Entry) error {
 		}
 	}
 
+	set, name, err := w.Profiles.Set()
+	if err != nil {
+		// A hand-edited profile that doesn't parse would otherwise be
+		// ignored without a word, and every layer it names read wrongly.
+		return w.fail(e, &report, nil, started, fmt.Errorf("layer profile: %w", err))
+	}
+	job.Profile, report.Profile = set, name
+
 	opts := w.Options
 	// Only an agent has turns to record; the automatic tracer's whole
 	// account of itself is in report.json.
@@ -267,7 +285,7 @@ func (w *Worker) Process(ctx context.Context, e catalog.Entry) error {
 		res = &trace.Result{}
 	}
 	report.Turns, report.Submits, report.Usage, report.CostUSD = res.Turns, res.Submits, res.Usage, res.CostUSD
-	report.Stopped, report.Problems = res.Stopped, res.Problems
+	report.Stopped, report.Problems, report.Layers = res.Stopped, res.Problems, res.Layers
 
 	if ctx.Err() != nil {
 		// Shutting down: put it back rather than publish or fail a run that

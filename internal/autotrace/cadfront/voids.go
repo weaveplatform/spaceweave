@@ -15,18 +15,6 @@ import (
 // and every line that might be its edge; floorgraph takes the area round
 // the point that walls and those lines close, small gaps sealed.
 
-var (
-	// voidLayerWords name a layer whose closed outlines are voids.
-	voidLayerWords = []string{"VOID*", "ATRIUM*", "LIGHTWELL*", "LUFTRAUM*"}
-	// annotationWords are layers whose lines bound nothing: dimensions,
-	// grids, help lines, title blocks and Uniclass's Zz annotation codes.
-	annotationWords = []string{
-		"DIM*", "GRID*", "AXIS", "AXES", "TEXT*", "TXT", "ANNO*", "NOTE*", "TAG*", "HELP*",
-		"TITLE*", "TTLB", "BORDER*", "VIEWPORT*", "VPORT*", "DEFPOINTS", "HATCH*", "PATT*",
-		"REV*", "ZZ",
-	}
-)
-
 const (
 	// minEdge is the shortest line, metres, offered as a void's edge: a
 	// shorter one is a fitting's detail, and there are thousands.
@@ -48,12 +36,12 @@ func (r *reader) findVoids() {
 		}
 		if lines := cad.TextLines(l.e, l.m); len(lines) > 0 {
 			text := strings.Join(strings.Fields(lines[0].Content), " ")
-			if voidName.MatchString(text) && textLayer(l.layer) != textNever {
+			if voidName.MatchString(text) && l.info.text != textNever {
 				r.in.Voids = append(r.in.Voids, r.toPx(lines[0].Bounds().Center()))
 			}
 			continue
 		}
-		if p, ok := l.e.(*cad.Polyline); ok && matches(tokens(l.layer), voidLayerWords) {
+		if p, ok := l.e.(*cad.Polyline); ok && l.info.void {
 			r.voidOutline(l, p)
 		}
 	}
@@ -111,8 +99,7 @@ func (r *reader) edgeCandidate(l *leaf) bool {
 	default:
 		return false
 	}
-	t := tokens(l.layer)
-	return matches(t, voidLayerWords) || !matches(t, annotationWords)
+	return l.info.void || !l.info.inert
 }
 
 // edgeSegments are a leaf's straight pieces in its own coordinates: lines,

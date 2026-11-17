@@ -59,7 +59,7 @@ func TestLabelKind(t *testing.T) {
 		{"0", "4C-117", false, 0, false},      // a desk number
 		{"0", "A", false, 0, false},
 	} {
-		kind, ok := labelKind(tc.layer, tc.text, tc.named)
+		kind, ok := labelKind(textLayer(tc.layer), tc.text, tc.named)
 		if kind != tc.kind || ok != tc.ok {
 			t.Errorf("%q on %q (named %v): %v %v, want %v %v", tc.text, tc.layer, tc.named, kind, ok, tc.kind, tc.ok)
 		}

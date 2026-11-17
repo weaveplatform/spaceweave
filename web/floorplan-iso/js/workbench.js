@@ -1,9 +1,11 @@
 // The page's side of `spaceweave serve`: dropping, choosing or pasting a
 // plan uploads it, the pipeline list follows each plan through conversion and
-// the tracer, and a draft can be approved or sent back with a note. Under a
-// plain static server the API isn't there, and the page says how to start it
-// instead.
+// the tracer, and a draft can be approved or sent back with a note. A
+// drawing's layers can be given roles, saved in the client's profile and
+// traced again. Under a plain static server the API isn't there, and the
+// page says how to start it instead.
 import { createApi } from './api.js';
+import { layerRows, nameProblem, setLayerRole, sourceLabel, suggestName } from './layers.js';
 import { describe, inPipeline } from './pipeline.js';
 import { acceptAttr, checkFile, names, pastedName, refusesDrag } from './formats.js';
 
@@ -30,6 +32,9 @@ export function initWorkbench({ plans, current, refresh, open }) {
   const sendBack = $('send-back');
   const rejectForm = $('reject-form');
   const note = $('reject-note');
+  const layersPanel = $('layers');
+  const layersIntro = $('layers-intro');
+  const layerBody = $('layer-rows');
 
   let info = null; // the server's answer to /api/info; null without the API
   let drawings = new Set(); // ids of the formats converted before tracing
@@ -184,6 +189,102 @@ export function initWorkbench({ plans, current, refresh, open }) {
     approve.hidden = entry?.status !== 'draft';
   }
 
+  // ---- layers: what each of a drawing's layers was read as, and a menu to
+  // say otherwise. A change is saved in the client's profile, which every
+  // later trace reads, and this plan is traced again with it.
+  let layersFor = null; // a failed drawing picked from the pipeline list
+  let layersShown = ''; // the plan and version whose report is on show
+  let layersEntry = null; // the plan whose layers are on show
+  let roles = []; // the roles a layer can have, from the profile API
+
+  function layersTarget() {
+    const picked = plans().find((p) => p.id === layersFor && (p.status === 'failed' || p.status === 'draft'));
+    if (picked) return picked;
+    const entry = shown();
+    return entry?.generated && entry.status === 'draft' && drawings.has(entry.format) ? entry : null;
+  }
+
+  async function renderLayers() {
+    const entry = info?.profiles ? layersTarget() : null;
+    if (!entry) {
+      layersPanel.hidden = true;
+      layersShown = '';
+      return;
+    }
+    // A retrace changes updatedAt and rewrites report.json.
+    const key = `${entry.id}@${entry.updatedAt}`;
+    if (key === layersShown) return;
+    layersShown = key;
+    let rows = [];
+    try {
+      if (roles.length === 0) roles = (await api.profile(info.profile || 'generic')).roles;
+      const res = await fetch(`${entry.dir}report.json`, { cache: 'no-store' });
+      if (res.ok) rows = layerRows(await res.json());
+    } catch (err) {
+      console.warn('layers unavailable:', err);
+    }
+    if (layersShown !== key) return; // a later render won
+    layersEntry = entry;
+    layersPanel.hidden = rows.length === 0;
+    const guessed = rows.filter((r) => r.guessed).length;
+    layersIntro.textContent = `“${entry.name}” has ${rows.length} layers`
+      + (guessed ? `; ${guessed} match no profile and were read by what is drawn on them` : '')
+      + '. Choosing a role saves it in '
+      + (info.profile ? `the “${info.profile}” profile` : 'a client profile you name')
+      + ' and traces the plan again.';
+    d3.select(layerBody).selectAll('tr')
+      .data(rows, (r) => r.name)
+      .join((enter) => {
+        const tr = enter.append('tr');
+        tr.append('td').attr('class', 'layer-name');
+        tr.append('td').attr('class', 'num');
+        const td = tr.append('td');
+        td.append('select').on('change', (e, r) => changeRole(layersEntry, r, e.target.value));
+        td.append('span').attr('class', 'source');
+        return tr;
+      })
+      .classed('guessed', (r) => r.guessed)
+      .each(function show(r) {
+        const tr = d3.select(this);
+        tr.select('.layer-name').text(r.name);
+        tr.select('.num').text(r.entities);
+        tr.select('.source').text(sourceLabel(r.source));
+        const select = tr.select('select').attr('aria-label', `Role of layer ${r.name}`);
+        // The first option keeps what the built-ins or a guess say; picking
+        // it takes back a role this page saved.
+        const options = [{ role: '', label: r.mine ? 'Built-in / guess' : `${r.role} (${r.guessed ? 'guess' : 'built-in'})` },
+          ...roles.map((x) => ({ role: x.role, label: x.label }))];
+        select.selectAll('option').data(options).join('option')
+          .attr('value', (o) => o.role).attr('title', (o) => roles.find((x) => x.role === o.role)?.help ?? null)
+          .text((o) => o.label);
+        select.property('value', r.mine ? r.role : '');
+      });
+  }
+
+  function changeRole(entry, row, role) {
+    // Whatever happens, the menus are drawn again from report.json after:
+    // the new role once the retrace is done, or the old one if it failed.
+    layersShown = '';
+    act(async () => {
+      let name = info.profile;
+      if (!name) {
+        name = (globalThis.prompt('Name the client profile to keep layer roles in. Every drawing traced here '
+          + 'is read with it.', suggestName(entry.name)) ?? '').trim();
+        if (!name) return;
+        const problem = nameProblem(name);
+        if (problem) throw new Error(problem);
+      }
+      const { profile } = await api.profile(name);
+      await api.saveProfile(name, setLayerRole(profile, row.name, role));
+      info.profile = name;
+      await api.review(entry.id, 'retrace');
+      mine.add(entry.id);
+      say(role
+        ? `Layer “${row.name}” is ${role} in profile “${name}”; tracing “${entry.name}” again.`
+        : `Layer “${row.name}” is back to the built-in reading; tracing “${entry.name}” again.`);
+    });
+  }
+
   // ---- the pipeline list
   function renderPipeline() {
     const rows = [...uploading.values(), ...inPipeline(plans())];
@@ -200,6 +301,11 @@ export function initWorkbench({ plans, current, refresh, open }) {
         const actions = li.append('div').attr('class', 'job-actions');
         actions.append('button').attr('type', 'button').attr('class', 'open').text('Open')
           .on('click', (e, d) => open(d.id));
+        actions.append('button').attr('type', 'button').attr('class', 'layers-open').text('Layers')
+          .on('click', (e, d) => {
+            layersFor = d.id;
+            renderLayers().then(() => layersPanel.scrollIntoView?.({ block: 'nearest' }));
+          });
         actions.append('button').attr('type', 'button').attr('class', 'retry').text('Retry')
           .on('click', (e, d) => act(async () => {
             await api.review(d.id, 'retry');
@@ -221,6 +327,10 @@ export function initWorkbench({ plans, current, refresh, open }) {
         row.select('.job-actions').attr('hidden', v.action ? null : '');
         row.select('.open').attr('hidden', v.action === 'open' ? null : '');
         row.select('.retry').attr('hidden', v.action === 'retry' ? null : '');
+        // A drawing that failed may have its walls on a layer no profile
+        // names: its layers are where to say so.
+        row.select('.layers-open')
+          .attr('hidden', info?.profiles && d.status === 'failed' && drawings.has(d.format) ? null : '');
       });
   }
 
@@ -241,6 +351,7 @@ export function initWorkbench({ plans, current, refresh, open }) {
   function update() {
     renderReview();
     renderPipeline();
+    renderLayers();
     announce();
   }
 
