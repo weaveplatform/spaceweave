@@ -1,6 +1,6 @@
 # Deterministic CAD and raster tracing quality
 
-Research, baseline and implementation trials recorded 17 November 2026. The 99% per-floor target is not achieved. The complete validation gate is still running; completed targeted checks and browser verification are recorded below.
+Research, baseline and implementation trials recorded 17 November 2026. The 99% per-floor target is not achieved. The complete local `make gate` passed on Go 1.27.4, including all six cross-compilation targets; total merged coverage is 97.7%.
 
 ## Scope and evidence
 
@@ -329,7 +329,7 @@ make quality
 
 The Makefile exports `GOWORK=off`; this target enables `SPACEWEAVE_QUALITY_TRIALS=1` and runs `TestQualityTrials|TestRasterTrials` with `-count=1 -v` in both front-end packages. The CAD half skips when its fixture directory is not configured. The `QUALITY` JSON rows contain the counts needed to reproduce these tables; do not commit raw private CAD diagnostics or overlays. Source: [quality target](../../Makefile), [CAD trials](../../internal/autotrace/cadfront/quality_test.go).
 
-The five pre-existing golden plan hashes are unchanged, and two package-space fixtures have been added to [golden coverage](../../internal/autotrace/golden_test.go). Metadata-exclusion, partial-package and nested-zone regression tests accompany the implementation. The goldens check reproducibility; the new gold output has not been independently reviewed. The completed quality trials include Node validation. Settled Chrome Plan/3D checks passed on all five floors, with no uncaught browser errors. The full repository gate remains in progress; cross-platform CI and independent gold review are not claimed.
+The five pre-existing golden plan hashes are unchanged, and two package-space fixtures have been added to [golden coverage](../../internal/autotrace/golden_test.go). Metadata-exclusion, partial-package and nested-zone regression tests accompany the implementation. The goldens check reproducibility; the new gold output has not been independently reviewed. The completed quality trials include Node validation. Settled Chrome Plan/3D checks passed on all five floors, with no uncaught browser errors. The complete Go 1.27.4 local `make gate` passed: vet, lint, race/shuffle, full accuracy/goldens, acceptance, coverage (97.7% total), vulnerability scanning and all six cross-compilation targets. Independent gold review is not claimed.
 
 ### Outstanding work and target status
 
@@ -344,7 +344,8 @@ The five pre-existing golden plan hashes are unchanged, and two package-space fi
 | Supplied raster calibration and labels | Assistance is explicit and reproducible in the trial | No OCR; seeded names are not automatic recognition |
 | Other research proposals / editor correction workflow | Documented trial directions | No measured improvement or completed implementation established here |
 | Settled Chrome Plan/3D checks | Passed locally | Five floors; private screenshots kept local |
-| Complete quality gate and independent gold review | Pending | Must be recorded separately after completion |
+| Complete local `make gate` | Passed on Go 1.27.4 | 97.7% total coverage; all six cross-compilation targets; no vulnerabilities |
+| Independent gold review and human correction-time trial | Not performed | Required before claiming reviewed accuracy or correction effort |
 
 ### Browser verification
 
@@ -365,5 +366,8 @@ thresholds at **97.6% total**, with every package at or above 90%. Its gate then
 stopped at the existing Go 1.27.3 standard-library advisory
 [GO-2026-6859](https://pkg.go.dev/vuln/GO-2026-6859). The module now selects
 `toolchain go1.27.4`, the fixed release, while retaining language version 1.27.
-The full gate is being rerun with that patched toolchain; its final result will
-be recorded separately.
+The patched run passed race/shuffle, accuracy/goldens, acceptance and both
+coverage thresholds (**97.7% total**), and `govulncheck` reports no vulnerabilities.
+The complete patched-toolchain `make gate` exited successfully, including all
+six local cross-compilation targets. CI cross-compilation also passed; the
+remaining cross-platform CI jobs may still be running at publication.

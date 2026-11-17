@@ -137,6 +137,12 @@ be compared directly with the room-only table above. No independent gold review
 or human correction-time trial has been completed. Raster face recovery remains
 opt-in for experiments because its precision regresses on several plans.
 
+Validation: complete local `make gate` passed on Go 1.27.4 (97.7% merged
+coverage, all six cross-compilation targets, no vulnerabilities), plus 140 site
+tests and Chrome Plan/3D checks for all five private floors. The Go toolchain
+selection fixes the pre-existing standard-library advisory GO-2026-6859.
+Draft PR: #19. Cross-platform execution remains CI's responsibility.
+
 Next priorities: independently adjudicate overlapping source outlines and
 missing room identities; diagnose wall-recall losses and unplaced openings;
 implement persistent review edits. The original step 3b checklist follows for
