@@ -18,6 +18,7 @@ var (
 	roomColour      = color.RGBA{123, 63, 228, 255}
 	furnitureColour = color.RGBA{255, 127, 14, 255}
 	outlineColour   = color.RGBA{0, 0, 0, 255}
+	voidColour      = color.RGBA{127, 127, 127, 255}
 )
 
 // footprint is the size drawn for furniture whose shape isn't given by w and
@@ -58,6 +59,12 @@ func Shapes(t *Trace) []raster.Shape {
 				At:      at,
 			},
 		)
+	}
+	for _, v := range t.Voids {
+		out = append(out, raster.Shape{
+			Points: v, Closed: true, Width: 1.5, Color: voidColour, Opacity: 0.8,
+			Text: "void", At: centroid(v),
+		})
 	}
 	for _, w := range t.Walls {
 		th := w.Thickness

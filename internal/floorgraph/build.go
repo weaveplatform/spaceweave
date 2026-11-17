@@ -64,7 +64,7 @@ func Build(in Input) (*Result, error) {
 		return nil, err
 	}
 	t := b.trace()
-	if t.Outline != nil && !fitsOutline(t) {
+	if t.Outline != nil && !b.keepOutline(t) {
 		t.Outline = nil
 		b.outlineDropped = true
 	}
@@ -101,6 +101,17 @@ type builder struct {
 	strayLabels, unnamed, stub int
 	outlineDropped             bool
 	inputLen, inputWeight      float64
+
+	// voidAt are the void points whose void was found, voidMissed how many
+	// weren't; voids are the voids' polygons.
+	voidAt     []Point
+	voidMissed int
+	voids      [][]Point
+	// strips counts façade strips that would have been rooms, openPlan
+	// the rooms called openPlanName.
+	strips, openPlan int
+	// outsideWalls were left out for standing outside the outline.
+	outsideWalls int
 }
 
 // graph cleans the walls and openings and builds the planar wall graph.
@@ -118,6 +129,7 @@ func (b *builder) graph() error {
 	b.ops, b.badOps, b.oddOps = cleanOpenings(b.in.Openings)
 	segs = mergeCollinear(joinOpenings(segs, b.ops))
 	b.segs = closeCorners(segs)
+	b.segs = append(b.segs, b.voidEdges(b.segs)...)
 	b.g = node(b.segs)
 	if len(b.g.edges) == 0 {
 		return ErrNoWalls
@@ -187,13 +199,18 @@ func (b *builder) rooms() {
 	g, sx, sy := b.g, b.sc.sx, b.sc.sy
 	comp := g.components(b.alive)
 	main := comp.find(b.fs[b.outer].verts[0])
-	for _, f := range b.fs {
-		if f.area <= 0 {
+	side := faceSides(b.fs, 2*len(g.edges))
+	voids := b.voidFaces()
+	strip := b.facadeStrips(side, voids)
+	for i, f := range b.fs {
+		if f.area <= 0 || voids[i] {
 			continue
 		}
 		r, ok := faceRoom(g.poly(f.verts), sx, sy)
 		switch {
-		case !ok:
+		case ok && strip[i]:
+			b.strips++
+		case !ok, strip[i]:
 		case comp.find(f.verts[0]) != main:
 			// A group of walls standing apart from the building.
 			b.islands++
@@ -234,11 +251,20 @@ func (b *builder) rooms() {
 		}
 		return cmpString(x.Text, y.Text)
 	})
+	labels = slices.DeleteFunc(labels, func(l Label) bool {
+		// A void's own label ("ATRIUM") names no room.
+		return slices.ContainsFunc(b.voids, func(v []Point) bool { return inside(l.At, v) })
+	})
 	b.strayLabels = nameRooms(b.rs, labels)
 	readingOrder(b.rs, 0.5*sy)
 	for i := range b.rs {
 		r := &b.rs[i]
-		if r.name == "" {
+		switch {
+		case r.name != "":
+		case r.areaM >= openPlanArea:
+			r.name = openPlanName
+			b.openPlan++
+		default:
 			b.unnamed++
 			r.name = fmt.Sprintf("Room %d", b.unnamed)
 		}
@@ -316,22 +342,33 @@ func axisRect(poly []Point) bool {
 	return true
 }
 
-// fitsOutline says every wall end and room corner passes the site
-// validator's inside-the-outline test (test/invariants.mjs): inside, or
-// inside once moved 0.2 m (walls) or 0.15 m (rooms) along x, y or both. The
-// test is run on the plan Convert makes, the very numbers the validator will
-// see: the moved points are nine probes, not a disc, so a slightly different
-// slack or rounding can disagree with it on a thin outline.
-func fitsOutline(t *plan.Trace) bool {
+// maxLoose is the longest wall, metres, taken for loose linework when it
+// stands outside the building's outline: a façade fin, a brise-soleil
+// bracket, a canopy's post. A longer one is a wall of the building (a
+// parapet, a terrace's edge) and says the outline is what's wrong.
+const maxLoose = 3.0
+
+// outsideWalls are the walls of a trace that fall outside its outline by
+// the site validator's test (test/invariants.mjs): an end not inside, nor
+// inside once moved 0.2 m along x, y or both (0.15 m for room and void
+// corners and furniture centres). The test is run on the plan Convert
+// makes, the very numbers the validator will see: the moved points are
+// nine probes, not a disc, so a slightly different slack or rounding can
+// disagree with it on a thin outline. ok is false when anything else is
+// outside too, or a wall outside is part of the building: longer than
+// maxLoose, exterior (on the very face the outline was drawn round), or
+// with a door or window in it (a room left open). Then the outline is
+// what's wrong, and leaving walls out would not mend it.
+func outsideWalls(t *plan.Trace) (walls []int, ok bool) {
 	p, err := plan.Convert(t, plan.Meta{})
 	if err != nil {
-		return false
+		return nil, false
 	}
 	poly := make([]Point, len(p.Outline))
 	for i, o := range p.Outline {
 		poly[i] = Point{X: o[0], Y: o[1]}
 	}
-	ok := func(o [2]float64, slack float64) bool {
+	in := func(o [2]float64, slack float64) bool {
 		for _, i := range [3]float64{0, -1, 1} {
 			for _, j := range [3]float64{0, -1, 1} {
 				if inside(Point{X: o[0] + float64(i*slack), Y: o[1] + float64(j*slack)}, poly) {
@@ -341,18 +378,55 @@ func fitsOutline(t *plan.Trace) bool {
 		}
 		return false
 	}
-	for _, w := range p.Walls {
-		if !ok(w.From, 0.2) || !ok(w.To, 0.2) {
-			return false
-		}
-	}
+	out := func(o [2]float64) bool { return !in(o, 0.15) }
 	for _, r := range p.Rooms {
-		for _, o := range r.Polygon {
-			if !ok(o, 0.15) {
-				return false
-			}
+		if slices.ContainsFunc(r.Polygon, out) {
+			return nil, false
 		}
 	}
+	for _, v := range p.Voids {
+		if slices.ContainsFunc(v, out) {
+			return nil, false
+		}
+	}
+	// Furniture outside stands on floor the outline leaves out: a terrace,
+	// a room left open.
+	for _, it := range p.Furniture {
+		x, _ := it["x"].(float64)
+		y, _ := it["y"].(float64)
+		if out([2]float64{x, y}) {
+			return nil, false
+		}
+	}
+	for i, w := range p.Walls {
+		if in(w.From, 0.2) && in(w.To, 0.2) {
+			continue
+		}
+		if len(w.Openings) > 0 || w.Kind == exterior ||
+			math.Hypot(w.To[0]-w.From[0], w.To[1]-w.From[1]) > maxLoose {
+			return nil, false
+		}
+		walls = append(walls, i)
+	}
+	return walls, true
+}
+
+// keepOutline makes the trace fit its outline by leaving out the loose
+// walls outside it, and reports whether the outline can stay.
+func (b *builder) keepOutline(t *plan.Trace) bool {
+	out, ok := outsideWalls(t)
+	if !ok {
+		return false
+	}
+	walls := slices.Clone(t.Walls)
+	for _, i := range slices.Backward(out) {
+		walls = slices.Delete(walls, i, i+1)
+	}
+	if !slices.ContainsFunc(walls, func(w plan.Wall) bool { return w.Kind == exterior }) {
+		return false
+	}
+	t.Walls = walls
+	b.outsideWalls = len(out)
 	return true
 }
 
@@ -446,6 +520,9 @@ func (b *builder) trace() *plan.Trace {
 	}
 	if len(b.outline) > 0 {
 		t.Outline = polyOut(b.outline)
+	}
+	for _, v := range b.voids {
+		t.Voids = append(t.Voids, polyOut(v))
 	}
 	for i := range b.chains {
 		c := &b.chains[i]
@@ -576,10 +653,20 @@ func (b *builder) caveats() []string {
 		"%d rooms had no label and were numbered.",
 	)
 	add(b.strayLabels, "%d label fell outside every room.", "%d labels fell outside every room.")
+	add(len(b.voids), "%d void (an atrium, a light well) was left open, not floored.",
+		"%d voids (atriums, light wells) were left open, not floored.")
+	add(b.voidMissed, "%d void's label is in no closed area, so the floor round it was kept.",
+		"%d voids' labels are in no closed area, so the floor round them was kept.")
+	add(b.strips, "%d narrow strip along the façade was taken as part of the wall, not a room.",
+		"%d narrow strips along the façade were taken as part of the wall, not rooms.")
+	add(b.openPlan, "%d large room with no name was called "+openPlanName+".",
+		"%d large rooms with no name were called "+openPlanName+".")
 	add(b.islands, "%d area enclosed by walls apart from the building was not made a room.",
 		"%d areas enclosed by walls apart from the building were not made rooms.")
 	add(b.overlapRooms, "%d overlapping room was dropped.", "%d overlapping rooms were dropped.")
 	add(b.stub, "%d wall stub under 6 cm was dropped.", "%d wall stubs under 6 cm were dropped.")
+	add(b.outsideWalls, "%d wall outside the building's outline was left out.",
+		"%d walls outside the building's outline were left out.")
 	if b.outlineDropped {
 		out = append(
 			out,

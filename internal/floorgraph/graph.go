@@ -24,8 +24,11 @@ type edge struct {
 	cls   int
 	t, w  float64
 	glass bool
-	// virtual edges are bridges added by bridge, not walls.
+	// virtual edges are bridges added by bridge, or void edges: they bound
+	// faces but are not walls.
 	virtual bool
+	// void edges are the edges of voids, from voidEdges.
+	void bool
 }
 
 func (g *graph) length(e int) float64 {
@@ -89,12 +92,14 @@ func node(segs []seg) *graph {
 					g.edges = append(
 						g.edges,
 						edge{
-							v:     [2]int{prev, v},
-							u:     s.u,
-							cls:   s.cls,
-							t:     s.t,
-							w:     s.w,
-							glass: s.glass,
+							v:       [2]int{prev, v},
+							u:       s.u,
+							cls:     s.cls,
+							t:       s.t,
+							w:       s.w,
+							glass:   s.glass,
+							virtual: s.void,
+							void:    s.void,
 						},
 					)
 				}
@@ -352,7 +357,9 @@ func (g *graph) bridge(alive []bool, fs []face) ([]bool, int) {
 		}
 		hit, y := -1, math.Inf(-1)
 		for e, ed := range g.edges {
-			if !alive[e] || ed.virtual || ecomp[e] == r {
+			// A void's edge is a boundary like a wall: a bridge that crossed
+			// it would cut the void's face in two.
+			if !alive[e] || ed.virtual && !ed.void || ecomp[e] == r {
 				continue
 			}
 			a, b := g.pts[ed.v[0]], g.pts[ed.v[1]]

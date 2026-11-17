@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { makeView, PRESETS } from '../js/projection.js';
 import {
-  solidRuns, splitRun, wallPrisms, prism, rectPoly, projectPrism, compareFootprints, orderItems, signedArea, DOOR_HEAD,
+  solidRuns, splitRun, wallPrisms, balustradePrisms, BALUSTRADE, prism, rectPoly, projectPrism, compareFootprints, orderItems, signedArea, DOOR_HEAD,
 } from '../js/geometry.js';
 
 const opts = { thickness: { exterior: 0.15, interior: 0.1, glass: 0.05 }, width: 10, depth: 10 };
@@ -44,6 +44,16 @@ test('a window keeps a sill, a pane and a header', () => {
   const mats = solids.filter((p) => p.poly.every(([x]) => x >= 2 - 1e-9 && x <= 4 + 1e-9)).map((p) => `${p.mat}:${p.z0}-${p.z1}`);
   assert.deepEqual(mats.sort(), ['glass:0.9-2.1', 'wall:0-0.9', 'wall:2.1-2.7']);
   assert.ok(solids.every((p) => p.outward && p.outward[1] === -1), 'north wall faces north');
+});
+
+test('a void gets a balustrade along each edge, but not along the slit to a core inside it', () => {
+  // A 6 × 4 void round a 2 × 1 core, joined by a slit from (3, 0) down to (3, 1.5).
+  const ring = [[0, 0], [3, 0], [3, 1.5], [2, 1.5], [2, 2.5], [4, 2.5], [4, 1.5], [3, 1.5], [3, 0], [6, 0], [6, 4], [0, 4]];
+  const ps = balustradePrisms([ring], 2.7);
+  assert.equal(ps.length, ring.length - 2);
+  assert.ok(ps.every((p) => p.z1 === BALUSTRADE.height && p.mat === 'glass' && p.outward === null));
+  assert.ok(balustradePrisms([ring], 0.8).every((p) => p.z1 === 0.8), 'no taller than the cut walls');
+  assert.deepEqual(balustradePrisms(undefined, 2.7), []);
 });
 
 test('footprints are normalised to positive orientation', () => {

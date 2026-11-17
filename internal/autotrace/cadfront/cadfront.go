@@ -263,6 +263,7 @@ func (r *reader) run() {
 	r.findOpenings()
 	r.emitWalls()
 	r.findLabels()
+	r.findVoids()
 	r.findFurniture()
 	r.coverage()
 	r.sortOutput()

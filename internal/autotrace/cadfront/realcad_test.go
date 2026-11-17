@@ -96,7 +96,7 @@ const realcadLegend = `Legend (all lengths in drawing millimetres unless said):
   openCov share of open (not enclosed) area covered by traced rooms
   nameOK  of rooms matched at IoU >= 0.75 that the drawing traced names (AREX: a room-name text inside the area; SPACE: its area number), share whose traced name holds that name or number or is its first line
   scale   traced px/m over the truth (AREX: from millimetres; SPACE: from stated square feet vs polygon areas)
-  furn    share of top-level furniture and sanitary inserts with a plan item centred in their box, sized within 30%
+  furn    share of top-level furniture and sanitary inserts with a plan item centred in their box, long side within 30% and depth 40–130% of the box's (a cupboard's box holds its doors' swing), or several items that between them cover it; type checks in the notes
   valid   trace.Finalize (plan.Check, plan.Convert and the site validator when node is installed)`
 
 type evalRow struct {
@@ -160,6 +160,11 @@ var (
 	truthDoor = regexp.MustCompile(`(?i)EF_25_30.*Door|A315`)
 	truthFurn = regexp.MustCompile(`(?i)Ss_40_15|Pr_40_20|Furniture`)
 	truthName = regexp.MustCompile(`(?i)Zz_20_10_70_65-T_Room|BOCA-TEXT`)
+	truthDesk = regexp.MustCompile(`(?i)Desk Number`)
+	// noPlanType names furniture the plan has no type for, whatever the
+	// tracer makes of it: the denominator of the "could be" share.
+	noPlanType = regexp.MustCompile(`(?i)coat|screen|wall|panel|acoustic|dryer|dispenser|booth|` +
+		`pod\b|lamp|\btap\b|mixer|bracket|pilaster|hinge|indicator|pipe|divider|trolley|bin\b|recycl`)
 )
 
 type seg2 struct {
@@ -184,14 +189,19 @@ type truthArea struct {
 }
 
 type furnBox struct {
-	box  vector.Rect
+	box  vector.Rect // in the drawing turned by turn
 	name string
+	turn vector.Affine
 }
+
+// has reports whether a drawing point is in the box.
+func (f furnBox) has(p point) bool { return boxHas(f.box, f.turn.Apply(p)) }
 
 type arexTruth struct {
 	walls, doorInk []seg2
 	doors          []truthDoorT
 	furniture      []furnBox
+	deskNums       []point
 	labels         []labelAt
 }
 
@@ -315,7 +325,8 @@ func evalFloor(t *testing.T, floor, arexPath, spacePath string) evalRow {
 		}
 	}
 	scoreRooms(&row, areas, res.Trace, inv, false)
-	scoreFurniture(&row, at.furniture, res.Trace, inv)
+	scoreFurniture(&row, at, res.Trace, inv)
+	row.notes = append(row.notes, scoreDefects(at, areas, res.Trace, inv).String())
 	if out := os.Getenv("SPACEWEAVE_EVAL_OUT"); out != "" {
 		drawEval(t, filepath.Join(out, "arex-"+floor+".png"), at, areas, tw, res.Trace, inv)
 	}
@@ -364,13 +375,22 @@ func readArexTruth(doc *cad.Document) arexTruth {
 		}
 		if in, ok := p.Entity.(*cad.Insert); ok {
 			if p.Parent == nil && truthFurn.MatchString(layer) {
+				// The box in the insert's own axes: the floors are drawn
+				// turned, and a turned desk's upright box is far bigger
+				// than the desk.
+				turn := vector.Rotate(-p.M.Angle())
 				var box vector.Rect
-				walkBox(doc, in, p.M, &box)
+				walkBox(doc, in, p.M.Then(turn), &box)
 				if !box.Empty() {
-					at.furniture = append(at.furniture, furnBox{box: box, name: in.Block})
+					at.furniture = append(at.furniture, furnBox{box: box, name: in.Block, turn: turn})
 				}
 			}
 			return nil
+		}
+		if truthDesk.MatchString(layer) {
+			if ls := cad.TextLines(p.Entity, p.M); len(ls) > 0 {
+				at.deskNums = append(at.deskNums, ls[0].Bounds().Center())
+			}
 		}
 		if truthName.MatchString(layer) {
 			if ls := cad.TextLines(p.Entity, p.M); len(ls) > 0 {
@@ -1030,31 +1050,218 @@ func nameMatches(traced string, a truthArea) bool {
 	return false
 }
 
-func scoreFurniture(row *evalRow, fs []furnBox, tr *plan.Trace, inv vector.Affine) {
+// scoreFurniture scores the furniture two ways. Placement (furn): a truth
+// insert is placed when an item centred in its box is its size, or when
+// several are and between them cover it (a bench split into its desks).
+// Types (in the notes): an item's type is plausible when its footprint, or
+// the truth box it sits in, is a size that type comes in, which a desk
+// typed as a chair or a cupboard typed as a desk is not; and a desk number
+// should sit on a desk, never on something else. The ranges below are the
+// eval's own, independent of the tracer's.
+func scoreFurniture(row *evalRow, at arexTruth, tr *plan.Trace, inv vector.Affine) {
+	fs := at.furniture
 	row.furnN = len(fs)
-	mmPerPx := inv.Factor()
-	ok := 0
+	view, _ := inverse(inv)
+	pxPerMM := 1 / inv.Factor()
+	centre := func(it plan.Item) point { return inv.Apply(point{X: it.X, Y: it.Y}) }
+	ok, placeable, okPlaceable := 0, 0, 0
+	audit := map[string]*furnAudit{}
 	for _, f := range fs {
+		s := f.box.Size()
+		long, short := math.Max(s.X, s.Y), math.Min(s.X, s.Y)
+		// Hardware, panels and screens: no plan type could be them. Nor
+		// could what these generic words name (the eval's own list).
+		can := short >= 250 && long <= 5000 && long <= 8*short && !noPlanType.MatchString(f.name)
+		var in []plan.Item
 		for _, it := range tr.Furniture {
-			c := inv.Apply(point{X: it.X, Y: it.Y})
-			if !boxHas(f.box, c) {
+			if f.has(centre(it)) {
+				in = append(in, it)
+			}
+		}
+		hit := false
+		area := 0.0
+		sized := 0
+		for _, it := range in {
+			if it.W == nil || it.D == nil {
+				hit = true // a chair, a toilet: no footprint to compare
 				continue
 			}
-			s := f.box.Size()
-			if it.W != nil && it.D != nil {
-				w, d := *it.W*1000, *it.D*1000
-				long, short := math.Max(s.X, s.Y), math.Min(s.X, s.Y)
-				iw, id := math.Max(w, d), math.Min(w, d)
-				if math.Abs(iw-long) > 0.3*long || math.Abs(id-short) > 0.3*short {
-					continue
-				}
+			w, d := *it.W*1000, *it.D*1000
+			iw, id := math.Max(w, d), math.Min(w, d)
+			// The depth may fall short of the box's: a cupboard's box
+			// holds its doors' swings, its footprint doesn't.
+			if math.Abs(iw-long) <= 0.3*long && id >= 0.4*short && id <= 1.3*short {
+				hit = true
 			}
+			area += w * d
+			sized++
+		}
+		if !hit && sized >= 2 && math.Abs(area-long*short) <= 0.3*long*short {
+			hit = true
+		}
+		if hit {
 			ok++
-			break
+		}
+		if can {
+			placeable++
+			if hit {
+				okPlaceable++
+			}
+		}
+		a := audit[f.name]
+		if a == nil {
+			a = &furnAudit{types: map[string]int{}, size: s}
+			audit[f.name] = a
+		}
+		a.n++
+		if hit {
+			a.placed++
+		}
+		for _, it := range in {
+			a.types[it.Type]++
 		}
 	}
-	_ = mmPerPx
 	row.furn = ratio(ok, len(fs))
+
+	plausible, judged := 0, 0
+	byType := map[string][2]int{}
+	for _, it := range tr.Furniture {
+		c := centre(it)
+		var box vector.Rect
+		for _, f := range fs {
+			if f.has(c) && (box.Empty() || f.box.Size().X*f.box.Size().Y < box.Size().X*box.Size().Y) {
+				box = f.box
+			}
+		}
+		good, known := plausibleType(it, box)
+		if !known {
+			continue
+		}
+		judged++
+		bt := byType[it.Type]
+		bt[1]++
+		if good {
+			plausible++
+			bt[0]++
+		}
+		byType[it.Type] = bt
+	}
+	onDesk, onOther := 0, 0
+	missed := map[string]int{}
+	for _, p := range at.deskNums {
+		q := view.Apply(p)
+		desk, other := false, false
+		for _, it := range tr.Furniture {
+			if it.W == nil || it.D == nil {
+				continue
+			}
+			rot := 0.0
+			if it.Rot != nil {
+				rot = *it.Rot
+			}
+			sn, cs := math.Sincos(rot * math.Pi / 180)
+			rx, ry := q.X-it.X, q.Y-it.Y
+			lx, ly := rx*cs+ry*sn, -rx*sn+ry*cs
+			if math.Abs(lx) > *it.W*1000*pxPerMM/2 || math.Abs(ly) > *it.D*1000*pxPerMM/2 {
+				continue
+			}
+			if it.Type == "desk" {
+				desk = true
+			} else {
+				other = true
+			}
+		}
+		if desk {
+			onDesk++
+			continue
+		} else if other {
+			onOther++
+		}
+		in := "no insert"
+		for _, f := range fs {
+			if f.has(p) {
+				in = f.name
+				break
+			}
+		}
+		missed[in]++
+	}
+	var types []string
+	for k, v := range byType {
+		types = append(types, fmt.Sprintf("%s %d/%d", k, v[0], v[1]))
+	}
+	slices.Sort(types)
+	row.notes = append(row.notes, fmt.Sprintf(
+		"furniture: placed %d/%d (%s); of truth inserts a plan type could be (25 cm to 5 m, not a panel, not named as a thing with no type) %d/%d (%s); "+
+			"types plausible for their size %d/%d (%s) [%s]; desk numbers on a desk %d/%d (%s), on something else %d",
+		ok, len(fs), pc(row.furn), okPlaceable, placeable, pc(ratio(okPlaceable, placeable)),
+		plausible, judged, pc(ratio(plausible, judged)), strings.Join(types, ", "),
+		onDesk, len(at.deskNums), pc(ratio(onDesk, len(at.deskNums))), onOther))
+	if os.Getenv("SPACEWEAVE_EVAL_FURN") != "" {
+		names := make([]string, 0, len(audit))
+		for k := range audit {
+			names = append(names, k)
+		}
+		slices.SortFunc(names, func(a, b string) int { return audit[b].n - audit[a].n })
+		row.notes = append(row.notes, fmt.Sprintf("  desk numbers off a desk, by the insert they are in: %v", missed))
+		for _, k := range names {
+			a := audit[k]
+			row.notes = append(row.notes, fmt.Sprintf("  furn %4d placed %4d %5.2fx%-5.2f %v %s",
+				a.n, a.placed, a.size.X/1000, a.size.Y/1000, a.types, k))
+		}
+	}
+}
+
+type furnAudit struct {
+	n, placed int
+	size      point
+	types     map[string]int
+}
+
+// plausibleType says whether an item's type fits its size: its own
+// footprint where it has one, else the truth box it sits in. known is
+// false for an item outside every truth box with no footprint.
+func plausibleType(it plan.Item, box vector.Rect) (good, known bool) {
+	var long, short float64
+	switch {
+	case it.W != nil && it.D != nil:
+		long, short = math.Max(*it.W, *it.D), math.Min(*it.W, *it.D)
+	case it.R != nil && it.Type == "roundTable":
+		long, short = 2**it.R, 2**it.R
+	case it.Size != nil:
+		long, short = *it.Size, *it.Size
+	case !box.Empty():
+		s := box.Size().Mul(0.001)
+		long, short = math.Max(s.X, s.Y), math.Min(s.X, s.Y)
+	default:
+		return false, false
+	}
+	in := func(lo, hi, slo, shi float64) bool { return long >= lo && long <= hi && short >= slo && short <= shi }
+	switch it.Type {
+	case "desk":
+		return in(0.6, 5, 0.4, 2.0), true
+	case "roundTable":
+		return in(0.5, 2.4, 0.5, 2.4), true
+	case "chair":
+		return in(0.35, 0.9, 0.3, 0.9), true
+	case "armchair":
+		return in(0.5, 1.3, 0.5, 1.3), true
+	case "stool":
+		return in(0.25, 0.65, 0.25, 0.65), true
+	case "cabinet", "storage":
+		return in(0.3, 6, 0.2, 1.1), true
+	case "counter":
+		return in(0.4, 8, 0.3, 1.2), true
+	case "toilet":
+		return in(0.45, 1.3, 0.3, 0.8), true
+	case "basin", "sink":
+		return in(0.25, 1.2, 0.2, 0.8), true
+	case "plant":
+		return in(0.2, 2.0, 0.1, 2.0), true
+	case "sofa":
+		return in(0.9, 4, 0.5, 1.6), true
+	}
+	return true, true
 }
 
 // evalSpace traces a CAFM space plan and scores what it can: the scale,

@@ -4,7 +4,7 @@
 
 import { makeView } from './projection.js';
 import {
-  wallPrisms, furniturePrisms, projectPrism, orderItems, centroid, polygonArea, prism, offsetPolygon,
+  wallPrisms, balustradePrisms, furniturePrisms, projectPrism, orderItems, centroid, polygonArea, prism, offsetPolygon,
 } from './geometry.js';
 
 const d3 = globalThis.d3;
@@ -54,6 +54,7 @@ export function createScene({ svg: svgEl, tooltip: tooltipEl, styleRoot, plan, o
   const D = plan.DEPTH;
   const outline = plan.OUTLINE ?? [[0, 0], [W, 0], [W, D], [0, D]];
   const opts = { thickness: plan.THICKNESS, width: W, depth: D, outline: plan.OUTLINE ?? null };
+  const voids = plan.VOIDS ?? [];
   const maxDist = Math.hypot(W, D);
   const distFromEntrance = (x, y) => Math.hypot(x - plan.ENTRANCE[0], y - plan.ENTRANCE[1]) / maxDist;
 
@@ -126,7 +127,8 @@ export function createScene({ svg: svgEl, tooltip: tooltipEl, styleRoot, plan, o
   let wallCache = { H: null, solids: [], leaves: [] };
   function wallsFor(H) {
     if (wallCache.H !== H) {
-      const { solids, leaves } = wallPrisms(plan.walls, H, opts);
+      const { solids: walls, leaves } = wallPrisms(plan.walls, H, opts);
+      const solids = walls.concat(balustradePrisms(voids, H));
       const delayed = (list) => tag(list, {}).map((p) => ({ ...p, delay: 0.38 * distFromEntrance(...p.c) }));
       wallCache = { H, solids: delayed(solids), leaves: delayed(leaves).map((p) => ({ ...p, delay: p.delay + 0.3 })) };
     }
@@ -186,10 +188,28 @@ export function createScene({ svg: svgEl, tooltip: tooltipEl, styleRoot, plan, o
     });
     gShadow.selectAll('path').data([0]).join('path').attr('d', pathOf(shadowPts));
 
+    // A void is a hole through the slab's top. Under the hole, drawn first so
+    // the slab hides all but what shows through it: the hole's sides at slab
+    // level, then its floor a slab's depth down, darker, so it reads as depth.
     const base = projectPrism(plinth, view);
-    gBase.selectAll('path').data(base.faces, (f) => f.side).join('path')
-      .attr('d', (f) => pathOf(f.pts.map((p) => [p[0], p[1]])))
-      .attr('fill', (f) => (f.side === 'top' ? palette.plinth : shade('plinth', f, view)));
+    const voidAt = (z) => voids.map((v) => pathOf(v.map(([x, y]) => view.project(x, y, z)))).join('');
+    const baseFaces = [
+      ...(voids.length ? [
+        { side: 'void-side', d: voidAt(0), fill: shade('plinth', { nx: 0, ny: -1 }, view) },
+        { side: 'void-floor', d: voidAt(-PLINTH), fill: d3.color(palette.plinth).darker(1.2).formatHex() },
+      ] : []),
+      ...base.faces.map((f) => ({
+        side: f.side,
+        // evenodd turns each void's ring into a hole in the top face.
+        d: pathOf(f.pts) + (f.side === 'top' ? voidAt(0) : ''),
+        fill: f.side === 'top' ? palette.plinth : shade('plinth', f, view),
+      })),
+    ];
+    gBase.selectAll('path').data(baseFaces, (f) => f.side).join('path')
+      .attr('d', (f) => f.d)
+      .attr('fill-rule', 'evenodd')
+      .attr('fill', (f) => f.fill)
+      .order();
 
     const floorPts = (poly) => poly.map(([x, y]) => view.project(x, y, 0));
     gFloors.selectAll('path').data(rooms, (r) => r.id).join((enter) => enter.append('path')

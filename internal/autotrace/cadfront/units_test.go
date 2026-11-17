@@ -55,7 +55,8 @@ func TestBlockRole(t *testing.T) {
 		{"x", "A-GLAZ-WIND", roleWindow},
 		{"TaskChair", "0", roleFurniture},
 		{"FRIDGE", "A-FURN", roleFurniture},
-		{"FRIDGE", "0", roleNone},
+		{"FRIDGE", "0", roleFurniture},
+		{"Bed", "0", roleNone},
 		{"*U12", "A-WALL", roleNone},
 	}
 	for _, c := range cases {

@@ -5,6 +5,8 @@
 //   WIDTH, DEPTH   bounding box of the wall centrelines, metres
 //   OUTLINE    optional polygon of the exterior wall centrelines when the
 //              building isn't a rectangle (L-shapes, slanted facades)
+//   VOIDS      optional list of polygons: holes in the floor (an atrium, a
+//              light well) that no room covers, drawn open with a balustrade
 //   ENTRANCE   [x, y] the build animation grows outward from
 //   THICKNESS  { exterior, interior, glass } metres
 //   walls, rooms, floorPatches, furniture

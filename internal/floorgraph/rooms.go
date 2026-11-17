@@ -34,22 +34,28 @@ func faceRoom(poly []Point, sx, sy float64) (room, bool) {
 	if len(poly) < 3 {
 		return room{}, false
 	}
-	areaM := math.Abs(signedArea(poly)) / float64(sx*sy)
+	areaM, width := faceSize(poly, sx, sy)
+	if areaM <= minRoomArea || width < minRoomWidth {
+		return room{}, false
+	}
+	return room{poly: poly, areaM: areaM, c: centroid(poly)}, true
+}
+
+// faceSize is a polygon's area in m² and its width in metres: the narrower
+// side of the rectangle with the same area and perimeter, exact for a
+// rectangle and an underestimate for anything less compact.
+func faceSize(poly []Point, sx, sy float64) (areaM, width float64) {
+	areaM = math.Abs(signedArea(poly)) / float64(sx*sy)
 	perim := 0.0
 	for i := range poly {
 		d := sub(poly[(i+1)%len(poly)], poly[i])
 		perim += float64(norm(d) * metresPerPx(d, sx, sy))
 	}
-	// The narrower side of the rectangle with the same area and perimeter:
-	// exact for a rectangle, an underestimate for anything less compact.
-	width := perim / 4
+	width = perim / 4
 	if disc := float64(perim*perim)/16 - areaM; disc > 0 {
 		width = perim/4 - math.Sqrt(disc)
 	}
-	if areaM <= minRoomArea || width < minRoomWidth {
-		return room{}, false
-	}
-	return room{poly: poly, areaM: areaM, c: centroid(poly)}, true
+	return areaM, width
 }
 
 // unitWords are the words a dimension or area label is made of besides
@@ -99,10 +105,14 @@ func cleanLabel(l Label) string {
 	return text
 }
 
-// betterLabel orders a room's candidate names: the tallest text (room names
-// are lettered larger than notes), then the longest, then the topmost, then
-// the leftmost, then the alphabetically first.
+// betterLabel orders a room's candidate names: by kind (a name, then text
+// that may be one, then a number), then the tallest text (room names are
+// lettered larger than notes), then the longest, then the topmost, then the
+// leftmost, then the alphabetically first.
 func betterLabel(x, y Label, xt, yt string) bool {
+	if rx, ry := labelRank[x.Kind], labelRank[y.Kind]; rx != ry {
+		return rx > ry
+	}
 	hx, hy := x.Height, y.Height
 	if !finite(hx) {
 		hx = 0
@@ -121,6 +131,42 @@ func betterLabel(x, y Label, xt, yt string) bool {
 	return xt < yt
 }
 
+// An unnamed room this big, m², is open plan, not a numbered room: a
+// meeting room or office is smaller, and a floor's unwalled workspace is
+// what's left between its rooms and cores.
+const openPlanArea = 100.0
+
+// openPlanName is what an unnamed open-plan room is called.
+const openPlanName = "Open plan"
+
+// smallRoomWords name rooms never openPlanArea big. In an open-plan room
+// such a label names a core, stair or WC drawn without walls round it, not
+// the room.
+var smallRoomWords = []string{
+	"core", "stair", "staircase", "lift", "elevator", "riser", "shaft", "duct", "wc",
+	"toilet", "shower", "cleaner", "cupboard",
+}
+
+// fitsRoom says a label can name a room of areaM m²: a label in an open-plan
+// room names it only if it isn't a small room's name, and only if it is
+// the only number there when it is a number (several are the numbers of
+// areas it holds).
+func fitsRoom(text string, kind LabelKind, areaM float64, numbers int) bool {
+	if areaM < openPlanArea {
+		return true
+	}
+	if kind == LabelNumber {
+		return numbers == 1
+	}
+	return !hasWord(nameWords(text), smallRoomWords)
+}
+
+func nameWords(name string) []string {
+	return strings.FieldsFunc(strings.ToLower(name), func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsDigit(r)
+	})
+}
+
 // nameRooms gives each room the best label inside it. It returns how many
 // usable labels fell in no room.
 func nameRooms(rooms []room, labels []Label) (stray int) {
@@ -129,14 +175,29 @@ func nameRooms(rooms []room, labels []Label) (stray int) {
 	for i := range best {
 		best[i] = -1
 	}
+	in := make([]int, len(labels))
+	numbers := make([]map[string]bool, len(rooms))
 	for li, l := range labels {
 		texts[li] = cleanLabel(l)
+		in[li] = -1
 		if texts[li] == "" {
 			continue
 		}
-		ri := slices.IndexFunc(rooms, func(r room) bool { return inside(l.At, r.poly) })
-		if ri < 0 {
+		in[li] = slices.IndexFunc(rooms, func(r room) bool { return inside(l.At, r.poly) })
+		if in[li] < 0 {
 			stray++
+			continue
+		}
+		if l.Kind == LabelNumber {
+			if numbers[in[li]] == nil {
+				numbers[in[li]] = map[string]bool{}
+			}
+			numbers[in[li]][texts[li]] = true
+		}
+	}
+	for li, l := range labels {
+		ri := in[li]
+		if ri < 0 || !fitsRoom(texts[li], l.Kind, rooms[ri].areaM, len(numbers[ri])) {
 			continue
 		}
 		if b := best[ri]; b < 0 || betterLabel(l, labels[b], texts[li], texts[b]) {
@@ -237,9 +298,7 @@ func hasWord(words []string, vocab []string) bool {
 
 // classify gives a room name's zone and floor.
 func classify(name string) (zone, floor string) {
-	words := strings.FieldsFunc(strings.ToLower(name), func(r rune) bool {
-		return !unicode.IsLetter(r) && !unicode.IsDigit(r)
-	})
+	words := nameWords(name)
 	zone = "work"
 	for _, z := range zoneWords {
 		if hasWord(words, z.words) {

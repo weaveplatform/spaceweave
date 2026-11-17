@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // Draws a traced plan back over its source image so tracing errors are
 // visible at a glance: walls (red exterior, blue interior, cyan glass), door and
-// window openings (green), room outlines with names (purple), and furniture
-// footprints (orange). Output is SVG in source-image pixels; rasterise it to
+// window openings (green), room outlines with names (purple), voids (grey) and
+// furniture footprints (orange). Output is SVG in source-image pixels; rasterise it to
 // look at it, e.g.
 //
 //   node tools/overlay.mjs js/plans/pt-clinic.js ~/plans/clinic.png /tmp/clinic.svg
@@ -52,6 +52,10 @@ for (const r of plan.rooms) {
   out.push(`<polygon points="${pts(r.polygon)}" fill="#7b3fe4" fill-opacity="0.08" stroke="#7b3fe4" stroke-width="2" stroke-dasharray="6 4"/>`);
   const [lx, ly] = r.label ?? [r.polygon.reduce((s, p) => s + p[0], 0) / r.polygon.length, r.polygon.reduce((s, p) => s + p[1], 0) / r.polygon.length];
   out.push(`<text x="${X(lx)}" y="${Y(ly)}" font-size="${k * 0.35}" fill="#7b3fe4" text-anchor="middle" font-weight="bold">${esc(r.name)}</text>`);
+}
+
+for (const v of plan.VOIDS ?? []) {
+  out.push(`<polygon points="${pts(v)}" fill="#7f7f7f" fill-opacity="0.2" stroke="#7f7f7f" stroke-width="2"/>`);
 }
 
 const colour = { exterior: '#d62728', interior: '#1f5fd6', glass: '#17becf' };

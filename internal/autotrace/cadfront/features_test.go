@@ -260,8 +260,9 @@ func TestFurnitureEdges(t *testing.T) {
 		insert("A-FURN", "EMPTY_DESK", 40, 0, 0),
 		insert("A-FURN", "PLANT", 50, 0, 0),
 		tiny,
-		// Text in a furniture block is its own business.
-		&cad.Text{Common: cad.Common{Layer: "A-FURN"}, Content: "Store", Height: 0.2, At: point{X: 60}},
+		// Text in a furniture block is its own business. (Loose text on a
+		// furniture layer would be too: see TestRoomNameText.)
+		&cad.Text{Common: cad.Common{Layer: "0"}, Content: "Store", Height: 0.2, At: point{X: 60}},
 	)
 	rect := func(w, d float64) []cad.Entity { return []cad.Entity{pl("0", true, 0, 0, 0, w, 0, w, d, 0, d)} }
 	doc.Blocks["HUGE_DESK"] = &cad.Block{Name: "HUGE_DESK", Entities: rect(100, 1)}

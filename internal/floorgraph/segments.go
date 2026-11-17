@@ -30,6 +30,9 @@ type seg struct {
 	t     float64
 	w     float64
 	glass bool
+	// void marks the edge of a void (see voidEdges): it bounds faces like a
+	// wall but is no wall.
+	void bool
 }
 
 func newSeg(a, b, u Point, cls int, t, w float64, glass bool) seg {
@@ -58,7 +61,7 @@ func (s seg) column() bool { return s.t > 0 && s.length() <= 1.5*s.t }
 func cmpSeg(x, y seg) int {
 	for _, c := range [...]int{
 		cmpPoint(x.a, y.a), cmpPoint(x.b, y.b), cmpFloat(x.t, y.t), cmpFloat(x.w, y.w),
-		cmpBool(x.glass, y.glass), x.cls - y.cls,
+		cmpBool(x.glass, y.glass), x.cls - y.cls, cmpBool(x.void, y.void),
 	} {
 		if c != 0 {
 			return c

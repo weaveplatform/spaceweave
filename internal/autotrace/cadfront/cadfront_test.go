@@ -122,8 +122,8 @@ func TestOfficeWalls(t *testing.T) {
 	if in.Coverage < 0.95 || in.Coverage > 1 {
 		t.Errorf("coverage %.2f, want nearly everything explained", in.Coverage)
 	}
-	if len(in.Notes) != 1 {
-		t.Errorf("notes %q, want only the fridge's", in.Notes)
+	if len(in.Notes) != 0 {
+		t.Errorf("notes %q, want none: every block's name says what it is", in.Notes)
 	}
 }
 
@@ -204,12 +204,10 @@ func TestOfficeLabelsAndFurniture(t *testing.T) {
 	for _, it := range in.Furniture {
 		count[it.Type]++
 	}
-	want := map[string]int{"desk": 7, "chair": 11, "roundTable": 1, "sink": 1, "counter": 1, "sofa": 1, "plant": 1}
+	// The fridge is a kitchen fitting: a counter, the plan's nearest.
+	want := map[string]int{"desk": 7, "chair": 11, "roundTable": 1, "sink": 1, "counter": 2, "sofa": 1, "plant": 1}
 	if !reflect.DeepEqual(count, want) {
 		t.Errorf("furniture %v, want %v", count, want)
-	}
-	if !hasNote(in, "1 furniture blocks had names that don't say") {
-		t.Errorf("notes %q, want the fridge counted", in.Notes)
 	}
 	tol := 0.01 * o.PxPerMetre
 	for _, it := range in.Furniture {
@@ -218,6 +216,10 @@ func TestOfficeLabelsAndFurniture(t *testing.T) {
 		case it.Type == "roundTable":
 			if *it.R != 0.6 || !close2(at, mm(o, 3000, 6000), tol) {
 				t.Errorf("table %+v r %v", it, *it.R)
+			}
+		case it.Type == "counter" && *it.W == 0.6:
+			if *it.D != 0.6 || !close2(at, mm(o, 6600, 600), tol) {
+				t.Errorf("fridge %+v", it)
 			}
 		case it.Type == "counter":
 			// Turned a quarter: its width runs up the image.

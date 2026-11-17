@@ -56,6 +56,9 @@ calibration      { pxPerMetre: [across, down], evidence }
 thickness        { exterior, interior, glass }  default wall thickness by kind, metres
 outline          optional: the exterior wall centrelines as a polygon, when the building
                  isn't a rectangle (L-shapes, slanted facades)
+voids            optional [[[x, y], ...], ...]: holes in the floor (an atrium, a light
+                 well, "open to below"), each a polygon no room covers; the site
+                 leaves them open, edged with a balustrade
 entrance         [x, y] the main entrance
 walls            [{ id, kind, from: [x, y], to: [x, y], thickness?, ext?, openings?: [...] }]
                  thickness overrides the kind's default (metres)

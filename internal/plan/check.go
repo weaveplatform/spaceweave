@@ -68,6 +68,17 @@ func checkHeader(t *Trace, add report) {
 	if len(t.Outline) > 0 && len(t.Outline) < 3 {
 		add("outline needs at least 3 points")
 	}
+	for i, v := range t.Voids {
+		if len(v) < 3 {
+			add("void #%d needs at least 3 points", i)
+		}
+		for _, p := range v {
+			if !finite(p[0], p[1]) {
+				add("void #%d: coordinates must be finite", i)
+				break
+			}
+		}
+	}
 }
 
 func checkWalls(walls []Wall, add report) {
