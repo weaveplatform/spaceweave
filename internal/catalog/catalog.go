@@ -58,6 +58,9 @@ var (
 	ErrTransition = errors.New("status change not allowed")
 	ErrLocked     = errors.New("catalog is locked by another process")
 	ErrFormat     = errors.New("not a format spaceweave reads")
+	ErrRole       = errors.New("a file attached to a plan is a space plan or a reference")
+	ErrPackage    = errors.New("that file can't join this plan")
+	ErrPrimary    = errors.New("the plan's own drawing can't be removed; delete the plan instead")
 )
 
 // Entry is one plan in catalog.json.
@@ -70,8 +73,13 @@ type Entry struct {
 	Source string `json:"source"`
 	// Upload is the file as it arrived, inside the plan's directory: the
 	// same as Source for an image, original.<ext> for a drawing.
-	Upload     string   `json:"upload"`
-	Format     string   `json:"format"`            // a convert.Format ID
+	Upload string `json:"upload"`
+	Format string `json:"format"` // a convert.Format ID
+	// Files are the plan's floor package: the drawing above, as role
+	// RoleArchitecture, first, then any space plan and reference files
+	// attached to it. An entry written before packages existed has none on
+	// disk and gets its drawing here when it is loaded.
+	Files      []File   `json:"files,omitempty"`
 	Drawing    string   `json:"drawing,omitempty"` // the drawing as SVG, once converted
 	Scale      *Scale   `json:"scale,omitempty"`   // known from the drawing, once converted
 	Original   string   `json:"original"`          // the inbox file it came from
@@ -88,6 +96,65 @@ type Entry struct {
 	Progress  *Progress `json:"progress,omitempty"` // set only while tracing
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+// File is one file of a plan's floor package.
+type File struct {
+	Role string `json:"role"` // RoleArchitecture, RoleSpaces or RoleReference
+	// Upload is the file inside the plan's directory: Entry.Upload for the
+	// drawing, files/<role>-<sha6>.<ext> for one attached.
+	Upload string `json:"upload"`
+	Format string `json:"format"` // a convert.Format ID
+	SHA256 string `json:"sha256"`
+	Name   string `json:"name"` // as it arrived
+}
+
+// File roles. Their string values are read by js/pipeline.js and sent by
+// js/api.js.
+const (
+	// RoleArchitecture is the drawing traced: the plan's own upload.
+	RoleArchitecture = "architecture"
+	// RoleSpaces is a space plan of the same floor: its area outlines,
+	// numbers and names are what the rooms are. A plan has at most one,
+	// so attaching another replaces it.
+	RoleSpaces = "spaces"
+	// RoleReference is kept with the plan for the reviewer and not read
+	// by the tracer: a PDF print, a photo of the floor.
+	RoleReference = "reference"
+)
+
+// filesDir holds a plan's attached files, apart from what the worker
+// writes beside the drawing.
+const filesDir = "files"
+
+// Primary is the plan's drawing as a package file.
+func (e *Entry) Primary() File {
+	return File{
+		Role:   RoleArchitecture,
+		Upload: e.Upload,
+		Format: e.Format,
+		SHA256: e.SHA256,
+		Name:   e.Original,
+	}
+}
+
+// Attached are the package's files of one role.
+func (e *Entry) Attached(role string) []File {
+	var out []File
+	for _, f := range e.Files {
+		if f.Role == role {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+// migrate gives an entry from before floor packages its drawing as the
+// package's one file, so every reader can take Files as the whole package.
+func (e *Entry) migrate() {
+	if len(e.Files) == 0 && e.Upload != "" {
+		e.Files = []File{e.Primary()}
+	}
 }
 
 // Scale is what a drawing says about its own scale.
@@ -171,6 +238,9 @@ func (s *Store) Load() (*Catalog, error) {
 	}
 	if c.Plans == nil {
 		c.Plans = []Entry{}
+	}
+	for i := range c.Plans {
+		c.Plans[i].migrate()
 	}
 	return &c, nil
 }
@@ -377,6 +447,10 @@ func (s *Store) Review(id string, a Action, note string) (Status, Entry, error) 
 	return was, now, err
 }
 
+// retrace clears what a retrace leaves behind: no note, or the automatic
+// tracer would say it can't read one and start from the previous trace.
+func retrace(e *Entry) { e.Error, e.Note = "", "" }
+
 // Converted records a drawing's conversion and moves it on to tracing.
 func (s *Store) Converted(id, source, drawing string, scale *Scale) (Entry, error) {
 	var now Entry
@@ -457,6 +531,7 @@ func (s *Store) Ingest(path string) (Entry, bool, error) {
 			CreatedAt: now,
 			UpdatedAt: now,
 		}
+		entry.migrate()
 		c.Plans = append(c.Plans, entry)
 		created = true
 		return nil

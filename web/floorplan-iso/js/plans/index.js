@@ -47,6 +47,7 @@ export async function loadCatalog(fetchImpl = globalThis.fetch) {
         format: p.format,
         source: p.source,
         upload: p.upload,
+        files: p.files ?? [],
         drawing: p.drawing,
         scale: p.scale,
         generated: true,

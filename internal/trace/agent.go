@@ -91,6 +91,40 @@ type Job struct {
 	// Profile says what each of the drawing's layers holds: the client's
 	// profile over the built-ins. Nil means the built-ins alone.
 	Profile *profile.Set
+	// Spaces are the floor package's space plans (at most one, as the
+	// catalogue keeps it), placed on Original; References are files kept
+	// for the reviewer. A tracer that can't read them ignores them.
+	Spaces, References []Attachment
+}
+
+// Attachment is a file of a plan's floor package besides the one traced.
+type Attachment struct {
+	Path   string // on disk
+	Format string // a convert.Format ID
+}
+
+// Spaces is report.json's account of a space plan: how many spaces it
+// held, and how well they were placed on the drawing traced.
+type Spaces struct {
+	File   string `json:"file"`
+	Layer  string `json:"layer,omitempty"` // the layer of outlines read
+	Spaces int    `json:"spaces"`
+	// Method is "shared" when the two drawings share coordinates and
+	// "fitted" when the space plan was moved onto the drawing.
+	Method string `json:"method,omitempty"`
+	// Transform maps the space plan's coordinates to the drawing's, as
+	// [a b c d e f].
+	Transform *[6]float64 `json:"transform,omitempty"`
+	// ResidualM is the RMS distance, in metres, from the space outlines'
+	// corners to the walls they lie on; Matched is the share of corners
+	// that lie on one.
+	ResidualM float64 `json:"residualM"`
+	Matched   float64 `json:"matched"`
+	// Used is false when the spaces weren't handed to the tracer: the
+	// file couldn't be read, or placing it was too poor to trust.
+	Used  bool     `json:"used"`
+	Error string   `json:"error,omitempty"`
+	Notes []string `json:"notes,omitempty"`
 }
 
 // Drawing is what a drawing said about the image rendered from it.
@@ -181,6 +215,9 @@ type Result struct {
 	// Layers says how each of a drawing's layers was read; empty for an
 	// image, or a tracer that doesn't read layers.
 	Layers []profile.Layer `json:"layers,omitempty"`
+	// Spaces says how the job's space plan was read; nil without one, or
+	// for a tracer that doesn't read them.
+	Spaces *Spaces `json:"spaces,omitempty"`
 }
 
 // submission is one submit_trace and its verdict.

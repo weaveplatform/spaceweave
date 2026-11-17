@@ -33,6 +33,18 @@ export function createApi(fetchImpl = globalThis.fetch) {
       form.append('image', file, name);
       return call('plans', { method: 'POST', body: form });
     },
+    // Adds a file to a plan's floor package: role 'spaces' or 'reference'
+    // (catalog.RoleSpaces, catalog.RoleReference). The plan is traced again.
+    attach(id, file, role, name = file.name) {
+      const form = new FormData();
+      form.append('role', role);
+      form.append('file', file, name);
+      return call(`plans/${encodeURIComponent(id)}/files`, { method: 'POST', body: form });
+    },
+    // Takes a file back out of a plan's package, by its SHA-256.
+    detach: (id, sha) => call(`plans/${encodeURIComponent(id)}/files/${encodeURIComponent(sha)}`, {
+      method: 'DELETE',
+    }),
     review: (id, action, note = '') => call(`plans/${encodeURIComponent(id)}/${action}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

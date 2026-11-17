@@ -19,7 +19,6 @@ import (
 	_ "image/png"
 	"io"
 	"log/slog"
-	"mime/multipart"
 	"net"
 	"net/http"
 	"net/url"
@@ -36,8 +35,8 @@ import (
 	"github.com/weaveplatform/spaceweave/internal/convert"
 )
 
-// RequestHeader must accompany every POST and PUT to the API. It must
-// match js/api.js.
+// RequestHeader must accompany every POST, PUT and DELETE to the API. It
+// must match js/api.js.
 const RequestHeader = "X-Spaceweave"
 
 // Upload limits. MaxPixels stops a small, highly compressed file from
@@ -90,6 +89,8 @@ func (s *Server) Handler() http.Handler {
 		r.Use(sameOrigin)
 		r.Get("/info", s.info)
 		r.Post("/plans", s.upload)
+		r.Post("/plans/{id}/files", s.attach)
+		r.Delete("/plans/{id}/files/{sha}", s.detach)
 		r.Post("/plans/{id}/{action}", s.review)
 		if s.Profiles != nil {
 			r.Get("/profiles/{name}", s.getProfile)
@@ -213,44 +214,13 @@ type uploadReply struct {
 }
 
 func (s *Server) upload(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, s.maxUpload())
-	mr, err := r.MultipartReader()
-	if err != nil {
-		writeError(
-			w,
-			http.StatusBadRequest,
-			"send the image as multipart/form-data in a field named image",
-		)
+	got := s.receive(w, r, "image")
+	if got == nil {
 		return
 	}
-	part, err := imagePart(mr)
-	if err != nil {
-		s.bodyError(w, err)
-		return
-	}
-	name := filepath.Base(part.FileName())
-	if strings.HasPrefix(name, ".") || name == "" {
-		writeError(w, http.StatusBadRequest, "the file needs a name")
-		return
-	}
-	// Ingest takes a path and names the plan after the file, so the upload is
-	// saved under its own name in a folder of its own.
-	tmp, err := os.MkdirTemp("", "spaceweave-upload-")
-	if err != nil {
-		s.internal(w, err)
-		return
-	}
-	defer os.RemoveAll(tmp) //nolint:errcheck // temp dir
-	path := filepath.Join(tmp, name)
-	if err := save(path, part); err != nil {
-		s.bodyError(w, err)
-		return
-	}
-	if code, msg := check(path); msg != "" {
-		writeError(w, code, msg)
-		return
-	}
-	e, created, err := s.Store.Ingest(path)
+	defer got.close()
+	name := filepath.Base(got.path)
+	e, created, err := s.Store.Ingest(got.path)
 	if err != nil {
 		s.internal(w, err)
 		return
@@ -263,23 +233,6 @@ func (s *Server) upload(w http.ResponseWriter, r *http.Request) {
 	s.log().Info("uploaded", "file", name, "plan", e.ID)
 	s.wake()
 	writeJSON(w, http.StatusCreated, uploadReply{Plan: e})
-}
-
-var errNoImage = errors.New("the form has no image field")
-
-func imagePart(mr *multipart.Reader) (*multipart.Part, error) {
-	for {
-		part, err := mr.NextPart()
-		if errors.Is(err, io.EOF) {
-			return nil, errNoImage
-		}
-		if err != nil {
-			return nil, fmt.Errorf("read form: %w", err)
-		}
-		if part.FormName() == "image" {
-			return part, nil
-		}
-	}
 }
 
 func save(path string, from io.Reader) error {
@@ -346,7 +299,7 @@ func (s *Server) bodyError(w http.ResponseWriter, err error) {
 	var tooBig *http.MaxBytesError
 	if errors.As(err, &tooBig) {
 		writeError(w, http.StatusRequestEntityTooLarge,
-			fmt.Sprintf("the image is over the %d MB upload limit", tooBig.Limit>>20))
+			fmt.Sprintf("the file is over the %d MB upload limit", tooBig.Limit>>20))
 		return
 	}
 	writeError(w, http.StatusBadRequest, err.Error())
@@ -368,18 +321,7 @@ func (s *Server) review(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	was, e, err := s.Store.Review(id, action, strings.TrimSpace(body.Note))
-	switch {
-	case errors.Is(err, catalog.ErrAction), errors.Is(err, catalog.ErrNotFound):
-		writeError(w, http.StatusNotFound, err.Error())
-		return
-	case errors.Is(err, catalog.ErrTransition):
-		writeError(w, http.StatusConflict, err.Error())
-		return
-	case errors.Is(err, catalog.ErrLocked):
-		writeError(w, http.StatusServiceUnavailable, err.Error())
-		return
-	case err != nil:
-		s.internal(w, err)
+	if s.storeError(w, err) {
 		return
 	}
 	s.log().Info("reviewed", "plan", id, "action", action, "from", was, "to", e.Status)

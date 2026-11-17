@@ -2,11 +2,14 @@
 // plan uploads it, the pipeline list follows each plan through conversion and
 // the tracer, and a draft can be approved or sent back with a note. A
 // drawing's layers can be given roles, saved in the client's profile and
-// traced again. Under a plain static server the API isn't there, and the
-// page says how to start it instead.
+// traced again. A drawing's floor package can take a space plan, which is
+// placed on the drawing and traced with it. Under a plain static server the
+// API isn't there, and the page says how to start it instead.
 import { createApi } from './api.js';
 import { layerRows, nameProblem, setLayerRole, sourceLabel, suggestName } from './layers.js';
-import { describe, inPipeline } from './pipeline.js';
+import {
+  canAddSpaces, canChangePackage, describe, inPipeline, packageRows, spaceFormats, spacePlanProblem,
+} from './pipeline.js';
 import { acceptAttr, checkFile, names, pastedName, refusesDrag } from './formats.js';
 
 const d3 = globalThis.d3;
@@ -35,6 +38,11 @@ export function initWorkbench({ plans, current, refresh, open }) {
   const layersPanel = $('layers');
   const layersIntro = $('layers-intro');
   const layerBody = $('layer-rows');
+  const packagePanel = $('package');
+  const packageIntro = $('package-intro');
+  const packageFiles = $('package-files');
+  const spaceAdd = $('space-add');
+  const spaceInput = $('space-file');
 
   let info = null; // the server's answer to /api/info; null without the API
   let drawings = new Set(); // ids of the formats converted before tracing
@@ -285,6 +293,70 @@ export function initWorkbench({ plans, current, refresh, open }) {
     });
   }
 
+  // ---- the floor package: a draft's space plan and other files beside its
+  // drawing. Adding or removing one traces the plan again from the drawing
+  // already converted.
+  spaceAdd.addEventListener('click', () => spaceInput.click());
+  spaceInput.addEventListener('change', () => {
+    const [file] = spaceInput.files;
+    spaceInput.value = ''; // so choosing the same file again still fires
+    const entry = shown();
+    if (!file || !entry) return;
+    act(async () => {
+      // The same check as an upload, then the formats a space plan is read
+      // from, so a wrong file is turned away here rather than by the server.
+      if (file.size > info.maxUploadBytes) {
+        throw new Error(`${file.name}: over the ${Math.round(info.maxUploadBytes / 2 ** 20)} MB upload limit.`);
+      }
+      const problem = spacePlanProblem(file.name, await checkFile(file, info.formats));
+      if (problem) throw new Error(problem);
+      const { duplicate } = await api.attach(entry.id, file, 'spaces');
+      if (duplicate) {
+        say(`“${file.name}” is already part of “${entry.name}”.`);
+        return;
+      }
+      mine.add(entry.id);
+      say(`“${file.name}” is the space plan of “${entry.name}” now; tracing it again.`);
+    });
+  });
+
+  function renderPackage() {
+    const entry = shown();
+    const rows = packageRows(entry);
+    const adding = Boolean(info) && canAddSpaces(entry) && entry.status === 'draft';
+    packagePanel.hidden = !info || !entry?.generated || entry.status !== 'draft' || (!adding && rows.length === 0);
+    if (packagePanel.hidden) return;
+    spaceAdd.hidden = !adding;
+    spaceInput.accept = acceptAttr(spaceFormats(info.formats));
+    packageIntro.textContent = rows.length
+      ? `“${entry.name}” is traced from its drawing with these files.`
+      : 'A space plan from the same floor (DXF or DWG) gives the rooms their outlines, numbers and names.';
+    d3.select(packageFiles).selectAll('li')
+      .data(rows, (r) => r.sha)
+      .join((enter) => {
+        const li = enter.append('li');
+        li.append('a').attr('target', '_blank').attr('rel', 'noopener');
+        li.append('span').attr('class', 'role');
+        li.append('button').attr('type', 'button').text('Remove')
+          .on('click', (e, r) => removeFile(shown(), r));
+        return li;
+      })
+      .each(function show(r) {
+        const li = d3.select(this);
+        li.select('a').attr('href', r.href).text(r.name);
+        li.select('.role').text(r.label);
+        li.select('button').attr('aria-label', `Remove ${r.name}`).attr('hidden', canChangePackage(entry) ? null : '');
+      });
+  }
+
+  function removeFile(entry, row) {
+    act(async () => {
+      await api.detach(entry.id, row.sha);
+      mine.add(entry.id);
+      say(`Took “${row.name}” out of “${entry.name}”; tracing it again.`);
+    });
+  }
+
   // ---- the pipeline list
   function renderPipeline() {
     const rows = [...uploading.values(), ...inPipeline(plans())];
@@ -352,6 +424,7 @@ export function initWorkbench({ plans, current, refresh, open }) {
     renderReview();
     renderPipeline();
     renderLayers();
+    renderPackage();
     announce();
   }
 
