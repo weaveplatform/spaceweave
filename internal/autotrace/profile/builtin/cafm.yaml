@@ -1,0 +1,39 @@
+# What computer-aided facilities management (CAFM) systems export: a
+# space plan of room and area outlines with their numbers, names and areas
+# written inside, often with no walls at all. Layer names follow the
+# export ("EC1 Space Polygons", "EC1 Space Numbers") or Archibus's
+# table-and-suffix scheme ("RM$" for room outlines, "RM$TXT" for their
+# lettering, "GROS$" for the gross outline).
+#
+# Changing a rule here changes traces: bump autotrace.Version and expect
+# the golden hashes to move.
+description: Facilities-management space-plan exports (area and space polygons, numbers, names).
+rules:
+  - role: room-number
+    priority: 300
+    regex: '\b(space|room|area)s?[ _-]*(numbers?|nos?|nums?)$'
+  - role: room-name
+    priority: 300
+    regex: '\b(space|room|area)s?[ _-]*(names?|titles?|labels?)$'
+  - role: room-name
+    priority: 300
+    note: Archibus's room lettering, number and name together; a room's number is its name when it has no other.
+    layer: 'RM$TXT'
+  - role: area
+    priority: 300
+    note: Room and space outlines, whose areas the drawing's units are checked against.
+    regex: '\b(space|room|area)s?[ _-]*(polygons?|polylines?|boundar(y|ies)|outlines?)$'
+  - role: area
+    priority: 300
+    layer: 'RM$'
+  - role: not-wall
+    priority: 300
+    note: >-
+      Archibus's gross, suite and floor outlines: one outline round
+      everything, which would otherwise be taken for walls or for the
+      layer of room outlines that covers the most floor.
+    regex: '^(GROS|SU|FL)\$$'
+  - role: ignore
+    priority: 300
+    note: Archibus's employee and equipment lettering, which names people and things, not rooms.
+    regex: '^(EM|EQ)\$(TXT)?$'

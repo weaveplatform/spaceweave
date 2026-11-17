@@ -20,6 +20,7 @@ import (
 
 	"github.com/anthropics/anthropic-sdk-go/v2"
 
+	"github.com/weaveplatform/spaceweave/internal/autotrace/profile"
 	"github.com/weaveplatform/spaceweave/internal/config"
 	"github.com/weaveplatform/spaceweave/internal/plan"
 	"github.com/weaveplatform/spaceweave/internal/raster"
@@ -87,6 +88,9 @@ type Job struct {
 	// image upload. A tracer that reads the drawing itself needs both.
 	Original string
 	View     *vector.Affine
+	// Profile says what each of the drawing's layers holds: the client's
+	// profile over the built-ins. Nil means the built-ins alone.
+	Profile *profile.Set
 }
 
 // Drawing is what a drawing said about the image rendered from it.
@@ -174,6 +178,9 @@ type Result struct {
 	Usage      Usage       `json:"usage"`
 	CostUSD    float64     `json:"costUsd"`
 	Problems   []string    `json:"problems,omitempty"` // of the last submission, when it wasn't valid
+	// Layers says how each of a drawing's layers was read; empty for an
+	// image, or a tracer that doesn't read layers.
+	Layers []profile.Layer `json:"layers,omitempty"`
 }
 
 // submission is one submit_trace and its verdict.

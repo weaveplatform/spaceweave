@@ -317,6 +317,10 @@ const (
 	Approve Action = "approve"
 	Reject  Action = "reject"
 	Retry   Action = "retry"
+	// Retrace traces a plan again with no note: what changed is how its
+	// drawing is read (a layer's role, in the client profile), not
+	// anything for the tracer to be told.
+	Retrace Action = "retrace"
 )
 
 // reviews narrows the transitions to what each action means: reject and
@@ -329,6 +333,7 @@ var reviews = map[Action]struct {
 	Approve: {[]Status{Draft}, Approved},
 	Reject:  {[]Status{Draft, Approved}, Queued},
 	Retry:   {[]Status{Failed}, Queued},
+	Retrace: {[]Status{Draft, Failed}, Queued},
 }
 
 // ErrAction is an unknown review action.
@@ -360,6 +365,10 @@ func (s *Store) Review(id string, a Action, note string) (Status, Entry, error) 
 			e.Note = note
 		case Retry:
 			e.Error = ""
+		case Retrace:
+			// No note: the automatic tracer would otherwise say it can't
+			// read one, and start from the previous trace.
+			e.Error, e.Note = "", ""
 		case Approve:
 		}
 		now = *e

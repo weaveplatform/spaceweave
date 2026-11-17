@@ -1,0 +1,81 @@
+# Uniclass 2015 classification codes, as BS 1192 and ISO 19650 layer names
+# carry them ("AR_EF_25_10-X_Existing Walls Internal",
+# "Ss_40_15_Furniture"). The code says what a layer holds even where its
+# description is missing or in another language. Only the codes a floor
+# plan's evidence depends on are here; anything else falls through to the
+# other profiles' words.
+#
+# Changing a rule here changes traces: bump autotrace.Version and expect
+# the golden hashes to move.
+description: Uniclass 2015 codes in BS 1192 / ISO 19650 layer names.
+rules:
+  # Text about furniture is never a room's name, whatever else it says.
+  - role: ignore
+    priority: 200
+    words: [TEXT*, TXT, ANNO*, IDEN, TAG*]
+    codes: [SS_40_15, PR_40_20, PR_40_70]
+
+  # Ef_25_10 walls; Ef_25_30 doors and windows, which share the code, so
+  # the words split them (a window layer says so; anything else is a door).
+  - role: glass
+    priority: 100
+    codes: [EF_25_10]
+    words: [GLAZ*, GLASS*, GLAS, CURT*, VERRE, VITR*]
+  - role: wall
+    priority: 100
+    codes: [EF_25_10]
+  - role: window
+    priority: 100
+    codes: [EF_25_30]
+    words: [WIND*, WIN, WDW*, WNDW*, FENSTER*, FENETRE*, FENÊTRE*, VENTANA*]
+  - role: door
+    priority: 100
+    codes: [EF_25_30]
+  - role: not-wall
+    priority: 100
+    note: Ss_25_50 solar shading. Brise soleil and louvres stand off the façade in long parallel runs, and enclose nothing.
+    codes: [SS_25_50]
+  - role: glass
+    priority: 100
+    note: Ss_25 wall and barrier systems, glazed screens among them.
+    codes: [SS_25]
+    words: [GLAZ*, GLASS*, GLAS, CURT*, VERRE, VITR*]
+  - role: wall
+    priority: 100
+    codes: [SS_25]
+  - role: structure
+    priority: 100
+    note: Ef_20 structure.
+    codes: [EF_20]
+  - role: stairs
+    priority: 100
+    note: Ef_35 stairs and ramps, drawn in parallel pairs like walls.
+    codes: [EF_35]
+  # Zz is annotation. Desk numbers and text that says it is about
+  # something else are told apart by their words.
+  - role: desk-number
+    priority: 100
+    codes: [ZZ_]
+    words: [DESK*, WORKSTATION*, WORKPLACE*, WS, WKS, WKST, ARBEITSPLATZ*, PUESTO*, POSTAZION*]
+  - role: ignore
+    priority: 100
+    codes: [ZZ_]
+    words: [FURN*, MOBIL*, EQUIP*, EQPM*, FITT*, FIXT*, SANI*, DESK*, SEAT*, WORKSTATION*, WS,
+            NOTE*, HELP*, DIM*, GRID*, AXIS, AXES, TITLE*, TITL*, TTLB, BORDER*, REV*, ELEC*,
+            POWER, LIGHT*, DATA, MECH*, PLUM*, HVAC, FIRE, SIGN*, KEY*, LEGEND*, DOOR*, WIND*,
+            STAIR*, LIFT*, ELEV*, HATCH*, PATT*, SYMB*, CRS]
+  - role: annotation
+    priority: 100
+    codes: [ZZ_]
+  - role: lift
+    priority: 100
+    note: Sl_90 lift installations.
+    codes: [SL_90]
+  - role: sanitary
+    priority: 100
+    note: Pr_40_20 sanitary fittings and accessories.
+    codes: [PR_40_20]
+  - role: furniture
+    priority: 100
+    note: Ss_40_15 furniture systems; Pr_40_70 furniture products.
+    codes: [SS_40_15, PR_40_70]

@@ -73,6 +73,21 @@ prices:
 	}
 }
 
+func TestProfileSetting(t *testing.T) {
+	p := write(t, "profile: acme\n")
+	c, err := Load(p, true, env(nil))
+	if err != nil || c.Profile != "acme" {
+		t.Fatalf("from the file: %+v %v", c.Profile, err)
+	}
+	c, err = Load(p, true, env(map[string]string{"SPACEWEAVE_PROFILE": "globex"}))
+	if err != nil || c.Profile != "globex" {
+		t.Fatalf("the environment wins over the file: %+v %v", c.Profile, err)
+	}
+	if _, err := Load(p, true, env(map[string]string{"SPACEWEAVE_PROFILE": "Not a name"})); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("a profile name that isn't a file name: %v", err)
+	}
+}
+
 func TestStrictFile(t *testing.T) {
 	_, err := Load(write(t, "limits:\n  maxUSD: 100\n"), true, env(nil))
 	if !errors.Is(err, ErrInvalid) || !strings.Contains(err.Error(), "maxUSD") {
@@ -101,6 +116,8 @@ func TestValidate(t *testing.T) {
 		"prices":       func(c *Config) { c.Prices.CacheRead = -1 },
 		"settle":       func(c *Config) { c.Settle = -time.Second },
 		"serve":        func(c *Config) { c.Serve.Site = "" },
+		"profile path": func(c *Config) { c.Profile = "../acme" },
+		"builtin":      func(c *Config) { c.Profile = "generic" },
 	}
 	for name, breakIt := range cases {
 		c := Default()
@@ -109,7 +126,7 @@ func TestValidate(t *testing.T) {
 			t.Errorf("%s: %v", name, err)
 		}
 	}
-	if len(Env) != 9 {
+	if len(Env) != 10 {
 		t.Fatal("Env documents every variable applyEnv reads")
 	}
 }

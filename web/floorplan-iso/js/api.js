@@ -15,7 +15,9 @@ export class ApiError extends Error {
 
 export function createApi(fetchImpl = globalThis.fetch) {
   async function call(path, init = {}) {
-    const headers = init.method === 'POST' ? { [REQUEST_HEADER]: '1', ...init.headers } : init.headers;
+    // Every request that changes something carries the header.
+    const writes = init.method && init.method !== 'GET';
+    const headers = writes ? { [REQUEST_HEADER]: '1', ...init.headers } : init.headers;
     const res = await fetchImpl(`api/${path}`, { cache: 'no-store', ...init, headers });
     let body = {};
     try {
@@ -35,6 +37,14 @@ export function createApi(fetchImpl = globalThis.fetch) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ note }),
+    }),
+    // A client layer profile; one not saved yet comes back with exists false
+    // and no rules.
+    profile: (name) => call(`profiles/${encodeURIComponent(name)}`),
+    saveProfile: (name, profile) => call(`profiles/${encodeURIComponent(name)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(profile),
     }),
   };
 }

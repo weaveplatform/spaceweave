@@ -1,0 +1,97 @@
+# The words offices name layers with when they follow no standard, in
+# English, German, French and Spanish, with the abbreviations CAD libraries
+# use. Tried last of the built-ins at each priority.
+#
+# Changing a rule here changes traces: bump autotrace.Version and expect
+# the golden hashes to move.
+description: Plain layer words in English, German, French and Spanish.
+rules:
+  # --- Room lettering (300): before dimensions and text, so ROOM-TEXT and
+  # A-ANNO-ROOM name rooms. Run-together names first, numbers before names.
+  - role: room-number
+    priority: 300
+    squashed: [ROOMNO, ROOMNUM, RMNO, RMNUM, RAUMNR, RAUMNUMMER]
+  - role: room-name
+    priority: 300
+    squashed: [ROOMNAME, RMNAME, RAUMNAME, ROOMTAG, ROOMTITLE]
+  - role: room-number
+    priority: 300
+    words: [ROOM*, RM, RMS, SPACE*, AREA*, RAUM*, LOCAL*]
+    with: [NUM*, "NO", NR, NOS, NBR, NUMMER*, NUMERO*]
+  - role: room-name
+    priority: 300
+    note: >-
+      Not DESC: a facilities export's "Space Type Descs" are codes (OP,
+      MEETP) for the kind of space, not its name.
+    words: [ROOM*, RM, RMS, SPACE*, AREA*, RAUM*, LOCAL*]
+    with: [NAME*, TITLE*, LABEL*, IDEN*, BEZEICHNUNG*, NOM, ANNO*, TEXT*, TXT]
+  - role: desk-number
+    priority: 300
+    note: >-
+      A desk layer that says it holds text. Ahead of TAG and TEXT below, so
+      I-WORKSTATION-TAG numbers desks rather than being ignored.
+    words: [DESK*, WORKSTATION*, WORKPLACE*, WS, WKS, WKST, ARBEITSPLATZ*, PUESTO*, POSTAZION*]
+    with: [NUM*, "NO", NR, NOS, NBR, NUMMER*, NUMERO*, TAG*, TEXT*, TXT, LABEL*, ANNO*, IDEN*, NAME*]
+
+  # --- Drawn over everything (200): a wall's dimensions, a door's tag or
+  # the structural grid sit on layers named for walls and doors, and none
+  # of it is one. A wall's hatch (A-WALL-PATT) is not here: its poché marks
+  # the wall.
+  - role: ignore
+    priority: 200
+    words: [DIM*, GRID*, AXIS, AXES, NOTE*, HELPLINE*]
+  - role: ignore
+    priority: 200
+    note: Text about something that is never a room (furniture tags, door numbers, the title).
+    words: [TEXT*, TXT, ANNO*, IDEN, TAG*]
+    with: &never [FURN*, MOBIL*, EQUIP*, EQPM*, FITT*, FIXT*, SANI*, DESK*, SEAT*, WORKSTATION*, WS,
+                  NOTE*, HELP*, DIM*, GRID*, AXIS, AXES, TITLE*, TITL*, TTLB, BORDER*, REV*, ELEC*,
+                  POWER, LIGHT*, DATA, MECH*, PLUM*, HVAC, FIRE, SIGN*, KEY*, LEGEND*, DOOR*, WIND*,
+                  STAIR*, LIFT*, ELEV*, HATCH*, PATT*, SYMB*, CRS]
+  - role: annotation
+    priority: 200
+    words: [TEXT*, TXT, ANNO*, IDEN, TAG*]
+
+  # --- Plain words (0), after the classification codes. Doors and windows
+  # before glass and walls, so A-GLAZ-WIND holds windows and A-WALL-DOOR
+  # doors. Bare DR is a word on its own so that DRAWING isn't a door.
+  - role: door
+    words: [DOOR*, DR, DRS, TÜR*, TUER*, PORTE*, PUERTA*]
+  - role: window
+    words: [WIND*, WIN, WDW*, WNDW*, FENSTER*, FENETRE*, FENÊTRE*, VENTANA*]
+  - role: glass
+    words: [GLAZ*, GLASS*, GLAS, CURT*, VERRE, VITR*]
+  - role: wall
+    words: [WALL*, MUR, MURS, MURO, MUROS, WAND, WÄNDE, WAENDE, PARED*]
+  - role: structure
+    note: >-
+      Core walls drawn as line pairs, and columns. Read as walls, so a
+      drawing whose shell and cores live only here still encloses its rooms.
+    words: [STRUCT*, COLUMN*, COL, COLS, PILLAR*, PIER*, STUETZ*, STÜTZ*, POTEAU*, PILAR*, TRAGWERK*]
+  - role: sanitary
+    words: [SANITARY, SANI*]
+  - role: furniture
+    words: [FURN*, MOBIL*, MÖBEL*, MOEBEL*]
+  - role: desk-number
+    note: A layer named for desks holds their numbers, whatever else it holds.
+    words: [DESK*, WORKSTATION*, WORKPLACE*, WS, WKS, WKST, ARBEITSPLATZ*, PUESTO*, POSTAZION*]
+  - role: void
+    note: Before LIGHT* below, which LIGHTWELL starts with.
+    words: [VOID*, ATRIUM*, LIGHTWELL*, LUFTRAUM*]
+  - role: area
+    words: [AREA*, ROOM*, RM, SPACE*, RAUM*, ZONE*]
+  - role: stairs
+    words: [STAIR*, STRS, TREPPE*]
+  - role: lift
+    words: [LIFT*, ELEV*]
+  - role: services
+    words: [ELEC*, LIGHT*, POWER, DATA, MECH*, PLUM*, HVAC, FIRE, FITT*, FIXT*, EQUIP*, EQPM*]
+  - role: ignore
+    words: [HATCH*, PATT*, TITLE*, TITL*, TTLB, BORDER*, REV*, LEGEND*, KEY*, SIGN*, SEAT*, CRS,
+            SYMB*, HELP*, COTA*, COTE*, BEMASS*, ACHS*]
+  - role: annotation
+    words: [VIEWPORT*, VPORT*, VP, DEFPOINTS, LEAD*]
+  - role: not-wall
+    note: Overhead, hidden and centre lines, ceilings, roofs and shading run in pairs like walls.
+    words: [LITE, CLNG, CEIL*, OVHD, HIDD*, HIDDEN, CENTER*, CNTR, SECT*, ROOF*, LOGO, NORTH, BRISE,
+            SHADING, LOUVRE*, LOUVER*]

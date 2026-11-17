@@ -23,6 +23,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/weaveplatform/spaceweave/internal/autotrace/profile"
 	"github.com/weaveplatform/spaceweave/internal/cad"
 	"github.com/weaveplatform/spaceweave/internal/dwg"
 	"github.com/weaveplatform/spaceweave/internal/dxf"
@@ -43,6 +44,9 @@ type Options struct {
 	PxPerMetre float64
 	Exact      bool
 	Title      string
+	// Profile says what each layer holds; nil reads the drawing by the
+	// built-in profiles alone.
+	Profile *profile.Set
 }
 
 // ErrView is returned for a view that doesn't map the drawing onto an
@@ -52,49 +56,63 @@ var ErrView = errors.New("cadfront: the view transform is degenerate")
 // Read finds the evidence in a drawing. It is deterministic: the same
 // document and options give the same Input.
 func Read(doc *cad.Document, o Options) (floorgraph.Input, error) {
+	in, _, err := Analyse(doc, o)
+	return in, err
+}
+
+// Analyse is Read, and says how it read each layer: the role its profile
+// gave it, or what was made of it when none did.
+func Analyse(doc *cad.Document, o Options) (floorgraph.Input, []profile.Layer, error) {
 	px := o.View.Factor()
 	if !(px > 0) || math.IsInf(px, 0) {
-		return floorgraph.Input{}, ErrView
+		return floorgraph.Input{}, nil, ErrView
 	}
 	r := &reader{
 		o: o, px: px, byPlaced: map[*cad.Placed]*node{}, owners: map[*cad.Insert][]*node{},
+		byLayer: map[string]*layerInfo{},
 	}
 	walked, err := cad.Walk(doc, r.visit)
 	if err != nil {
-		return floorgraph.Input{}, fmt.Errorf("walk the drawing: %w", err)
+		return floorgraph.Input{}, nil, fmt.Errorf("walk the drawing: %w", err)
 	}
 	if walked.Paper {
 		r.note("Model space is empty; read the paper layout instead.")
 	}
 	r.run()
-	return r.in, nil
+	return r.in, r.layerReport(), nil
 }
 
 // ReadFile reads a DXF or DWG file. With a zero View it frames the drawing the
 // way the converter does (cad.Draw, then vector.Rasterize with default
 // options) and takes the view, size and scale from that.
 func ReadFile(path string, o Options) (floorgraph.Input, error) {
+	in, _, err := AnalyseFile(path, o)
+	return in, err
+}
+
+// AnalyseFile is ReadFile, and says how it read each layer (see Analyse).
+func AnalyseFile(path string, o Options) (floorgraph.Input, []profile.Layer, error) {
 	f, err := os.Open(path) //nolint:gosec // the caller names the file to read
 	if err != nil {
-		return floorgraph.Input{}, fmt.Errorf("open drawing: %w", err)
+		return floorgraph.Input{}, nil, fmt.Errorf("open drawing: %w", err)
 	}
 	defer func() { _ = f.Close() }()
 	doc, err := readDoc(f)
 	if err != nil {
-		return floorgraph.Input{}, err
+		return floorgraph.Input{}, nil, err
 	}
 	if o.View == (vector.Affine{}) {
 		framed, err := Frame(doc, vector.Options{})
 		if err != nil {
-			return floorgraph.Input{}, err
+			return floorgraph.Input{}, nil, err
 		}
-		framed.Title = o.Title
+		framed.Title, framed.Profile = o.Title, o.Profile
 		o = framed
 	}
 	if o.Title == "" {
 		o.Title = strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
 	}
-	return Read(doc, o)
+	return Analyse(doc, o)
 }
 
 // readDoc reads a drawing as DWG or DXF by its first bytes, not its name:
@@ -140,7 +158,8 @@ type leaf struct {
 	e     cad.Entity
 	m     vector.Affine
 	layer string
-	role  role // the layer's
+	info  *layerInfo
+	role  role // the layer's: info.lines
 	node  *node
 	owner *cad.Insert // for attributes
 	box   vector.Rect // in drawing coordinates
@@ -153,6 +172,8 @@ type leaf struct {
 	// area marks a room outline taken for walls in a drawing that has
 	// none (see areaRooms).
 	area bool
+	// labelled marks text handed over as a room's label.
+	labelled bool
 }
 
 // node is one block reference (one cell of an array).
@@ -160,6 +181,7 @@ type node struct {
 	ins    *cad.Insert
 	m      vector.Affine // block coordinates to drawing
 	layer  string
+	info   *layerInfo
 	parent *node
 	role   role
 	furn   string // furniture type, for roleFurniture
@@ -193,7 +215,9 @@ type reader struct {
 	areaPlan bool
 	// desks are an area plan's workplace outlines.
 	desks []outline
-	in    floorgraph.Input
+	// layers are the drawing's layers by name, each looked up once.
+	byLayer map[string]*layerInfo
+	in      floorgraph.Input
 }
 
 // layerName is the layer an entity's name is judged by: its own, unless
@@ -217,7 +241,9 @@ func (r *reader) visit(p *cad.Placed) error {
 		return cad.SkipBlock
 	case *cad.Insert:
 		n := &node{ins: e, m: p.M, layer: layerName(p), parent: parent}
-		n.role = blockRole(e.Block, n.layer)
+		n.info = r.layer(n.layer)
+		n.info.entities++
+		n.role = blockRole(e.Block, n.info.lines)
 		if n.role == roleFurniture {
 			n.furn = furnitureType(e.Block)
 		}
@@ -232,9 +258,16 @@ func (r *reader) visit(p *cad.Placed) error {
 	if len(r.leaves) >= cad.MaxItems {
 		return cad.ErrTooBig
 	}
-	name := layerName(p)
+	info := r.layer(layerName(p))
+	info.entities++
 	r.leaves = append(r.leaves, leaf{
-		e: p.Entity, m: p.M, layer: name, role: layerRole(name), node: parent, owner: p.Owner,
+		e:     p.Entity,
+		m:     p.M,
+		layer: info.name,
+		info:  info,
+		role:  info.lines,
+		node:  parent,
+		owner: p.Owner,
 	})
 	if parent != nil {
 		parent.leaves = append(parent.leaves, len(r.leaves)-1)
