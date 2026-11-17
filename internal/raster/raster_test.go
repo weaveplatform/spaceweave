@@ -263,3 +263,21 @@ func TestFitAndEncode(t *testing.T) {
 		t.Fatal("want error encoding an empty image")
 	}
 }
+
+func TestNewSourceMatchesDecode(t *testing.T) {
+	img := image.NewGray(image.Rect(0, 0, 40, 30))
+	for i := range img.Pix {
+		img.Pix[i] = 240
+	}
+	for x := 5; x < 35; x++ {
+		img.SetGray(x, 10, color.Gray{Y: 20})
+	}
+	s := NewSource(img)
+	d := decode(t, img)
+	if s.Threshold != d.Threshold {
+		t.Fatalf("threshold %d, decode gives %d", s.Threshold, d.Threshold)
+	}
+	if !s.Ink(5, 10) || s.Ink(5, 11) {
+		t.Fatal("ink not where it was drawn")
+	}
+}

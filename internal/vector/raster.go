@@ -50,6 +50,10 @@ type Raster struct {
 // ToPixel maps a drawing point to the image.
 func (r *Raster) ToPixel(p Point) Point { return r.view.Apply(p) }
 
+// View is the transform ToPixel applies, for callers that place drawing
+// geometry on the image themselves.
+func (r *Raster) View() Affine { return r.view }
+
 // Rasterize draws d in black ink on white. Every stroke and every piece of
 // text is black whatever its colour, because a yellow or cyan CAD layer would
 // otherwise fall under the tracer's ink threshold; fills keep their lightness

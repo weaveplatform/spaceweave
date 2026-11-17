@@ -9,6 +9,7 @@ import (
 
 	"github.com/weaveplatform/spaceweave/internal/catalog"
 	"github.com/weaveplatform/spaceweave/internal/convert"
+	"github.com/weaveplatform/spaceweave/internal/dwg/dwgtest"
 	"github.com/weaveplatform/spaceweave/internal/dxf/dxftest"
 	"github.com/weaveplatform/spaceweave/internal/trace"
 )
@@ -90,6 +91,36 @@ func TestDrawingIsConvertedThenTracedWithItsScale(t *testing.T) {
 	if j := jobs[1]; j.Drawing == nil || j.Drawing.PxPerMetre != got.Scale.PxPerMetre ||
 		j.Feedback != "missing a door" {
 		t.Fatalf("retrace %+v", j.Drawing)
+	}
+}
+
+// A DWG goes the same way as a DXF: its original kept beside the image,
+// and the job told the scale and handed the original and its view, which
+// is what lets the CAD tracer read the entities.
+func TestDWGIsConvertedThenTracedWithItsScale(t *testing.T) {
+	store, e := ingestDrawing(t, "Office.dwg", dwgtest.Office("AC1018"))
+	var job trace.Job
+	w := &Worker{
+		Store: store, Convert: convert.Options{MaxSide: 800},
+		Trace: func(_ context.Context, _ trace.Options, j trace.Job) (*trace.Result, error) {
+			job = j
+			return good(), nil
+		},
+	}
+	if worked, err := w.Next(context.Background()); !worked || err != nil {
+		t.Fatal(worked, err)
+	}
+	got, _ := store.Get(e.ID)
+	dir := store.PlanDir(e.ID)
+	if got.Status != catalog.Draft || got.Format != convert.DWG.ID ||
+		got.Upload != "original.dwg" || !got.Scale.Exact() {
+		t.Fatalf("%+v", got)
+	}
+	if job.Drawing == nil || job.Drawing.Format != "DWG" ||
+		job.Drawing.PxPerMetre != got.Scale.PxPerMetre ||
+		job.Original != filepath.Join(dir, "original.dwg") || job.View == nil ||
+		job.Meta.Credit != "Uploaded Office.dwg, rendered from DWG" {
+		t.Fatalf("job %+v", job)
 	}
 }
 

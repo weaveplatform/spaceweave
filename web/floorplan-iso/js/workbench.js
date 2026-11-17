@@ -251,7 +251,9 @@ export function initWorkbench({ plans, current, refresh, open }) {
     dropzone.hidden = false;
     terms.textContent = `${names(i.formats)}, up to ${Math.round(i.maxUploadBytes / 2 ** 20)} MB. `
       + 'Drawings are turned into an image here first. '
-      + `The image is sent to the Claude API (${i.model}); each plan costs up to $${i.maxUsd}.`;
+      + (i.tracer === 'claude'
+        ? `The image is sent to the Claude API (${i.model}); each plan costs up to $${i.maxUsd}.`
+        : 'Plans are traced on this server; nothing is sent anywhere.');
     update();
   }).catch(() => {
     offline.hidden = false;

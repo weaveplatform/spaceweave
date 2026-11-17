@@ -14,11 +14,14 @@ import (
 	"sync"
 	"time"
 
+	"github.com/weaveplatform/spaceweave/internal/autotrace"
 	"github.com/weaveplatform/spaceweave/internal/catalog"
+	"github.com/weaveplatform/spaceweave/internal/config"
 	"github.com/weaveplatform/spaceweave/internal/convert"
 	"github.com/weaveplatform/spaceweave/internal/plan"
 	"github.com/weaveplatform/spaceweave/internal/raster"
 	"github.com/weaveplatform/spaceweave/internal/trace"
+	"github.com/weaveplatform/spaceweave/internal/vector"
 )
 
 // SitePrefix is where the microsite finds the output directory, relative to
@@ -40,17 +43,20 @@ const (
 // or `plans retry`, which run in another process.
 const DefaultPoll = 2 * time.Second
 
-// TraceFunc runs the tracer; trace.Run outside tests.
+// TraceFunc runs the tracer.
 type TraceFunc func(context.Context, trace.Options, trace.Job) (*trace.Result, error)
 
 // Worker processes plans.
 type Worker struct {
 	Store   *catalog.Store
 	Options trace.Options
-	Trace   TraceFunc // trace.Run when nil
+	Trace   TraceFunc // autotrace.Run when nil
 	Convert convert.Options
-	Log     *slog.Logger
-	Poll    time.Duration // DefaultPoll when 0
+	// Tracer names who traces, for the catalogue and report:
+	// config.TracerAuto unless set.
+	Tracer string
+	Log    *slog.Logger
+	Poll   time.Duration // DefaultPoll when 0
 }
 
 // Conversion is report.json's account of turning a drawing into an image.
@@ -60,6 +66,9 @@ type Conversion struct {
 	Height int      `json:"height"`
 	Scale  string   `json:"scale"`
 	Notes  []string `json:"notes,omitempty"`
+	// View is convert.Result.View as [a b c d e f], kept so a retrace can
+	// read the drawing without converting it again.
+	View *[6]float64 `json:"view,omitempty"`
 }
 
 // Report is report.json: what the reviewer needs to judge a draft, or to see
@@ -67,7 +76,8 @@ type Conversion struct {
 type Report struct {
 	ID          string      `json:"id"`
 	Status      string      `json:"status"`
-	Model       string      `json:"model"`
+	Tracer      string      `json:"tracer"`
+	Model       string      `json:"model,omitempty"`
 	Attempt     int         `json:"attempt"`
 	Feedback    string      `json:"feedback,omitempty"`
 	Conversion  *Conversion `json:"conversion,omitempty"`
@@ -84,6 +94,13 @@ type Report struct {
 	Usage       trace.Usage `json:"usage"`
 	CostUSD     float64     `json:"costUsd"`
 	Seconds     float64     `json:"seconds"`
+}
+
+func (w *Worker) tracer() string {
+	if w.Tracer == "" {
+		return config.TracerAuto
+	}
+	return w.Tracer
 }
 
 func (w *Worker) log() *slog.Logger {
@@ -160,7 +177,9 @@ func (w *Worker) Process(ctx context.Context, e catalog.Entry) error {
 	started := time.Now()
 	log := w.log().With("plan", e.ID, "attempt", e.Attempts)
 	dir := w.Store.PlanDir(e.ID)
-	report := Report{ID: e.ID, Model: w.Options.Model, Attempt: e.Attempts, Feedback: e.Note}
+	report := Report{
+		ID: e.ID, Tracer: w.tracer(), Model: w.Options.Model, Attempt: e.Attempts, Feedback: e.Note,
+	}
 
 	if e.Status == catalog.Converting {
 		log.Info("converting", "format", e.Format)
@@ -204,16 +223,31 @@ func (w *Worker) Process(ctx context.Context, e catalog.Entry) error {
 			job.Drawing.PxPerMetre, job.Drawing.Assumed, job.Drawing.PxPerPaperMM = sc.PxPerMetre, sc.Assumed, sc.PxPerPaperMM
 		}
 		job.Meta.Credit = fmt.Sprintf("Uploaded %s, rendered from %s", e.Original, c.Format)
+		if c.View != nil {
+			v := vector.Affine{
+				A: c.View[0],
+				B: c.View[1],
+				C: c.View[2],
+				D: c.View[3],
+				E: c.View[4],
+				F: c.View[5],
+			}
+			job.Original, job.View = filepath.Join(dir, e.Upload), &v
+		}
 	}
 
-	//nolint:gosec // inside the output dir
-	transcript, err := os.Create(filepath.Join(dir, TranscriptFile))
-	if err != nil {
-		return w.fail(e, &report, nil, started, fmt.Errorf("create transcript: %w", err))
-	}
-	defer transcript.Close() //nolint:errcheck // best effort; the report is what matters
 	opts := w.Options
-	opts.Transcript = transcript
+	// Only an agent has turns to record; the automatic tracer's whole
+	// account of itself is in report.json.
+	if w.tracer() == config.TracerClaude {
+		//nolint:gosec // inside the output dir
+		transcript, err := os.Create(filepath.Join(dir, TranscriptFile))
+		if err != nil {
+			return w.fail(e, &report, nil, started, fmt.Errorf("create transcript: %w", err))
+		}
+		defer transcript.Close() //nolint:errcheck // best effort; the report is what matters
+		opts.Transcript = transcript
+	}
 	opts.Progress = func(p trace.Progress) {
 		// Best effort: a missed update only makes the site's view lag.
 		err := w.Store.SetProgress(
@@ -226,7 +260,7 @@ func (w *Worker) Process(ctx context.Context, e catalog.Entry) error {
 	}
 	run := w.Trace
 	if run == nil {
-		run = trace.Run
+		run = autotrace.Run
 	}
 	res, err := run(ctx, opts, job)
 	if res == nil {
@@ -301,6 +335,7 @@ func (w *Worker) publish(
 		func(x *catalog.Entry) {
 			x.Confidence = &confidence
 			x.Summary = res.Summary
+			x.Tracer = w.tracer()
 			x.CostUSD += res.CostUSD
 			x.Note, x.Error = "", ""
 		},
@@ -355,6 +390,7 @@ func (w *Worker) convert(ctx context.Context, e catalog.Entry) (catalog.Entry, *
 		Format: res.Format.Label,
 		Width:  res.Width,
 		Height: res.Height,
+		View:   &[6]float64{res.View.A, res.View.B, res.View.C, res.View.D, res.View.E, res.View.F},
 		Scale:  res.Scale(),
 		Notes:  res.Notes,
 	}

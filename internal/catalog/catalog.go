@@ -70,21 +70,24 @@ type Entry struct {
 	Source string `json:"source"`
 	// Upload is the file as it arrived, inside the plan's directory: the
 	// same as Source for an image, original.<ext> for a drawing.
-	Upload     string    `json:"upload"`
-	Format     string    `json:"format"`            // a convert.Format ID
-	Drawing    string    `json:"drawing,omitempty"` // the drawing as SVG, once converted
-	Scale      *Scale    `json:"scale,omitempty"`   // known from the drawing, once converted
-	Original   string    `json:"original"`          // the inbox file it came from
-	SHA256     string    `json:"sha256"`
-	Confidence *float64  `json:"confidence,omitempty"`
-	Summary    string    `json:"summary,omitempty"`
-	CostUSD    float64   `json:"costUsd"`
-	Attempts   int       `json:"attempts"`
-	Note       string    `json:"note,omitempty"` // reviewer feedback for the next attempt
-	Error      string    `json:"error,omitempty"`
-	Progress   *Progress `json:"progress,omitempty"` // set only while tracing
-	CreatedAt  time.Time `json:"createdAt"`
-	UpdatedAt  time.Time `json:"updatedAt"`
+	Upload     string   `json:"upload"`
+	Format     string   `json:"format"`            // a convert.Format ID
+	Drawing    string   `json:"drawing,omitempty"` // the drawing as SVG, once converted
+	Scale      *Scale   `json:"scale,omitempty"`   // known from the drawing, once converted
+	Original   string   `json:"original"`          // the inbox file it came from
+	SHA256     string   `json:"sha256"`
+	Confidence *float64 `json:"confidence,omitempty"`
+	Summary    string   `json:"summary,omitempty"`
+	// Tracer is who traced the current draft: config.TracerAuto or
+	// config.TracerClaude. The page credits the trace to it.
+	Tracer    string    `json:"tracer,omitempty"`
+	CostUSD   float64   `json:"costUsd"`
+	Attempts  int       `json:"attempts"`
+	Note      string    `json:"note,omitempty"` // reviewer feedback for the next attempt
+	Error     string    `json:"error,omitempty"`
+	Progress  *Progress `json:"progress,omitempty"` // set only while tracing
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
 }
 
 // Scale is what a drawing says about its own scale.

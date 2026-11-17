@@ -25,47 +25,34 @@ var ErrTooBig = errors.New("the drawing is too big to render")
 var patternShade = vector.Color{R: 215, G: 215, B: 215}
 
 type drawer struct {
-	doc   *Document
-	out   *vector.Drawing
-	stack []string // the blocks being drawn, to catch a block inside itself
-	loops int
-	deep  int
-}
-
-// context is what an entity inherits from the inserts it sits in.
-type context struct {
-	m     vector.Affine
-	layer *Layer // the insert's layer, for entities on layer 0 in a block
-	color vector.Color
+	doc *Document
+	out *vector.Drawing
 }
 
 // Draw turns a document into a vector drawing, with its units in metres.
 func Draw(doc *Document) (*vector.Drawing, error) {
 	d := &drawer{doc: doc, out: &vector.Drawing{}}
-	ents := doc.Model
-	if !d.drawable(ents) {
-		ents = doc.Paper
-		if len(ents) > 0 {
-			d.out.Notes = append(
-				d.out.Notes,
-				"Model space is empty; drew the paper layout instead.",
-			)
-		}
-	}
-	root := context{m: vector.Identity, layer: doc.Layers["0"], color: vector.Black}
-	if err := d.entities(ents, root); err != nil {
+	walked, err := Walk(doc, d.entity)
+	if err != nil {
 		return nil, err
 	}
-	if d.loops > 0 {
+	if walked.Paper {
+		d.out.Notes = append(d.out.Notes, "Model space is empty; drew the paper layout instead.")
+	}
+	if walked.Loops > 0 {
 		d.out.Notes = append(
 			d.out.Notes,
-			fmt.Sprintf("%d block references that contain themselves were left out.", d.loops),
+			fmt.Sprintf("%d block references that contain themselves were left out.", walked.Loops),
 		)
 	}
-	if d.deep > 0 {
+	if walked.Deep > 0 {
 		d.out.Notes = append(
 			d.out.Notes,
-			fmt.Sprintf("%d block references nested over %d deep were left out.", d.deep, MaxDepth),
+			fmt.Sprintf(
+				"%d block references nested over %d deep were left out.",
+				walked.Deep,
+				MaxDepth,
+			),
 		)
 	}
 	if doc.Skipped > 0 {
@@ -77,16 +64,6 @@ func Draw(doc *Document) (*vector.Drawing, error) {
 	d.out.Notes = append(d.out.Notes, doc.Notes...)
 	d.units()
 	return d.out, nil
-}
-
-// drawable reports whether any entity would show.
-func (d *drawer) drawable(ents []Entity) bool {
-	for _, e := range ents {
-		if !e.Base().Invisible {
-			return true
-		}
-	}
-	return false
 }
 
 // buildingSizes are plausible lengths, in metres, for the long side of a
@@ -125,53 +102,6 @@ func (d *drawer) units() {
 	)
 }
 
-func (d *drawer) entities(ents []Entity, ctx context) error {
-	for _, e := range ents {
-		if err := d.entity(e, ctx); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// style resolves an entity's layer and colour. Entities on layer 0 inside a
-// block take the insert's layer; BYBLOCK takes the insert's colour.
-func (d *drawer) style(c *Common, ctx context) (*Layer, vector.Color, bool) {
-	layer := d.doc.Layers[c.Layer]
-	if layer == nil || c.Layer == "0" {
-		layer = ctx.layer
-	}
-	if layer != nil && (layer.Off || layer.Frozen) {
-		return nil, vector.Color{}, false
-	}
-	switch {
-	case c.RGB != nil:
-		return layer, *c.RGB, true
-	case c.Color == ByBlock:
-		return layer, ctx.color, true
-	case c.Color == ByLayer || c.Color < 0 || c.Color > 255:
-		if layer == nil {
-			return layer, vector.Black, true
-		}
-		if layer.RGB != nil {
-			return layer, *layer.RGB, true
-		}
-		return layer, ACI(layer.Color), true
-	default:
-		return layer, ACI(c.Color), true
-	}
-}
-
-// ocs maps an entity's object coordinates into the drawing. With the
-// extrusion pointing down Z, CAD's arbitrary-axis rule makes the object's
-// X axis the drawing's -X.
-func ocs(c *Common, m vector.Affine) vector.Affine {
-	if c.Mirrored {
-		return vector.Scale(-1, 1).Then(m)
-	}
-	return m
-}
-
 func (d *drawer) add(it vector.Item) error {
 	if len(d.out.Items) >= MaxItems {
 		return ErrTooBig
@@ -189,20 +119,13 @@ func (d *drawer) stroke(c vector.Color, m vector.Affine, build func(p *vector.Pa
 	return d.add(p.Transformed(m))
 }
 
-//nolint:gocyclo // one case per entity type
-func (d *drawer) entity(e Entity, ctx context) error {
-	c := e.Base()
-	if c.Invisible {
-		return nil
-	}
-	layer, col, ok := d.style(c, ctx)
-	if !ok {
-		return nil
-	}
-	m := ocs(c, ctx.m)
-	switch e := e.(type) {
+// entity draws one entity the walk found. Block references draw nothing
+// themselves; the walk goes on into their contents.
+func (d *drawer) entity(p *Placed) error {
+	col, m := p.Color, p.M
+	switch e := p.Entity.(type) {
 	case *Line:
-		return d.stroke(col, ctx.m, func(p *vector.Path) { p.Polyline([]Point{e.A, e.B}, false) })
+		return d.stroke(col, m, func(p *vector.Path) { p.Polyline([]Point{e.A, e.B}, false) })
 	case *Circle:
 		return d.stroke(col, m, func(p *vector.Path) { p.Circle(e.Center, e.Radius) })
 	case *Arc:
@@ -231,11 +154,15 @@ func (d *drawer) entity(e Entity, ctx context) error {
 	case *Spline:
 		pts := e.Points()
 		closed := e.Closed && len(e.Fit) == 0
-		return d.stroke(col, ctx.m, func(p *vector.Path) { p.Polyline(pts, closed) })
-	case *Text:
-		return d.text(e, col, m)
-	case *MText:
-		return d.mtext(e, col, m)
+		return d.stroke(col, m, func(p *vector.Path) { p.Polyline(pts, closed) })
+	case *Text, *MText:
+		for _, t := range TextLines(e, m) {
+			t.Color = col
+			if err := d.add(t); err != nil {
+				return err
+			}
+		}
+		return nil
 	case *Solid:
 		k := e.Corners
 		p := &vector.Path{Fill: true, Stroke: true, Color: col}
@@ -251,10 +178,6 @@ func (d *drawer) entity(e Entity, ctx context) error {
 			return nil
 		}
 		return d.add(p.Transformed(m))
-	case *Insert:
-		return d.insert(e, layer, col, ctx)
-	case *Dimension:
-		return d.block(e.Block, vector.Identity, layer, col, ctx)
 	}
 	return nil
 }
@@ -299,7 +222,27 @@ func bulgeTo(p *vector.Path, a, b Point, bulge float64) {
 	p.Segs[len(p.Segs)-1].P[2] = b
 }
 
-func (d *drawer) text(t *Text, col vector.Color, m vector.Affine) error {
+// TextLines lays out a Text or MText as Draw draws it, one line each, under
+// m (a Placed's M). It returns nil for blank text and other entities. The
+// lines' colour is left zero.
+func TextLines(e Entity, m vector.Affine) []*vector.Text {
+	switch e := e.(type) {
+	case *Text:
+		if t := textLine(e, m); t != nil {
+			return []*vector.Text{t}
+		}
+	case *MText:
+		return mtextLines(e, m)
+	}
+	return nil
+}
+
+func transformedText(t *vector.Text, m vector.Affine) *vector.Text {
+	q, _ := t.Transformed(m).(*vector.Text)
+	return q
+}
+
+func textLine(t *Text, m vector.Affine) *vector.Text {
 	s := PlainText(t.Content)
 	if strings.TrimSpace(s) == "" || t.Height <= 0 {
 		return nil
@@ -309,16 +252,16 @@ func (d *drawer) text(t *Text, col vector.Color, m vector.Affine) error {
 	if t.Align == 4 { // "middle": centred both ways
 		valign = vector.Middle
 	}
-	return d.add((&vector.Text{
+	return transformedText(&vector.Text{
 		At: t.At, Height: t.Height, Angle: t.Rotation, Align: align, VAlign: valign,
-		Content: s, Color: col, WidthFactor: t.WidthFactor,
-	}).Transformed(m))
+		Content: s, WidthFactor: t.WidthFactor,
+	}, m)
 }
 
 // lineSpacing is MTEXT's default distance between baselines, in text heights.
 const lineSpacing = 5.0 / 3
 
-func (d *drawer) mtext(t *MText, col vector.Color, m vector.Affine) error {
+func mtextLines(t *MText, m vector.Affine) []*vector.Text {
 	lines := MTextLines(t.Content)
 	if t.Height <= 0 || strings.TrimSpace(strings.Join(lines, "")) == "" {
 		return nil
@@ -333,89 +276,15 @@ func (d *drawer) mtext(t *MText, col vector.Color, m vector.Affine) error {
 	total := t.Height + float64(len(lines)-1)*lineSpacing*t.Height
 	shift := []float64{0, total / 2, total}[(attach-1)/3]
 	place := vector.Rotate(t.Rotation).Then(vector.Translate(t.At.X, t.At.Y)).Then(m)
+	out := make([]*vector.Text, 0, len(lines))
 	for i, line := range lines {
 		if strings.TrimSpace(line) == "" {
 			continue
 		}
 		y := shift - float64(i)*lineSpacing*t.Height
-		err := d.add((&vector.Text{
-			At: Point{Y: y}, Height: t.Height, Align: align, VAlign: vector.Top, Content: line, Color: col,
-		}).Transformed(place))
-		if err != nil {
-			return err
-		}
+		out = append(out, transformedText(&vector.Text{
+			At: Point{Y: y}, Height: t.Height, Align: align, VAlign: vector.Top, Content: line,
+		}, place))
 	}
-	return nil
-}
-
-func (d *drawer) insert(in *Insert, layer *Layer, col vector.Color, ctx context) error {
-	sx, sy := in.Scale.X, in.Scale.Y
-	if sx == 0 {
-		sx = 1
-	}
-	if sy == 0 {
-		sy = 1
-	}
-	cols, rows := max(in.Columns, 1), max(in.Rows, 1)
-	if cols*rows > MaxItems {
-		return ErrTooBig
-	}
-	for r := range rows {
-		for c := range cols {
-			// Array spacing is measured along the insert's rotated axes, but
-			// isn't scaled by it.
-			m := vector.Scale(sx, sy).
-				Then(vector.Translate(float64(c)*in.ColumnGap, float64(r)*in.RowGap)).
-				Then(vector.Rotate(in.Rotation)).
-				Then(vector.Translate(in.At.X, in.At.Y))
-			if in.Mirrored {
-				// The insertion point is in object coordinates too, so the
-				// mirror comes after the placement, not before it.
-				m = m.Then(vector.Scale(-1, 1))
-			}
-			if err := d.block(in.Block, m, layer, col, ctx); err != nil {
-				return err
-			}
-		}
-	}
-	// Attributes are stored where they sit in the drawing, not in the block.
-	for _, a := range in.Attribs {
-		if err := d.entity(a, ctx); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// block draws a block's entities under m (placing its base point at the
-// origin first) and then ctx.m.
-func (d *drawer) block(
-	name string,
-	m vector.Affine,
-	layer *Layer,
-	col vector.Color,
-	ctx context,
-) error {
-	b := d.doc.Blocks[name]
-	if b == nil {
-		return nil
-	}
-	for _, open := range d.stack {
-		if strings.EqualFold(open, name) {
-			d.loops++
-			return nil
-		}
-	}
-	if len(d.stack) >= MaxDepth {
-		d.deep++
-		return nil
-	}
-	d.stack = append(d.stack, name)
-	defer func() { d.stack = d.stack[:len(d.stack)-1] }()
-	inner := context{
-		m:     vector.Translate(-b.Base.X, -b.Base.Y).Then(m).Then(ctx.m),
-		layer: layer,
-		color: col,
-	}
-	return d.entities(b.Entities, inner)
+	return out
 }

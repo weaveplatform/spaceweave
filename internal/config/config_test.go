@@ -60,11 +60,11 @@ limits:
 prices:
   input: 3
 `)
-	c, err := Load(p, true, env(map[string]string{"SPACEWEAVE_INBOX": "/drop", "SPACEWEAVE_MAX_USD": "2", "SPACEWEAVE_WORKERS": "3", "SPACEWEAVE_MODEL": "claude-sonnet-5-5", "SPACEWEAVE_ADDR": ":9000"}))
+	c, err := Load(p, true, env(map[string]string{"SPACEWEAVE_INBOX": "/drop", "SPACEWEAVE_MAX_USD": "2", "SPACEWEAVE_WORKERS": "3", "SPACEWEAVE_MODEL": "claude-sonnet-5-5", "SPACEWEAVE_ADDR": ":9000", "SPACEWEAVE_TRACER": "claude"}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c.Inbox != "/drop" || c.Workers != 3 || c.Limits.MaxUSD != 2 || c.Model != "claude-sonnet-5-5" || c.Serve.Addr != ":9000" {
+	if c.Inbox != "/drop" || c.Workers != 3 || c.Limits.MaxUSD != 2 || c.Model != "claude-sonnet-5-5" || c.Serve.Addr != ":9000" || c.Tracer != TracerClaude {
 		t.Fatalf("environment wins over the file: %+v", c)
 	}
 	if c.Effort != "xhigh" || c.Limits.Timeout != 10*time.Minute || c.Prices.Input != 3 || c.Prices.Output != 20 || c.Limits.MaxTurns != 120 ||
@@ -96,6 +96,7 @@ func TestValidate(t *testing.T) {
 		"missing path": func(c *Config) { c.Validator = "" },
 		"workers":      func(c *Config) { c.Workers = 0 },
 		"effort":       func(c *Config) { c.Effort = "extreme" },
+		"tracer":       func(c *Config) { c.Tracer = "magic" },
 		"limits":       func(c *Config) { c.Limits.MaxUSD = 0 },
 		"prices":       func(c *Config) { c.Prices.CacheRead = -1 },
 		"settle":       func(c *Config) { c.Settle = -time.Second },
@@ -108,7 +109,7 @@ func TestValidate(t *testing.T) {
 			t.Errorf("%s: %v", name, err)
 		}
 	}
-	if len(Env) != 8 {
+	if len(Env) != 9 {
 		t.Fatal("Env documents every variable applyEnv reads")
 	}
 }

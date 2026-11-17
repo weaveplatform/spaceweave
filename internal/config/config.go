@@ -31,10 +31,15 @@ type Config struct {
 	Node      string `yaml:"node"`      // node executable for the validator
 	Validator string `yaml:"validator"` // web/floorplan-iso/tools/validate.mjs
 	Workers   int    `yaml:"workers"`   // plans traced at once
-	Model     string `yaml:"model"`
-	Effort    string `yaml:"effort"`
-	Limits    Limits `yaml:"limits"`
-	Prices    Prices `yaml:"prices"`
+	// Tracer picks who traces: TracerAuto reads the image or drawing
+	// itself, the same way every time, with no API key; TracerClaude has a
+	// Claude agent do it, which needs a key and costs money. Model, Effort,
+	// Limits and Prices apply only to TracerClaude.
+	Tracer string `yaml:"tracer"`
+	Model  string `yaml:"model"`
+	Effort string `yaml:"effort"`
+	Limits Limits `yaml:"limits"`
+	Prices Prices `yaml:"prices"`
 	// Settle is how long an inbox file's size must stay unchanged before it
 	// is picked up, so a file still being copied isn't read half-written.
 	Settle time.Duration `yaml:"settle"`
@@ -69,6 +74,15 @@ type Prices struct {
 	CacheWrite float64 `yaml:"cacheWrite"`
 }
 
+// Tracers.
+const (
+	TracerAuto   = "auto"
+	TracerClaude = "claude"
+)
+
+// Tracers are the accepted tracers.
+var Tracers = []string{TracerAuto, TracerClaude}
+
 // Efforts are the accepted effort levels.
 var Efforts = []string{"low", "medium", "high", "xhigh", "max"}
 
@@ -86,6 +100,7 @@ func Default() Config {
 		Node:      "node",
 		Validator: "web/floorplan-iso/tools/validate.mjs",
 		Workers:   1,
+		Tracer:    TracerAuto,
 		Model:     "claude-opus-5-5",
 		Effort:    "high",
 		Limits:    Limits{MaxTurns: 120, MaxSubmits: 12, MaxUSD: 15, Timeout: 45 * time.Minute},
@@ -128,6 +143,7 @@ var Env = map[string]string{
 	"SPACEWEAVE_INBOX":   "inbox",
 	"SPACEWEAVE_OUTPUT":  "output",
 	"SPACEWEAVE_NODE":    "node",
+	"SPACEWEAVE_TRACER":  "tracer",
 	"SPACEWEAVE_MODEL":   "model",
 	"SPACEWEAVE_EFFORT":  "effort",
 	"SPACEWEAVE_WORKERS": "workers",
@@ -137,9 +153,13 @@ var Env = map[string]string{
 
 func (c *Config) applyEnv(getenv func(string) (string, bool)) error {
 	strs := map[string]*string{
-		"SPACEWEAVE_INBOX": &c.Inbox, "SPACEWEAVE_OUTPUT": &c.Output, "SPACEWEAVE_NODE": &c.Node,
-		"SPACEWEAVE_MODEL": &c.Model, "SPACEWEAVE_EFFORT": &c.Effort,
-		"SPACEWEAVE_ADDR": &c.Serve.Addr,
+		"SPACEWEAVE_INBOX":  &c.Inbox,
+		"SPACEWEAVE_OUTPUT": &c.Output,
+		"SPACEWEAVE_NODE":   &c.Node,
+		"SPACEWEAVE_MODEL":  &c.Model,
+		"SPACEWEAVE_EFFORT": &c.Effort,
+		"SPACEWEAVE_TRACER": &c.Tracer,
+		"SPACEWEAVE_ADDR":   &c.Serve.Addr,
 	}
 	for k, p := range strs {
 		if v, ok := getenv(k); ok {
@@ -172,6 +192,9 @@ func (c Config) Validate() error {
 	}
 	if c.Workers < 1 || c.Workers > 8 {
 		bad("workers must be 1–8, got %d", c.Workers)
+	}
+	if !slices.Contains(Tracers, c.Tracer) {
+		bad("tracer must be one of %v, got %q", Tracers, c.Tracer)
 	}
 	if !slices.Contains(Efforts, c.Effort) {
 		bad("effort must be one of %v, got %q", Efforts, c.Effort)

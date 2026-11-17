@@ -10,6 +10,8 @@ output: web/floorplan-iso/generated             # SPACEWEAVE_OUTPUT, --output; m
 node: node                                      # SPACEWEAVE_NODE
 validator: web/floorplan-iso/tools/validate.mjs
 workers: 1                                      # SPACEWEAVE_WORKERS, --workers; plans traced at once, 1–8
+tracer: auto                                    # SPACEWEAVE_TRACER; auto (no API key, deterministic) or claude
+# model, effort, limits and prices apply only to `tracer: claude`.
 model: claude-opus-5-5                          # SPACEWEAVE_MODEL, --model
 effort: high                                    # SPACEWEAVE_EFFORT; low, medium, high, xhigh or max
 settle: 1s                                      # an inbox file must stop changing for this long

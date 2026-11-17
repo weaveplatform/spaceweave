@@ -3,7 +3,7 @@
 // it. Pure, so node can test it.
 
 export const STEPS = ['Uploaded', 'Queued', 'Tracing', 'Review'];
-// A drawing (DXF, SVG) is turned into an image before it's traced.
+// A drawing (DXF, DWG, SVG) is turned into an image before it's traced.
 export const DRAWING_STEPS = ['Uploaded', 'Queued', 'Converting', 'Tracing', 'Review'];
 
 // The step each status is on. 'uploading' is the page's own state while the
@@ -13,6 +13,9 @@ const AT = { uploading: 0, queued: 1, tracing: 2, failed: 2, draft: 3, approved:
 const DRAWING_AT = { uploading: 0, queued: 1, converting: 2, tracing: 3, failed: 3, draft: 4, approved: 5 };
 
 const money = (n) => `$${(n ?? 0).toFixed(2)}`;
+// A plan traced automatically costs nothing, and saying "$0.00" on every
+// row would suggest a bill that doesn't exist.
+const spent = (n) => (n > 0 ? money(n) : null);
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
 // Whether a drawing's conversion has run: its image exists once it has.
@@ -52,17 +55,17 @@ export function describe(entry, maxUsd, drawings = new Set()) {
       const p = entry.progress;
       detail = p
         ? [`Turn ${p.turn}`, plural(p.submits, 'submission'), `${money(p.costUsd)}${cap}`, scale].filter(Boolean).join(' · ')
-        : 'Starting…';
+        : 'Tracing…';
       break;
     }
     case 'draft':
       detail = ['Ready for review',
         Number.isFinite(entry.confidence) ? `confidence ${Math.round(entry.confidence * 100)}%` : null,
-        money(entry.costUsd), drawing ? `from ${kind}` : null, scale].filter(Boolean).join(' · ');
+        spent(entry.costUsd), drawing ? `from ${kind}` : null, scale].filter(Boolean).join(' · ');
       action = 'open';
       break;
     case 'failed':
-      detail = `Failed: ${entry.error || 'no reason given'} · ${money(entry.costUsd)}`;
+      detail = [`Failed: ${entry.error || 'no reason given'}`, spent(entry.costUsd)].filter(Boolean).join(' · ');
       action = 'retry';
       break;
     case 'approved':

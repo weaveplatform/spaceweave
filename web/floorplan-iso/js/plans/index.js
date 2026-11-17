@@ -38,6 +38,7 @@ export async function loadCatalog(fetchImpl = globalThis.fetch) {
         status: p.status,
         confidence: p.confidence,
         costUsd: p.costUsd,
+        tracer: p.tracer,
         attempts: p.attempts,
         note: p.note,
         error: p.error,
