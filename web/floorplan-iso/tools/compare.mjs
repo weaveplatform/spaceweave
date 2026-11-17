@@ -86,7 +86,7 @@ export function compare(auto, hand) {
   };
 }
 
-const KEYS = ['SOURCE', 'WIDTH', 'DEPTH', 'OUTLINE', 'ENTRANCE', 'THICKNESS', 'walls', 'rooms', 'floorPatches', 'furniture'];
+const KEYS = ['SOURCE', 'WIDTH', 'DEPTH', 'OUTLINE', 'VOIDS', 'ENTRANCE', 'THICKNESS', 'walls', 'rooms', 'floorPatches', 'furniture'];
 
 async function load(path) {
   if (path.endsWith('.json')) return JSON.parse(await readFile(path, 'utf8'));

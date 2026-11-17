@@ -781,7 +781,10 @@ func TestThicknessOverride(t *testing.T) {
 // so an L-shaped outline can't be given.
 func TestOutlineDroppedForStrayWall(t *testing.T) {
 	in := lShape()
-	in.Walls = append(in.Walls, wall(400, 100, 500, 100), wall(300, 300, 350, 350))
+	// A wall with a door in it outside the outline is a room left open,
+	// not loose linework: the outline is what's wrong.
+	in.Walls = append(in.Walls, wall(400, 100, 500, 100), wall(500, 100, 500, 200))
+	in.Openings = append(in.Openings, Opening{A: P(500, 130), B: P(500, 170), Kind: Door, Weight: 1})
 	r := mustBuild(t, in)
 	if r.Trace.Outline != nil ||
 		!slices.Contains(
@@ -789,6 +792,29 @@ func TestOutlineDroppedForStrayWall(t *testing.T) {
 			"Some walls run outside the building's outline, so the outline was left out.",
 		) {
 		t.Errorf("outline %v caveats %v", r.Trace.Outline, r.Caveats)
+	}
+}
+
+// Loose lines off the building (a fin, a bracket) are left out and the
+// outline kept; a long one, or furniture outside, says it's the outline
+// that's wrong.
+func TestStrayWallsLeftOut(t *testing.T) {
+	in := lShape()
+	in.Walls = append(in.Walls, wall(400, 100, 430, 100), wall(300, 300, 350, 350))
+	r := mustBuild(t, in)
+	if r.Trace.Outline == nil || len(r.Trace.Walls) != 7 ||
+		!slices.Contains(r.Caveats, "2 walls outside the building's outline were left out.") {
+		t.Errorf("outline %v, %d walls, caveats %v", r.Trace.Outline, len(r.Trace.Walls), r.Caveats)
+	}
+	long := lShape()
+	long.Walls = append(long.Walls, wall(450, 0, 450, 400))
+	desk := lShape()
+	w, d := 0.8, 0.6
+	desk.Furniture = []plan.Item{{Type: "desk", X: 330, Y: 330, W: &w, D: &d}}
+	for _, in := range []Input{long, desk} {
+		if r := mustBuild(t, in); r.Trace.Outline != nil {
+			t.Errorf("outline %v kept", r.Trace.Outline)
+		}
 	}
 }
 

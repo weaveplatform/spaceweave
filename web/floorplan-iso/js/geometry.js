@@ -253,6 +253,31 @@ export function wallPrisms(walls, H, { thickness, width, depth, outline = null, 
   return { solids, leaves };
 }
 
+// A glass balustrade round the edge of each void (plan.VOIDS), one thin prism
+// per edge: a hole in the floor is guarded, not walled in, so it stays open
+// to look into whatever the wall-height slider says.
+export const BALUSTRADE = { height: 1.1, thickness: 0.05 };
+
+export function balustradePrisms(voids, H) {
+  const top = Math.min(BALUSTRADE.height, H);
+  const out = [];
+  for (const v of voids ?? []) {
+    const key = (p, q) => `${p[0]},${p[1]};${q[0]},${q[1]}`;
+    const edges = new Set(v.map((p, i) => key(p, v[(i + 1) % v.length])));
+    for (let i = 0; i < v.length; i++) {
+      const [a, b] = [v[i], v[(i + 1) % v.length]];
+      // A void round a core is one ring that reaches the core by a slit, in
+      // along an edge and back out along the same edge reversed. The slit
+      // has no width and nothing along it to guard.
+      if (edges.has(key(b, a))) continue;
+      const f = wallFrame({ from: a, to: b, kind: 'glass', thickness: BALUSTRADE.thickness }, {});
+      if (!(f.len > 0.05)) continue;
+      out.push(prism(f.band(0, f.len), 0, top, { kind: 'wall', mat: 'glass', outward: null }));
+    }
+  }
+  return out;
+}
+
 // ---------------------------------------------------------------- furniture
 
 const DESK_HEIGHT = 0.75;

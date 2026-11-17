@@ -62,6 +62,10 @@ func TestCheckFindsEachMistake(t *testing.T) {
 		{"evidence", func(t *Trace) { t.Calibration.Evidence = "" }, "evidence is empty"},
 		{"thickness", func(t *Trace) { t.Thickness.Glass = 0 }, "thickness needs exterior"},
 		{"outline", func(t *Trace) { t.Outline = [][2]float64{{0, 0}} }, "outline needs at least 3"},
+		{"void", func(t *Trace) { t.Voids = [][][2]float64{{{0, 0}, {1, 1}}} }, "void #0 needs at least 3 points"},
+		{"void finite", func(t *Trace) {
+			t.Voids = [][][2]float64{{{0, 0}, {1, math.NaN()}, {1, 0}}}
+		}, "void #0: coordinates must be finite"},
 		{"wall id", func(t *Trace) { t.Walls[0].ID = "" }, "wall #0 has no id"},
 		{"repeat", func(t *Trace) { t.Walls[1].ID = "n" }, "wall id n is repeated"},
 		{"kind", func(t *Trace) { t.Walls[4].Kind = "brick" }, `kind must be exterior, interior or glass, got "brick"`},
@@ -124,13 +128,18 @@ func TestShapes(t *testing.T) {
 	tr.Walls = append(tr.Walls,
 		Wall{ID: "odd", Kind: "brick", From: [2]float64{1, 1}, To: [2]float64{1, 1}, Openings: []Opening{{A: 0, B: 1}}},
 		Wall{ID: "thick", Kind: "interior", From: [2]float64{0, 50}, To: [2]float64{50, 50}, Thickness: 1})
+	tr.Voids = [][][2]float64{{{60, 60}, {70, 60}, {70, 70}}}
 	shapes := Shapes(tr)
-	// 2 rooms, 7 walls, 3 openings on non-degenerate walls, 6 items, outline.
-	if len(shapes) != 2+7+3+6+1 {
+	// 2 rooms, 7 walls, 3 openings on non-degenerate walls, 6 items, outline
+	// and a void.
+	if len(shapes) != 2+7+3+6+1+1 {
 		t.Fatalf("got %d shapes", len(shapes))
 	}
 	if shapes[0].Text != "West" || shapes[1].At != [2]float64{75, 50} {
 		t.Fatalf("room labels: %+v %+v", shapes[0], shapes[1])
+	}
+	if v := shapes[2]; v.Text != "void" || v.At != [2]float64{200.0 / 3, 190.0 / 3} {
+		t.Fatalf("void: %+v", v)
 	}
 	if w := shapes[len(shapes)-8]; w.Width != 10 {
 		t.Fatalf("explicit thickness 1 m at 10 px/m is 10 px wide, got %v", w.Width)
@@ -186,6 +195,19 @@ func TestNodeValidatorAgainstTheSite(t *testing.T) {
 	b, _ := json.Marshal(p)
 	if errs, err := v.Validate(context.Background(), b); err != nil || len(errs) != 0 {
 		t.Fatalf("valid plan: %v %v", errs, err)
+	}
+
+	// The west room's floor left open: a void, with no room over it.
+	voided := validTrace()
+	voided.Voids = [][][2]float64{voided.Rooms[0].Polygon}
+	voided.Rooms = voided.Rooms[1:]
+	vp, err := Convert(voided, Meta{URL: "generated/box/source.png", Credit: "test", SizePx: [2]int{100, 100}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ = json.Marshal(vp)
+	if errs, err := v.Validate(context.Background(), b); err != nil || len(errs) != 0 {
+		t.Fatalf("voided plan: %v %v", errs, err)
 	}
 
 	p.Rooms[0].Polygon = [][2]float64{{50, 50}, {60, 50}, {60, 60}}

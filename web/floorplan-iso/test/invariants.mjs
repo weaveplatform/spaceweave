@@ -3,7 +3,7 @@
 // submission), so the worker and the site's tests can't disagree about what a
 // valid plan is. Returns messages instead of throwing so a tracer gets every
 // problem from one submission, not just the first.
-import { furniturePrisms, wallPrisms, pointInPolygon, polygonArea, projectPrism, BLOCKY } from '../js/geometry.js';
+import { furniturePrisms, wallPrisms, balustradePrisms, pointInPolygon, polygonArea, projectPrism, BLOCKY } from '../js/geometry.js';
 import { makeView, PRESETS } from '../js/projection.js';
 
 export const ZONES = new Set(['meet', 'work', 'social', 'service']);
@@ -35,7 +35,7 @@ export function checkPlan(plan) {
   if (!(scale.length >= 1 && scale.length <= 2 && scale.every((v) => v > 0))) fail('SOURCE.pxPerMetre must be a positive number or [x, y]');
   if (SOURCE.originPx?.length !== 2 || SOURCE.sizePx?.length !== 2) fail('SOURCE needs originPx and sizePx');
   // JSON.stringify writes NaN and Infinity as null.
-  const json = JSON.stringify([plan.walls, plan.rooms, plan.furniture, plan.floorPatches, plan.OUTLINE ?? []]);
+  const json = JSON.stringify([plan.walls, plan.rooms, plan.furniture, plan.floorPatches, plan.OUTLINE ?? [], plan.VOIDS ?? []]);
   if (json.includes('null')) fail('NaN, Infinity or null in the data');
   for (const v of [plan.WIDTH, plan.DEPTH, ...plan.ENTRANCE]) if (!Number.isFinite(v)) fail('WIDTH, DEPTH and ENTRANCE must be finite');
   if (plan.OUTLINE && !plan.OUTLINE.every(([x, y]) => x >= -0.01 && y >= -0.01 && x <= plan.WIDTH + 0.01 && y <= plan.DEPTH + 0.01)) {
@@ -63,6 +63,21 @@ export function checkPlan(plan) {
     if (!(inside(w.from, 0.2) && inside(w.to, 0.2))) fail(`wall ${w.id} ${at(w.from)}→${at(w.to)} has an end outside the outline`);
   }
 
+  // ---- voids: holes in the slab (an atrium, a light well). Rooms leave them
+  // out, so they count toward the building's area alongside the rooms.
+  const voids = plan.VOIDS ?? [];
+  if (!Array.isArray(voids)) fail('VOIDS must be a list of polygons');
+  let voidArea = 0;
+  for (const [i, v] of (Array.isArray(voids) ? voids : []).entries()) {
+    if (!(Array.isArray(v) && v.length >= 3 && polygonArea(v) > 0.5)) {
+      fail(`void ${i} needs at least 3 corners and 0.5 m² of area`);
+      continue;
+    }
+    voidArea += polygonArea(v);
+    if (!v.every((p) => inside(p))) fail(`void ${i} has a corner outside the outline`);
+  }
+  const inVoid = (p) => (Array.isArray(voids) ? voids : []).findIndex((v) => v.length >= 3 && pointInPolygon(p, v));
+
   // ---- rooms
   const roomIds = new Set();
   for (const r of plan.rooms) {
@@ -71,9 +86,14 @@ export function checkPlan(plan) {
     if (!(r.name && ZONES.has(r.zone) && FLOORS.has(r.floor))) fail(`room ${r.id}: needs a name, a zone (${[...ZONES]}) and a floor (${[...FLOORS]})`);
     if (!(r.polygon?.length >= 3 && polygonArea(r.polygon) > 0.5)) fail(`room ${r.id} has under 0.5 m² of area`);
     else if (!r.polygon.every((p) => inside(p))) fail(`room ${r.id} has a corner outside the outline`);
+    // The label is the one point a room promises is inside it.
+    if (r.label && inVoid(r.label) >= 0) fail(`room ${r.id} is labelled inside void ${inVoid(r.label)}`);
   }
   const total = plan.rooms.reduce((s, r) => s + (r.polygon?.length >= 3 ? polygonArea(r.polygon) : 0), 0);
   if (total > polygonArea(outline) * 1.02) fail(`rooms total ${total.toFixed(1)} m² but the building is ${polygonArea(outline).toFixed(1)} m²: rooms overlap`);
+  else if (total + voidArea > polygonArea(outline) * 1.02) {
+    fail(`rooms (${total.toFixed(1)} m²) and voids (${voidArea.toFixed(1)} m²) are more than the building's ${polygonArea(outline).toFixed(1)} m²: a room covers a void`);
+  }
 
   // ---- furniture
   for (const item of plan.furniture) {
@@ -93,7 +113,7 @@ export function checkPlan(plan) {
       thickness: plan.THICKNESS, width: plan.WIDTH, depth: plan.DEPTH, outline: plan.OUTLINE,
     });
     const view = makeView(PRESETS.iso);
-    for (const p of [...solids, ...leaves]) {
+    for (const p of [...solids, ...leaves, ...balustradePrisms(voids, 2.7)]) {
       if (!projectPrism(p, view).bbox.every(Number.isFinite)) throw new Error('a wall prism projects to a non-finite point');
     }
     if (!solids.some((p) => p.outward)) throw new Error('no exterior walls');

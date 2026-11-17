@@ -24,8 +24,16 @@ type Input struct {
 	Size [2]int
 	// Walls are wall centrelines. A wall may be broken at its openings; the
 	// openings join the pieces back up.
-	Walls     []Segment
-	Openings  []Opening
+	Walls    []Segment
+	Openings []Opening
+	// Voids are points inside holes in the floor (an atrium, a light well,
+	// a shaft open to the floors below). The area the walls, openings and
+	// Edges enclose round each, gaps under 0.3 m sealed, is left out of the
+	// rooms and traced as a void. They need a Scale.
+	Voids []Point
+	// Edges are lines that may bound a void without being walls: a slab
+	// edge, a balustrade. Only a void's outline joins the walls' graph.
+	Edges     []Segment
 	Labels    []Label
 	Furniture []plan.Item // already in trace units: px for positions, metres for sizes
 	Scale     Scale       // zero when the front end found none
@@ -76,7 +84,28 @@ type Label struct {
 	At     Point // the middle of the text
 	Text   string
 	Height float64 // px
+	Kind   LabelKind
 }
+
+// LabelKind is what the drawing says a label names.
+type LabelKind int
+
+// A room takes its name from the best label of the highest kind inside it:
+// a name over anything else. Text from a drawing that doesn't say what it is
+// and a number rank alike, the larger lettering first, as they always have:
+// either may be the room's own label.
+const (
+	// LabelText may name a room: its source doesn't say.
+	LabelText LabelKind = iota
+	// LabelNumber is a room number, from a room-number layer: a room's
+	// name only when nothing names it in words.
+	LabelNumber
+	// LabelName is a room name, from a room-name layer.
+	LabelName
+)
+
+// labelRank orders kinds by how well they name a room.
+var labelRank = map[LabelKind]int{LabelNumber: 0, LabelText: 0, LabelName: 1}
 
 // Scale is the image's scale on the building.
 type Scale struct {

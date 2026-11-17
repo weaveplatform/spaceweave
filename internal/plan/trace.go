@@ -11,15 +11,19 @@ package plan
 
 // Trace is what the tracer submits.
 type Trace struct {
-	Title        string       `json:"title"`
-	Calibration  Calibration  `json:"calibration"`
-	Thickness    Thickness    `json:"thickness"`
-	Outline      [][2]float64 `json:"outline,omitempty"`
-	Entrance     [2]float64   `json:"entrance"`
-	Walls        []Wall       `json:"walls"`
-	Rooms        []Room       `json:"rooms"`
-	FloorPatches []Patch      `json:"floorPatches,omitempty"`
-	Furniture    []Item       `json:"furniture"`
+	Title       string       `json:"title"`
+	Calibration Calibration  `json:"calibration"`
+	Thickness   Thickness    `json:"thickness"`
+	Outline     [][2]float64 `json:"outline,omitempty"`
+	// Voids are holes in the floor, polygons in pixels: an atrium, a light
+	// well, a shaft open to the floors below. No room covers one; the site
+	// leaves the slab open there and runs a balustrade round the edge.
+	Voids        [][][2]float64 `json:"voids,omitempty"`
+	Entrance     [2]float64     `json:"entrance"`
+	Walls        []Wall         `json:"walls"`
+	Rooms        []Room         `json:"rooms"`
+	FloorPatches []Patch        `json:"floorPatches,omitempty"`
+	Furniture    []Item         `json:"furniture"`
 }
 
 // Calibration maps pixels to metres. PxPerMetre is [across, down]; equal

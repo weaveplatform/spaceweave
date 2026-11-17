@@ -52,6 +52,8 @@ func TestMTextLines(t *testing.T) {
 		{in: `\H2.5;Big\W0.8;Narrow`, want: []string{"BigNarrow"}},
 		{in: `{\C1;red {\H2x;big}} end`, want: []string{"red big end"}},
 		{in: `\A1;\Q15;\T1.1;\cFF0000;x`, want: []string{"x"}},
+		{in: `\pxql;TP`, want: []string{"TP"}},
+		{in: `{\pxi-3,l3,t3;Kitchen}`, want: []string{"Kitchen"}},
 		{in: `1\S1^2; in`, want: []string{"11/2 in"}},
 		{in: `\S3#4;`, want: []string{"3/4"}},
 		{in: `\S1/8;`, want: []string{"1/8"}},

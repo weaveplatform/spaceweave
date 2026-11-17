@@ -61,9 +61,9 @@ func checkResult(t *testing.T, r *Result) {
 
 // siteCheck is the geometry of web/floorplan-iso/test/invariants.mjs's
 // checkPlan, in Go so the fuzz test can run it: walls over 5 cm with their
-// ends in the outline (0.2 m slack), openings on their wall, rooms over
-// 0.5 m² inside the outline (0.15 m slack), rooms not overlapping, and an
-// exterior wall.
+// ends in the outline (0.2 m slack), openings on their wall, rooms and voids
+// over 0.5 m² inside the outline (0.15 m slack), no room labelled inside a
+// void, rooms and voids not overlapping, and an exterior wall.
 func siteCheck(p *plan.Plan) []string {
 	var errs []string
 	outline := p.Outline
@@ -123,6 +123,29 @@ func siteCheck(p *plan.Plan) []string {
 			if !in(o, 0.15) {
 				errs = append(errs, "room "+r.ID+" outside the outline")
 				break
+			}
+		}
+	}
+	var voids [][]Point
+	for _, v := range p.Voids {
+		vp := make([]Point, len(v))
+		for j, o := range v {
+			vp[j] = P(o[0], o[1])
+			if !in(o, 0.15) {
+				errs = append(errs, "void outside the outline")
+			}
+		}
+		a := math.Abs(signedArea(vp))
+		total += a
+		if !(len(vp) >= 3 && a >= 0.5) {
+			errs = append(errs, "void under 0.5 m²")
+		}
+		voids = append(voids, vp)
+	}
+	for _, r := range p.Rooms {
+		for _, v := range voids {
+			if r.Label != nil && inside(P(r.Label[0], r.Label[1]), v) {
+				errs = append(errs, "room "+r.ID+" labelled in a void")
 			}
 		}
 	}

@@ -61,6 +61,29 @@ test('room mistakes', () => {
   expectError(plan, /rooms overlap/);
 });
 
+test('a void is a hole in the floor that no room covers', () => {
+  const plan = copy();
+  const i = plan.rooms.findIndex((r) => r.id === 'server');
+  plan.VOIDS = [plan.rooms[i].polygon];
+  plan.rooms.splice(i, 1);
+  assert.deepEqual(checkPlan(plan), []);
+});
+
+test('void mistakes', () => {
+  const plan = copy();
+  const server = plan.rooms.find((r) => r.id === 'server');
+  plan.VOIDS = [server.polygon, [[0, 0], [1, 0]], [[-20, -20], [-18, -20], [-18, -18], [-20, -18]]];
+  plan.rooms.find((r) => r.id === 'file').label = server.polygon[0].map((v) => v + 0.1);
+  expectError(plan, /void 1 needs at least 3 corners/);
+  expectError(plan, /void 2 has a corner outside the outline/);
+  expectError(plan, /room file is labelled inside void 0/);
+  expectError(plan, /a room covers a void/);
+  plan.VOIDS = [[[0, 0], [NaN, 0], [1, 1]]];
+  expectError(plan, /NaN, Infinity or null/);
+  plan.VOIDS = 'atrium';
+  expectError(plan, /VOIDS must be a list/);
+});
+
 test('furniture mistakes', () => {
   const plan = copy();
   plan.furniture.push({ type: 'hovercraft', x: 1, y: 1 });

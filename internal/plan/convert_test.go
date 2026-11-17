@@ -227,3 +227,16 @@ func TestDescribe(t *testing.T) {
 		t.Fatal(got)
 	}
 }
+
+// Voids go into metres like rooms, and leave the plan's size to the walls.
+func TestConvertVoids(t *testing.T) {
+	tr := validTrace()
+	tr.Voids = [][][2]float64{{{20, 20}, {40, 20}, {40, 40}}}
+	p, err := Convert(tr, Meta{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p.Voids) != 1 || p.Voids[0][2] != [2]float64{4, 4} || p.Width != 10 {
+		t.Fatalf("voids %v width %v", p.Voids, p.Width)
+	}
+}

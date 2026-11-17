@@ -67,8 +67,10 @@ func unicodeEscapes(s string) string {
 	return b.String()
 }
 
-// mtextArgCodes take an argument running to the next semicolon.
-const mtextArgCodes = "ACcFfHQTW"
+// mtextArgCodes take an argument running to the next semicolon. \p is
+// paragraph indents and alignment ("\pxql;" left-aligns), which shows as
+// "xql;" in front of the words when it isn't stripped.
+const mtextArgCodes = "ACcFfHQTWp"
 
 // MTextLines strips MTEXT formatting and splits the text into lines. Font,
 // height, colour and width changes are dropped (the tracer reads the words,
