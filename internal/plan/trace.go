@@ -15,6 +15,9 @@ type Trace struct {
 	Calibration Calibration  `json:"calibration"`
 	Thickness   Thickness    `json:"thickness"`
 	Outline     [][2]float64 `json:"outline,omitempty"`
+	// Footprint is the slab's polygons, each outer ring followed by holes.
+	// It is independent of Outline, which also constrains walls and rooms.
+	Footprint [][][][2]float64 `json:"footprint,omitempty"`
 	// Voids are holes in the floor, polygons in pixels: an atrium, a light
 	// well, a shaft open to the floors below. No room covers one; the site
 	// leaves the slab open there and runs a balustrade round the edge.

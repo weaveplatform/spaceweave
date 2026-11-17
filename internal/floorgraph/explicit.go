@@ -49,14 +49,8 @@ func (b *builder) packageSpaces() error {
 	remaining, reserved := bounds.floor, bounds.voids
 	var explicit []room
 	for _, sp := range inputs {
-		ring := make([]Point, len(sp.Polygon))
-		valid := true
-		for i, p := range sp.Polygon {
-			valid = valid && finite(p[0], p[1]) && math.Abs(p[0]) <= maxCoord &&
-				math.Abs(p[1]) <= maxCoord
-			ring[i] = Point{X: p[0], Y: p[1]}
-		}
-		if !valid || len(ring) < 3 {
+		ring, valid := spaceRing(sp.Polygon)
+		if !valid {
 			b.shared = append(
 				b.shared,
 				fmt.Sprintf("Space %q has an invalid outline and was not used.", sp.Name),
@@ -134,6 +128,9 @@ func (b *builder) packageSpaces() error {
 	if len(explicit) == 0 {
 		return nil
 	}
+	if err := b.packageFootprint(bounds, reserved); err != nil {
+		return err
+	}
 	var residual []room
 	for _, r := range b.rs {
 		g, e := ringGeometry(r.poly)
@@ -149,6 +146,62 @@ func (b *builder) packageSpaces() error {
 	}
 	explicit = append(explicit, residual...)
 	b.rs = explicit
+	return nil
+}
+
+func spaceRing(poly [][2]float64) ([]Point, bool) {
+	if len(poly) < 3 {
+		return nil, false
+	}
+	ring := make([]Point, len(poly))
+	for i, p := range poly {
+		if !finite(p[0], p[1]) || math.Abs(p[0]) > maxCoord || math.Abs(p[1]) > maxCoord {
+			return nil, false
+		}
+		ring[i] = Point{X: p[0], Y: p[1]}
+	}
+	return ring, true
+}
+
+func (b *builder) packageFootprint(bounds spaceBounds, reserved geom.Geometry) error {
+	g, err := geom.Union(bounds.floor, reserved)
+	if err != nil {
+		return fmt.Errorf("assemble slab footprint: %w", err)
+	}
+	// Buffer in metres, so an anisotropic image does not distort the wall
+	// allowance. This is the existing half-exterior-thickness slab offset,
+	// applied robustly to the supported floor instead of a bounding box.
+	g = g.TransformXY(func(p geom.XY) geom.XY {
+		return geom.XY{X: p.X / b.sc.sx, Y: p.Y / b.sc.sy}
+	})
+	thickness := kindThickness(b.chains, b.sc.sx, b.sc.sy)[exterior]
+	g, err = geom.Buffer(g, thickness/2, geom.BufferJoinStyleMitre(5))
+	if err != nil {
+		return fmt.Errorf("offset slab footprint: %w", err)
+	}
+	voids := bounds.voids.TransformXY(func(p geom.XY) geom.XY {
+		return geom.XY{X: p.X / b.sc.sx, Y: p.Y / b.sc.sy}
+	})
+	g, err = geom.Difference(g, voids)
+	if err != nil {
+		return fmt.Errorf("cut slab voids: %w", err)
+	}
+	for _, part := range g.Dump() {
+		p, ok := part.AsPolygon()
+		if !ok || p.IsEmpty() {
+			continue
+		}
+		var polygon [][][2]float64
+		for _, seq := range p.ForceCCW().Coordinates() {
+			var ring [][2]float64
+			for i := 0; i < seq.Length()-1; i++ {
+				xy := seq.GetXY(i)
+				ring = append(ring, pt(Point{X: xy.X * b.sc.sx, Y: xy.Y * b.sc.sy}))
+			}
+			polygon = append(polygon, ring)
+		}
+		b.footprint = append(b.footprint, polygon)
+	}
 	return nil
 }
 

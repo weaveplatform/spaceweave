@@ -79,6 +79,26 @@ func checkHeader(t *Trace, add report) {
 			}
 		}
 	}
+	checkFootprint(t.Footprint, add)
+}
+
+func checkFootprint(polygons [][][][2]float64, add report) {
+	for i, polygon := range polygons {
+		if len(polygon) == 0 {
+			add("footprint #%d needs an outer ring", i)
+		}
+		for j, ring := range polygon {
+			if len(ring) < 3 {
+				add("footprint #%d ring #%d needs at least 3 points", i, j)
+			}
+			for _, p := range ring {
+				if !finite(p[0], p[1]) {
+					add("footprint #%d ring #%d: coordinates must be finite", i, j)
+					break
+				}
+			}
+		}
+	}
 }
 
 func checkWalls(walls []Wall, add report) {

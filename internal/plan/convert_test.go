@@ -258,3 +258,29 @@ func TestConvertKinds(t *testing.T) {
 		t.Fatalf("rooms %s", b)
 	}
 }
+
+func TestConvertFootprint(t *testing.T) {
+	tr := validTrace()
+	tr.Calibration.PxPerMetre = [2]float64{10, 20}
+	tr.Footprint = [][][][2]float64{
+		{{{0, 0}, {100, 0}, {100, 100}, {0, 100}}, {{20, 20}, {20, 40}, {40, 40}, {40, 20}}},
+		{{{200, 0}, {220, 0}, {220, 20}, {200, 20}}},
+	}
+	p, err := Convert(tr, Meta{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := [][][][2]float64{
+		{{{0, 0}, {10, 0}, {10, 5}, {0, 5}}, {{2, 1}, {2, 2}, {4, 2}, {4, 1}}},
+		{{{20, 0}, {22, 0}, {22, 1}, {20, 1}}},
+	}
+	if !reflect.DeepEqual(p.Footprint, want) {
+		t.Fatalf("got %v, want %v", p.Footprint, want)
+	}
+	if _, ok := roundTrip(t, p)["FOOTPRINT"]; !ok {
+		t.Fatal("footprint missing from plan JSON")
+	}
+}
+
+// roundTrip converts a plan through JSON into generic values, the way the
+// site reads it, so the comparison below sees what the renderer would.

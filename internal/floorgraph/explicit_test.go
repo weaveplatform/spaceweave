@@ -195,3 +195,70 @@ func TestPackageSpaceWithoutClosedWalls(t *testing.T) {
 		t.Fatalf("source lost because walls did not close: %.3f m²", areaM(rm))
 	}
 }
+
+func TestPackageFootprintRetainsBaysAndRecesses(t *testing.T) {
+	in := Input{
+		Size: [2]int{700, 450},
+		Walls: append(box(0, 0, 500, 400),
+			wall(500, 0, 650, 0), wall(650, 0, 650, 100)),
+		Scale:  scale50,
+		Spaces: []Space{explicitBox(500, 0, 650, 100, "Bay", "01", plan.KindRoom)},
+	}
+	r := mustBuild(t, in)
+	if len(r.Trace.Footprint) != 1 || len(r.Trace.Footprint[0]) != 1 {
+		t.Fatalf("registered package has no slab footprint: %v", r.Trace.Footprint)
+	}
+	poly := points(r.Trace.Footprint[0][0])
+	if !inside(P(600, 50), poly) || inside(P(600, 300), poly) {
+		t.Fatal("slab lost the bay or filled the adjacent recess")
+	}
+	// Its 86 m² L shape grows to the wall faces, 6 cm beyond centrelines.
+	if area := math.Abs(signedArea(poly)) / (50 * 50); !near(area, 88.5344, .001) {
+		t.Fatalf("slab area %.5f m²", area)
+	}
+}
+
+func TestPackageFootprintHolesAndSeparateParts(t *testing.T) {
+	in := officeFloor()
+	in.Walls = append(in.Walls, box(600, 300, 700, 400)...)
+	in.Walls = append(in.Walls, wall(1200, 0, 1300, 0), wall(1300, 0, 1300, 100))
+	in.Voids = []Point{P(650, 350)}
+	in.Spaces = []Space{
+		explicitBox(0, 0, 1000, 800, "Main floor", "01", plan.KindZone),
+		explicitBox(1200, 0, 1300, 100, "Separate bay", "02", plan.KindRoom),
+	}
+	r := mustBuild(t, in)
+	if len(r.Trace.Footprint) != 2 {
+		t.Fatalf("separate floor parts lost: %v", r.Trace.Footprint)
+	}
+	var holes int
+	var holeArea float64
+	for _, polygon := range r.Trace.Footprint {
+		for _, ring := range polygon[1:] {
+			holes++
+			holeArea += polyArea(ring)
+		}
+	}
+	if holes != 1 || !near(holeArea, polyArea(r.Trace.Voids[0]), .001) {
+		t.Fatalf("void changed while offsetting slab: %d holes, area %f", holes, holeArea)
+	}
+}
+
+func TestPackageRejectsUnusableSourceCoordinates(t *testing.T) {
+	for _, poly := range [][][2]float64{
+		{{0, 0}},
+		{{0, 0}, {1, math.NaN()}, {0, 1}},
+		{{0, 0}, {maxCoord + 1, 0}, {0, 1}},
+	} {
+		in := officeFloor()
+		in.Spaces = []Space{{Name: "Invalid", Polygon: poly}}
+		r := mustBuild(t, in)
+		roomNamed(t, r, "Office")
+		if !slices.ContainsFunc(
+			r.Caveats,
+			func(s string) bool { return strings.Contains(s, "invalid outline") },
+		) {
+			t.Fatal("unusable source outline was not reported")
+		}
+	}
+}

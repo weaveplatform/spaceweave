@@ -16,6 +16,32 @@ test('the Office plan is valid', () => {
   assert.deepEqual(checkPlan(copy()), []);
 });
 
+test('slab footprints preserve room coverage and leave voids open', () => {
+  const plan = copy();
+  plan.FOOTPRINT = [[rect(0, 0, plan.WIDTH, plan.DEPTH)]];
+  assert.deepEqual(checkPlan(plan), []);
+  plan.VOIDS = [rect(1, 1, 2, 2)];
+  expectError(plan, /slab footprint covers void/);
+  delete plan.VOIDS;
+  plan.FOOTPRINT = [[rect(0, 0, 1, 1)]];
+  expectError(plan, /leaves the slab footprint/);
+  plan.FOOTPRINT = [];
+  expectError(plan, /needs at least one polygon/);
+  plan.FOOTPRINT = [[], [[[0, 0], [1, 1]]]];
+  expectError(plan, /needs an outer ring/);
+  expectError(plan, /needs finite rings/);
+});
+
+test('slab footprints reject crossing components and invalid holes', () => {
+  const plan = copy();
+  plan.FOOTPRINT = [[rect(0, 0, 5, 5)], [rect(4, 4, 6, 6)]];
+  expectError(plan, /footprints 0 and 1 overlap/);
+  plan.FOOTPRINT = [[rect(0, 0, 5, 5), rect(6, 6, 7, 7)]];
+  expectError(plan, /hole outside/);
+  plan.FOOTPRINT = [[rect(0, 0, 5, 5), rect(1, 1, 3, 3), rect(2, 2, 4, 4)]];
+  expectError(plan, /overlapping holes/);
+});
+
 test('missing exports are listed and stop the checks', () => {
   assert.deepEqual(checkPlan({ ...copy(), rooms: undefined, walls: undefined }), ['missing walls', 'missing rooms']);
 });

@@ -3,6 +3,8 @@ package cadfront
 import (
 	"bytes"
 	"math"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strconv"
 	"strings"
@@ -382,4 +384,44 @@ func FuzzRead(f *testing.F) {
 		}
 		_, _ = Read(doc, o)
 	})
+}
+
+func TestPartlyPairedWallKeepsItsSingleLineContinuation(t *testing.T) {
+	const layer = "A-WALL"
+	d := dxftest.New(4).Layer(layer, 7, 0)
+	d.Add(dxftest.Line(layer, 0, 0, 6000, 0), dxftest.Line(layer, 0, 100, 2000, 100))
+	d.Add(dxftest.Line(layer, 0, 3000, 6000, 3000), dxftest.Line(layer, 0, 3100, 6000, 3100))
+	in, o := readContinuations(t, d)
+	if _, ok := wallNear(in, mm(o, 2000, 0), mm(o, 6000, 0), .11*o.PxPerMetre); !ok {
+		t.Fatal("pairing the first two metres discarded the four-metre wall continuation")
+	}
+}
+
+func TestPairedContinuationStillRecognizesADoorLeaf(t *testing.T) {
+	const layer = "A-WALL"
+	d := dxftest.New(4).Layer(layer, 7, 0)
+	for _, y := range []float64{-50, 50} {
+		d.Add(dxftest.Line(layer, -2000, y, 0, y), dxftest.Line(layer, 900, y, 3000, y))
+	}
+	// The leaf runs beside a short frame stroke. Pairing that stroke must
+	// not lose the leaf provenance on the remaining 700 mm continuation.
+	d.Add(dxftest.Line(layer, 0, 50, 0, 950), dxftest.Line(layer, 100, 50, 100, 250))
+	d.Add(dxftest.Line(layer, 0, 50, 0, 150))
+	d.Add(dxftest.Arc(layer, 0, 50, 900, 0, 90))
+	in, o := readContinuations(t, d)
+	if _, ok := wallNear(in, mm(o, 0, 250), mm(o, 0, 950), .05*o.PxPerMetre); ok {
+		t.Fatal("a partly paired door leaf was emitted as a wall continuation")
+	}
+}
+
+func readContinuations(t *testing.T, d *dxftest.Doc) (floorgraph.Input, Options) {
+	t.Helper()
+	doc := parse(t, d)
+	o, err := Frame(doc, vector.Options{})
+	if err != nil { t.Fatal(err) }
+	path := filepath.Join(t.TempDir(), "continuations.dxf")
+	if err := os.WriteFile(path, d.Bytes(), 0o600); err != nil { t.Fatal(err) }
+	in, err := ReadFile(path, Options{WallContinuations: true})
+	if err != nil { t.Fatal(err) }
+	return in, o
 }

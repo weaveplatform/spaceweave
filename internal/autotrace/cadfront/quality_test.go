@@ -91,14 +91,24 @@ func TestQualityTrials(t *testing.T) {
 				name     string
 				mode     floorgraph.SpaceSnap
 				supplied bool
+				tails    bool
 			}{
-				{"architecture", floorgraph.SpaceSnapWalls, false},
-				{"package-walls", floorgraph.SpaceSnapWalls, true},
-				{"package-none", floorgraph.SpaceSnapNone, true},
-				{"package-300mm", floorgraph.SpaceSnap300mm, true},
+				{"architecture", floorgraph.SpaceSnapWalls, false, false},
+				{"package-walls", floorgraph.SpaceSnapWalls, true, false},
+				{"package-none", floorgraph.SpaceSnapNone, true, false},
+				{"package-300mm", floorgraph.SpaceSnap300mm, true, false},
+				{"package-wall-continuations", floorgraph.SpaceSnapNone, true, true},
 			} {
 				t.Run(trial.name, func(t *testing.T) {
 					in := input
+					if trial.tails {
+						opts := o
+						opts.WallContinuations = true
+						in, err = Read(doc, opts)
+						if err != nil {
+							t.Fatal(err)
+						}
+					}
 					if trial.supplied {
 						in.Spaces = spaces
 						in.SpaceSnap = trial.mode
@@ -147,6 +157,7 @@ func TestQualityTrials(t *testing.T) {
 					}
 					t.Log("QUALITY " + string(encoded))
 					if out := os.Getenv("SPACEWEAVE_EVAL_OUT"); out != "" {
+						writeQualityPlan(t, out, floor, trial.name, result.Trace)
 						if err := os.MkdirAll(out, 0o700); err != nil {
 							t.Fatal(err)
 						}
@@ -164,6 +175,29 @@ func TestQualityTrials(t *testing.T) {
 				})
 			}
 		})
+	}
+}
+
+func writeQualityPlan(t *testing.T, out, floor, mode string, tr *plan.Trace) {
+	t.Helper()
+	p, err := plan.Convert(tr, plan.Meta{URL: "source.png", Credit: "private trial"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := json.Marshal(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(out, "plans")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(dir, fmt.Sprintf("quality-%s-%s.json", floor, mode)),
+		data,
+		0o600,
+	); err != nil {
+		t.Fatal(err)
 	}
 }
 

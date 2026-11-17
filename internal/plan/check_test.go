@@ -284,3 +284,23 @@ func TestNodeValidatorFailures(t *testing.T) {
 		t.Fatalf("no temp dir: %v", err)
 	}
 }
+
+func TestCheckFootprintMistakes(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		polygons [][][][2]float64
+		want     string
+	}{
+		{"empty polygon", [][][][2]float64{nil}, "needs an outer ring"},
+		{"short ring", [][][][2]float64{{{{0, 0}}}}, "needs at least 3 points"},
+		{"non-finite", [][][][2]float64{{{{0, 0}, {1, math.NaN()}, {1, 0}}}}, "coordinates must be finite"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tr := validTrace()
+			tr.Footprint = tc.polygons
+			if got := strings.Join(Check(tr), "; "); !strings.Contains(got, tc.want) {
+				t.Fatalf("got %q, want %q", got, tc.want)
+			}
+		})
+	}
+}

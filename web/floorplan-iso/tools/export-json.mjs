@@ -9,7 +9,7 @@
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-const KEYS = ['SOURCE', 'WIDTH', 'DEPTH', 'OUTLINE', 'VOIDS', 'ENTRANCE', 'THICKNESS', 'walls', 'rooms', 'floorPatches', 'furniture'];
+const KEYS = ['SOURCE', 'WIDTH', 'DEPTH', 'OUTLINE', 'FOOTPRINT', 'VOIDS', 'ENTRANCE', 'THICKNESS', 'walls', 'rooms', 'floorPatches', 'furniture'];
 
 const [modulePath] = process.argv.slice(2);
 if (!modulePath) {
