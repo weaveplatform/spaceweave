@@ -10,11 +10,13 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/weaveplatform/spaceweave/internal/catalog"
 	"github.com/weaveplatform/spaceweave/internal/dxf/dxftest"
+	"github.com/weaveplatform/spaceweave/internal/plan"
 	"github.com/weaveplatform/spaceweave/internal/server"
 	"github.com/weaveplatform/spaceweave/internal/trace"
 )
@@ -99,7 +101,7 @@ func TestFloorPackage(t *testing.T) {
 	if code, body := v.upload(
 		t,
 		"office.dxf",
-		dxftest.Office(4).Bytes(),
+		dxftest.OfficeUnlabelled(4).Bytes(),
 	); code != http.StatusCreated {
 		t.Fatalf("upload: %d %s", code, body)
 	}
@@ -130,11 +132,35 @@ func TestFloorPackage(t *testing.T) {
 	); err != nil {
 		t.Fatal(err)
 	}
+	data, err := os.ReadFile(filepath.Join(v.s.output, id, "plan.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var traced plan.Plan
+	if err := json.Unmarshal(data, &traced); err != nil {
+		t.Fatal(err)
+	}
+	for _, sp := range dxftest.OfficeSpaceList {
+		if !slices.ContainsFunc(
+			traced.Rooms,
+			func(r plan.MRoom) bool { return r.Name == sp.Name && r.Number == sp.Number },
+		) {
+			t.Fatalf("missing source space %q", sp.Name)
+		}
+	}
+	if !slices.ContainsFunc(
+		traced.Rooms,
+		func(r plan.MRoom) bool { return r.Name == "Team area" && r.Kind == plan.KindZone },
+	) {
+		t.Fatal("wall-less zone lost")
+	}
 	r := readPackageReport(t, v.s, id)
 	if r.Conversion == nil || strings.Count(v.log.String(), "msg=converting") != 1 {
 		t.Fatalf("the retrace reads the drawing already converted:\n%s", v.log)
 	}
-	if s := r.Spaces; s == nil || s.Spaces != len(dxftest.OfficeSpaceList) || s.Method != "shared" || !s.Used ||
+	if s := r.Spaces; s == nil || s.Spaces != len(dxftest.OfficeSpaceList) ||
+		s.Method != "shared" ||
+		!s.Used ||
 		s.Matched < 0.99 ||
 		s.ResidualM > 0.01 {
 		t.Fatalf("%+v", r.Spaces)
@@ -158,8 +184,10 @@ func TestFloorPackage(t *testing.T) {
 		t.Fatalf("the new space plan replaces the old: %+v", e.Files)
 	}
 	r = readPackageReport(t, v.s, id)
-	if s := r.Spaces; s == nil || s.Method != "fitted" || !s.Used || s.Matched < 0.99 || s.ResidualM > 0.02 ||
-		s.Transform == nil || s.Transform[0] < 9.99 ||
+	if s := r.Spaces; s == nil || s.Method != "fitted" || !s.Used || s.Matched < 0.99 ||
+		s.ResidualM > 0.02 ||
+		s.Transform == nil ||
+		s.Transform[0] < 9.99 ||
 		s.Transform[0] > 10.01 {
 		t.Fatalf("%+v", r.Spaces)
 	}

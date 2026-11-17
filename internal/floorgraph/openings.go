@@ -11,6 +11,7 @@ type outOpening struct {
 	a, b               float64
 	kind, swing, hinge string
 	guessed            bool
+	weight             float64
 }
 
 // minOpeningM is the narrowest opening kept, metres: narrower is a gap in
@@ -31,10 +32,6 @@ type roomAt func(Point) (float64, bool)
 func placeOpenings(cs []chain, ops []opening, sx, sy float64, rooms roomAt) placement {
 	var pl placement
 	for _, o := range ops {
-		if !o.matched {
-			pl.unplaced++
-			continue
-		}
 		i, ta, tb := findChain(cs, o.Opening)
 		if i < 0 {
 			pl.unplaced++
@@ -50,7 +47,7 @@ func placeOpenings(cs []chain, ops []opening, sx, sy float64, rooms roomAt) plac
 		}
 		pa, pb := qp(addScaled(c.from, d, ta)), qp(addScaled(c.from, d, tb))
 		ax := axis(c.from, c.to)
-		out := outOpening{a: coord(pa, ax), b: coord(pb, ax), kind: o.Kind}
+		out := outOpening{a: coord(pa, ax), b: coord(pb, ax), kind: o.Kind, weight: o.Weight}
 		aIsA := true
 		if out.a > out.b {
 			out.a, out.b, aIsA = out.b, out.a, false
@@ -77,13 +74,24 @@ func placeOpenings(cs []chain, ops []opening, sx, sy float64, rooms roomAt) plac
 		c.ops = append(c.ops, out)
 		pl.placed++
 	}
-	// Two openings over the same stretch of wall are one seen twice (or a
-	// mistake); the renderer can't cut both, so the first along the wall wins.
+	// Prefer measured, confident hypotheses over guessed duplicates; positional
+	// ordering otherwise lets a broad, weak opening erase an observed door.
 	for i := range cs {
-		slices.SortStableFunc(cs[i].ops, func(x, y outOpening) int { return cmpFloat(x.a, y.a) })
+		slices.SortStableFunc(cs[i].ops, func(x, y outOpening) int {
+			if n := cmpFloat(y.weight, x.weight); n != 0 {
+				return n
+			}
+			if x.guessed != y.guessed {
+				return cmpBool(x.guessed, y.guessed)
+			}
+			return cmpFloat(x.a, y.a)
+		})
 		kept := cs[i].ops[:0]
 		for _, o := range cs[i].ops {
-			if len(kept) > 0 && o.a < kept[len(kept)-1].b {
+			if slices.ContainsFunc(
+				kept,
+				func(k outOpening) bool { return o.a < k.b && k.a < o.b },
+			) {
 				pl.overlapped++
 				pl.placed--
 				if o.guessed {
@@ -93,6 +101,7 @@ func placeOpenings(cs []chain, ops []opening, sx, sy float64, rooms roomAt) plac
 			}
 			kept = append(kept, o)
 		}
+		slices.SortStableFunc(kept, func(x, y outOpening) int { return cmpFloat(x.a, y.a) })
 		cs[i].ops = kept
 	}
 	return pl

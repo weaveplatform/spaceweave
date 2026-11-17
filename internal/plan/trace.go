@@ -74,6 +74,7 @@ type Opening struct {
 type Room struct {
 	ID      string       `json:"id"`
 	Name    string       `json:"name"`
+	Number  string       `json:"number,omitempty"`
 	Kind    string       `json:"kind,omitempty"`
 	Zone    string       `json:"zone"`
 	Floor   string       `json:"floor"`

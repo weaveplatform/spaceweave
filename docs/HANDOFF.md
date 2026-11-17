@@ -72,7 +72,7 @@ The owner chose four things:
 | 4 | Layer profiles (built-in plus per-client YAML), a layers panel, `GET/PUT /api/profiles/{name}` | #14, merged |
 | 2 | Label-seeded spaces for CAD (`floorgraph/spaces.go`) | #15, merged |
 | 3a | Floor packages: several files per plan, space plan registered to the drawing | #16, merged |
-| **3b** | **The tracer builds rooms from the registered space plan** | **next** |
+| **3b** | **The tracer builds rooms from the registered space plan** | **implemented on `feat/tracing-quality-trials`; measured below** |
 | 5 | Review edits (`edits.json`) | to do |
 | 6 | Gold-standard evaluation of spaces | to do |
 
@@ -113,7 +113,36 @@ be higher". Report every metric per floor and honestly. Don't argue the
 target down by citing the literature; find the route that reaches it, and
 state plainly what gap remains.
 
-## Next: step 3b, rooms from the space plan
+## Step 3b implementation and measured trials
+
+Implemented on `feat/tracing-quality-trials` (not merged when updated). Read
+[the research and results](research/tracing-quality.md) before further tuning.
+`make quality` runs report-only CAD and raster ablations. Private CAD inputs
+still need `SPACEWEAVE_DWG_DIR`; output artifacts use `SPACEWEAVE_EVAL_OUT`.
+
+Registered spaces now precede inferred residual floor, keep their kind and
+number, and are clipped to the outline and voids. Smaller source spaces precede
+large enclosing zones. Source boundaries are preserved by default: both tested
+wall-snapping policies reduced strict polygon matches. Crossings and substantial
+clipping are reported for review. Partial packages with one or two outlines
+are accepted. Semantic name/number layers exclude generic metadata from names.
+Tracer version is 7; the five existing golden hashes stay unchanged, and full
+and partial package hashes were added.
+
+The 99% goal is still open. All-five-floor source-preserving outputs pass the
+site validator; room/zone recall is 76.2–98.2% against raw supplied polygons at
+IoU 0.9, with additional inferred service spaces reducing precision. These are
+one-to-one all-space scores without the old wall exclusion mask, and must not
+be compared directly with the room-only table above. No independent gold review
+or human correction-time trial has been completed. Raster face recovery remains
+opt-in for experiments because its precision regresses on several plans.
+
+Next priorities: independently adjudicate overlapping source outlines and
+missing room identities; diagnose wall-recall losses and unplaced openings;
+implement persistent review edits. The original step 3b checklist follows for
+context; its snapping recommendation was superseded by the measured trials.
+
+### Original step 3b checklist
 
 **Where it plugs in.** `autotrace.readSpaces` (`internal/autotrace/autotrace.go`):
 - calls `cadfront.ReadSpaces`;
@@ -299,10 +328,7 @@ them, or name the client or building in commits, PRs or docs.
 
 ## Known loose ends
 
-- **Wrong threshold in a caveat:** the poor-fit caveat in
-  `autotrace.readSpaces` says corners "where at least half should" lie on a
-  wall, but the threshold is `goodMatch = 0.7` (`cadfront/spaces.go`). Fix the
-  wording.
+- **Poor-fit caveat:** fixed to match `goodMatch = 0.7` (70%).
 - **Floor 00:** its rooms are mostly unlabelled. Step 3b should fix this
   floor most of all, since its names come from the space plan.
 - **Extra numbered rooms:** walled cupboards and risers become "Room N" even

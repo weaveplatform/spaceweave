@@ -32,9 +32,14 @@ var OfficeSpaceList = []OfficeSpace{
 // coordinates or moved, scaled and turned away from them; units is
 // $INSUNITS, which an export may state wrongly.
 func OfficeSpaces(units int, place func(x, y float64) (float64, float64)) *Doc {
+	return SpacePlan(units, place, OfficeSpaceList)
+}
+
+// SpacePlan draws selected synthetic spaces, including partial floor packages.
+func SpacePlan(units int, place func(x, y float64) (float64, float64), spaces []OfficeSpace) *Doc {
 	d := New(units).Layer("EC1 Space Polygons", 3, 0).Layer("EC1 Space Numbers", 7, 0).
 		Layer("EC1 Space Names", 7, 0).Layer("EC1 Space Areas", 7, 0)
-	for _, s := range OfficeSpaceList {
+	for _, s := range spaces {
 		p := []any{8, "EC1 Space Polygons", 90, 4, 70, 1}
 		for _, c := range [][2]float64{{s.X0, s.Y0}, {s.X1, s.Y0}, {s.X1, s.Y1}, {s.X0, s.Y1}} {
 			x, y := place(c[0], c[1])
@@ -56,5 +61,19 @@ func OfficeSpaces(units int, place func(x, y float64) (float64, float64)) *Doc {
 			d.Add(Text(t.layer, x, y, h, t.text))
 		}
 	}
+	return d
+}
+
+// OfficeUnlabelled proves that package names are read rather than borrowed
+// from text in the primary drawing.
+func OfficeUnlabelled(units int) *Doc {
+	d := Office(units)
+	kept := d.entities[:0]
+	for _, e := range d.entities {
+		if e.Kind != "TEXT" && e.Kind != "MTEXT" {
+			kept = append(kept, e)
+		}
+	}
+	d.entities = kept
 	return d
 }

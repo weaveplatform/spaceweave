@@ -256,7 +256,11 @@ func (r *reader) areaRooms() bool {
 // layer of room outlines and the layer of workplace outlines among them:
 // "" for either when there is none. Areas are judged in metres, so the
 // unit must be settled first.
-func (r *reader) areaLayers() (byLayer map[string][]outline, best, desks string) {
+func (r *reader) areaLayers() (map[string][]outline, string, string) {
+	return r.areaLayersMinimum(minAreaLabels)
+}
+
+func (r *reader) areaLayersMinimum(minimum int) (byLayer map[string][]outline, best, desks string) {
 	byLayer = map[string][]outline{}
 	for _, o := range r.outlines() {
 		l := &r.leaves[o.leaf]
@@ -266,7 +270,7 @@ func (r *reader) areaLayers() (byLayer map[string][]outline, best, desks string)
 	}
 	bestArea, deskN := 0.0, 0
 	for layer, os := range byLayer {
-		if len(os) < minAreaLabels {
+		if len(os) < minimum {
 			continue
 		}
 		as := make([]float64, len(os))

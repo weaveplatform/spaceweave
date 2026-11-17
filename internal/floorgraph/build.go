@@ -59,7 +59,9 @@ func Build(in Input) (*Result, error) {
 		return nil, err
 	}
 	b.findFaces()
-	b.rooms()
+	if err := b.rooms(); err != nil {
+		return nil, err
+	}
 	if err := b.walls(); err != nil {
 		return nil, err
 	}
@@ -72,7 +74,14 @@ func Build(in Input) (*Result, error) {
 		return nil, fmt.Errorf("%w: %s", ErrInconsistent, strings.Join(problems, "; "))
 	}
 	return &Result{
-		Trace:      t,
+		Trace: t,
+		Openings: OpeningStats{
+			Input:      len(b.ops),
+			Placed:     b.pl.placed,
+			Unplaced:   b.pl.unplaced,
+			Narrow:     b.pl.narrow,
+			Overlapped: b.pl.overlapped,
+		},
 		Confidence: b.confidence(),
 		Summary:    b.summary(t),
 		Caveats:    b.caveats(),
@@ -196,12 +205,12 @@ func (b *builder) findFaces() {
 	b.sc = estimateScale(b.in.Scale, b.ops, ts, ls, math.Max(hi.X-lo.X, hi.Y-lo.Y))
 }
 
-// rooms finds the rooms and zones: grown from the labels where there are
-// any (labelSpaces), else the outer component's bounded faces, named from
-// the labels in them.
-func (b *builder) rooms() {
+// rooms reserves registered spaces and fills the remaining floor from
+// label-grown regions, or graph faces when there are no labels. Inference
+// never displaces a supplied space's identity or kind.
+func (b *builder) rooms() error {
 	if b.outer < 0 {
-		return
+		return nil
 	}
 	voids := b.voidFaces()
 	labels := slices.Clone(b.in.Labels)
@@ -221,6 +230,9 @@ func (b *builder) rooms() {
 	if !b.labelSpaces(labels, voids) {
 		b.faceRooms(voids)
 		b.strayLabels = nameRooms(b.rs, labels)
+	}
+	if err := b.packageSpaces(); err != nil {
+		return err
 	}
 	sy := b.sc.sy
 	readingOrder(b.rs, 0.5*sy)
@@ -243,8 +255,11 @@ func (b *builder) rooms() {
 		}
 		// A meeting or training room this big is still behind walls.
 		zone, _ := classify(r.name)
-		r.open = (r.areaM >= openPlanArea || unwalled) && zone != "meet"
+		if !r.explicit {
+			r.open = (r.areaM >= openPlanArea || unwalled) && zone != "meet"
+		}
 	}
+	return nil
 }
 
 // faceRooms makes the outer component's bounded faces, less voids and
@@ -583,8 +598,17 @@ func (b *builder) trace() *plan.Trace {
 			kind = plan.KindZone
 		}
 		t.Rooms = append(t.Rooms, plan.Room{
-			ID: fmt.Sprintf("r%d", i+1), Name: r.name, Kind: kind, Zone: zone, Floor: floor,
-			Polygon: polyOut(r.poly), Label: &label,
+			ID: fmt.Sprintf(
+				"r%d",
+				i+1,
+			),
+			Name:    r.name,
+			Number:  r.number,
+			Kind:    kind,
+			Zone:    zone,
+			Floor:   floor,
+			Polygon: polyOut(r.poly),
+			Label:   &label,
 		})
 	}
 	return t

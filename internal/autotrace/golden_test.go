@@ -29,6 +29,20 @@ func golden(t *testing.T) map[string]trace.Job {
 		"office-unitless": drawingJob(t, dxftest.Office(-1).Bytes()),
 		"plan.dxf":        drawingJob(t, dxftest.Plan().Bytes()),
 	}
+	packageJob := drawingJob(t, dxftest.OfficeUnlabelled(4).Bytes())
+	packageJob.Spaces = []trace.Attachment{
+		spacesFile(t, "spaces.dxf", dxftest.OfficeSpaces(4, same).Bytes()),
+	}
+	jobs["office-package"] = packageJob
+	partialJob := drawingJob(t, dxftest.Office(4).Bytes())
+	partialJob.Spaces = []trace.Attachment{
+		spacesFile(
+			t,
+			"partial.dxf",
+			dxftest.SpacePlan(4, same, dxftest.OfficeSpaceList[:2]).Bytes(),
+		),
+	}
+	jobs["office-partial-package"] = partialJob
 	// The images take over a minute under the race detector, which with
 	// coverage pushes the package past go test's ten-minute limit. The
 	// drawings still take every path through floorgraph there, and `make

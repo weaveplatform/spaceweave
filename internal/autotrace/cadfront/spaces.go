@@ -132,7 +132,9 @@ func ReadSpaces(
 			sr.unit = 1
 		}
 	}
-	byLayer, layer, _ := sr.areaLayers()
+	// A supplied partial space plan may describe only one room. The
+	// architectural fallback still needs several outlines to identify a layer.
+	byLayer, layer, _ := sr.areaLayersMinimum(1)
 	// Rooms are told from workplaces by their size, which in a drawing of
 	// unknown units the first unit to make any outlines room-sized says.
 	for _, u := range standardUnits {
@@ -140,7 +142,7 @@ func ReadSpaces(
 			break
 		}
 		sr.unit = u
-		byLayer, layer, _ = sr.areaLayers()
+		byLayer, layer, _ = sr.areaLayersMinimum(1)
 	}
 	if layer == "" {
 		return nil, reg, ErrNoSpaces
@@ -501,6 +503,10 @@ type spaceText struct {
 // text written inside each: a name, a number and an area.
 func (r *reader) spaces(outs []outline, m, view vector.Affine, fit *fitter) []floorgraph.Space {
 	texts := make([]spaceText, len(outs))
+	identityLayers := slices.ContainsFunc(
+		r.leaves,
+		func(l leaf) bool { return l.info.text == textName || l.info.text == textNumber },
+	)
 	for i := range r.leaves {
 		l := &r.leaves[i]
 		if l.info.text == textNever {
@@ -523,6 +529,11 @@ func (r *reader) spaces(outs []outline, m, view vector.Affine, fit *fitter) []fl
 			s := strings.TrimSpace(t.Content)
 			if a, ok := statedArea(s); ok {
 				st.area = a
+				continue
+			}
+			// Typed name/number layers are authoritative. Generic block
+			// attributes also contain flags and desk metadata inside large zones.
+			if identityLayers && l.info.text != textName && l.info.text != textNumber {
 				continue
 			}
 			switch {
