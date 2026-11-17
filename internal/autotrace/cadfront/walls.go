@@ -626,8 +626,11 @@ func blocked(between [][2]float64, lo, hi float64) bool {
 // corner. A longer overshoot is a T, the face running on past a wall that
 // meets this one from the other side; joinEnds finishes those.
 func (r *reader) addPair(a, b *face, lo, hi float64, u, n point, glass bool, weight float64) {
+	// A layered wall's stretch is its pairings', and its outermost faces
+	// (a lining, a finish line) may stop short of it: that is no overshoot,
+	// and halving it would pull the wall's ends in off the inner faces.
 	corner := func(over float64) float64 {
-		if over <= r.metres(maxGap) {
+		if over > 0 && over <= r.metres(maxGap) {
 			return over / 2
 		}
 		return 0

@@ -214,3 +214,51 @@ func TestVoidLayer(t *testing.T) {
 		t.Errorf("voids %v, %d rooms, caveats %v", r.Trace.Voids, len(r.Trace.Rooms), r.Caveats)
 	}
 }
+
+// An atrium holding a walled plant room, its door a plain gap, and an
+// open stair labelled on the atrium floor, with a gap in the balustrade
+// where the stair lands: the doorway closes the plant room, the slab edge
+// still closes the atrium, and neither name inside it makes the atrium
+// floor.
+func TestAtriumWithACoreAndADoorway(t *testing.T) {
+	const wall, stair, names = "A-WALL", "AR_EF_35_10-M_Stairs and Ramps", "AR_Zz_20_10_70_65-T_Room Name"
+	d := dxftest.New(4).Layer(wall, 7, 0).Layer(stair, 3, 0).Layer(names, 2, 0)
+	d.Add(dxftest.Rect(wall, 0, 0, 24000, 18000))
+	// The plant room's walls, 100 mm, with a 900 mm doorway on the west.
+	for _, o := range []float64{0, 100} {
+		d.Add(
+			dxftest.Line(wall, 12500+o, 7000+o, 14300-o, 7000+o),
+			dxftest.Line(wall, 14300-o, 7000+o, 14300-o, 9500-o),
+			dxftest.Line(wall, 14300-o, 9500-o, 12500+o, 9500-o),
+			dxftest.Line(wall, 12500+o, 9500-o, 12500+o, 8700),
+			dxftest.Line(wall, 12500+o, 7800, 12500+o, 7000+o),
+		)
+	}
+	d.Add(
+		dxftest.Line(stair, 9000, 6000, 15000, 6000), dxftest.Line(stair, 15000, 6030, 15000, 11000),
+		dxftest.Line(stair, 15000, 11000, 9000, 11000), dxftest.Line(stair, 9000, 11000, 9000, 6030),
+		// The balustrade, open for 900 mm where the stair lands.
+		dxftest.E("LWPOLYLINE", 8, stair, 90, 5, 70, 0,
+			10, 10100.0, 20, 6200.0, 10, 14800.0, 20, 6200.0, 10, 14800.0, 20, 10800.0,
+			10, 9200.0, 20, 10800.0, 10, 9200.0, 20, 6200.0),
+		dxftest.Text(names, 10500, 10200, 300, "ATRIUM"),
+		dxftest.Text(names, 13400, 8250, 200, "Plant Room"),
+		dxftest.Text(names, 10000, 7500, 200, "Stair 4"),
+		dxftest.Text(names, 3000, 3000, 300, "Office"),
+	)
+	in, _ := read(t, d)
+	r, err := floorgraph.Build(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(r.Trace.Voids) != 1 {
+		t.Fatalf("voids %v caveats %v", r.Trace.Voids, r.Caveats)
+	}
+	var got []string
+	for _, rm := range r.Trace.Rooms {
+		got = append(got, rm.Name)
+	}
+	if slices.Contains(got, "ATRIUM") || !slices.Contains(got, "Office") || !slices.Contains(got, "Plant Room") {
+		t.Errorf("rooms %v", got)
+	}
+}

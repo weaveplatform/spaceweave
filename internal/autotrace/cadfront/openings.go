@@ -509,6 +509,7 @@ func (r *reader) findOpenings() {
 		}
 		ops = append(ops, r.span(walls, pts, vector.Identity, floorgraph.Window))
 	}
+	ops = append(ops, r.doorways(ops)...)
 	for _, o := range ops {
 		if o.a == o.b {
 			continue

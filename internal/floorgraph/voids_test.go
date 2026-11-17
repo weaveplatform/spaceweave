@@ -135,3 +135,23 @@ func TestRdpRingDegenerate(t *testing.T) {
 		t.Error("a flat ring has no area")
 	}
 }
+
+// A void label whose edges leave a gap wider than the seal floods the
+// floor round it. Where that floor is closed further out, the flood holds
+// other rooms' names: it is floor, and stays floor.
+func TestVoidFloodHoldingARoomsName(t *testing.T) {
+	in := atrium()
+	// The building runs on east past a partition, so the floor round the
+	// void is under half of it and the flood's cap doesn't stop it.
+	in.Walls = append(append(box(0, 0, 2000, 800), wall(900, 0, 900, 800)), box(420, 300, 480, 350)...)
+	in.Edges = in.Edges[:3] // the slab edge open on one side, the balustrade gone
+	in.Voids = []Point{P(450, 420)}
+	in.Labels = append(in.Labels, Label{At: P(800, 600), Text: "OPEN PLAN", Height: 10, Kind: LabelName})
+	r := mustBuild(t, in)
+	if len(r.Trace.Voids) != 0 {
+		t.Errorf("the floor round a leaking void was taken out: %v", r.Trace.Voids)
+	}
+	if !slices.Contains(roomNames(r), "OPEN PLAN") {
+		t.Errorf("rooms %v, want the floor named", roomNames(r))
+	}
+}

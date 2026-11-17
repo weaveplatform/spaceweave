@@ -581,3 +581,49 @@ func nearestMeeting(segs []seg, i int, e, d Point) (Point, bool) {
 	}
 	return best, !math.IsInf(bestS, 1)
 }
+
+// anchorEnds joins each wall end that touches no other wall, but lies
+// inside another wall's thickness, to that wall's centreline with a short
+// piece of wall across it. Front ends find walls from their faces, so
+// where a thin partition runs into a thick wall or a column flush with one
+// of its faces, or two walls of different thickness meet end to end with a
+// face in line, the centrelines never meet: the thin one stops inside the
+// thick one, off its centreline, closeCorners finds no crossing to extend
+// it to, and the rooms either side leak into each other through the slit.
+// An end inside a wall touches it on the drawing, so this joins nothing
+// the drawing leaves apart. Every end is judged against the walls as they
+// were, so the order they come in doesn't matter.
+func anchorEnds(segs []seg) []seg {
+	out := slices.Clone(segs)
+	for i, s := range segs {
+		for _, e := range [2]Point{s.a, s.b} {
+			if p, ok := anchor(segs, i, e); ok {
+				out = append(out, newSeg(e, p, canonical(unit(sub(p, e))), -1, s.t, s.w, s.glass))
+			}
+		}
+	}
+	slices.SortFunc(out, cmpSeg)
+	return out
+}
+
+// anchor is the point on another wall's centreline that the free end e of
+// segs[i] is joined to: the nearest, on the nearest wall whose thickness e
+// lies within. ok is false when e already touches a wall or lies in none.
+func anchor(segs []seg, i int, e Point) (Point, bool) {
+	best, bestD := Point{}, math.Inf(1)
+	for j, o := range segs {
+		if j == i || o.void {
+			continue
+		}
+		d := segDist(e, o.a, o.b)
+		if d <= mergeRadius {
+			return Point{}, false
+		}
+		// The 1 px slack absorbs rounding where a face is the line.
+		if o.t > 0 && d <= o.t/2+1 && d < bestD {
+			ab := sub(o.b, o.a)
+			best, bestD = qp(lerp(o.a, o.b, clamp(dot(sub(e, o.a), ab)/dot(ab, ab), 0, 1))), d
+		}
+	}
+	return best, !math.IsInf(bestD, 1) && best != e
+}

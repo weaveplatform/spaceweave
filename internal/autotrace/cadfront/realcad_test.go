@@ -90,7 +90,7 @@ const realcadLegend = `Legend (all lengths in drawing millimetres unless said):
   swing   of matched doors, share swinging to the side the arc is on
   doorP   share of traced doors that match a swing
   encl    SPACE area polygons whose boundary lies >= 90% on wall, glazing or door ink (within 250 mm): enclosed rooms
-  roomR   share of enclosed areas matched by a traced room with IoU >= 0.9 (in brackets: >= 0.75)
+  roomR   share of enclosed areas matched by a traced room with IoU >= 0.9 (in brackets: >= 0.75); in AREX rows on floor only, points within a traced wall's thickness left out of both (areas run to faces or centrelines, traces to centrelines)
   roomB   share of enclosed areas whose boundary and the best traced room's lie, on average, within 200 mm of each other both ways (forgives face vs centreline)
   roomP   share of traced rooms matching an enclosed area with IoU >= 0.9
   openCov share of open (not enclosed) area covered by traced rooms
@@ -326,7 +326,14 @@ func evalFloor(t *testing.T, floor, arexPath, spacePath string) evalRow {
 	}
 	scoreRooms(&row, areas, res.Trace, inv, false)
 	scoreFurniture(&row, at, res.Trace, inv)
-	row.notes = append(row.notes, scoreDefects(at, areas, res.Trace, inv).String())
+	def := scoreDefects(at, areas, res.Trace, inv)
+	row.notes = append(row.notes, def.String())
+	// A floored atrium is the defect people see first in 3D, and a table
+	// row is easy to read past: fail on it.
+	if def.voidLabels > 0 && (def.voidFloored > 0 || def.voidM2 == 0) {
+		t.Errorf("%s: %d of %d void labels floored over, %.0f m² of void traced",
+			floor, def.voidFloored, def.voidLabels, def.voidM2)
+	}
 	if out := os.Getenv("SPACEWEAVE_EVAL_OUT"); out != "" {
 		drawEval(t, filepath.Join(out, "arex-"+floor+".png"), at, areas, tw, res.Trace, inv)
 	}
@@ -877,28 +884,37 @@ type tracedRoom struct {
 	box  vector.Rect
 }
 
-// iou rasterises both polygons on a 50 mm grid over their joint box.
-func iou(a, b []point, ab, bb vector.Rect) float64 {
-	u := ab.Union(bb)
-	lo, hi := u.Min, u.Max
-	var inter, union int
-	for y := lo.Y + 25; y < hi.Y; y += 50 {
-		for x := lo.X + 25; x < hi.X; x += 50 {
+// gridCount counts the points of a 50 mm grid, aligned to the drawing's
+// origin so counts over different boxes agree, that lie in the box, inside
+// poly and (when keep is set) kept.
+func gridCount(poly []point, box vector.Rect, keep func(point) bool) int {
+	n := 0
+	for y := math.Floor(box.Min.Y/50)*50 + 25; y < box.Max.Y; y += 50 {
+		for x := math.Floor(box.Min.X/50)*50 + 25; x < box.Max.X; x += 50 {
 			p := point{X: x, Y: y}
-			ia := boxHas(ab, p) && insidePoly(a, p)
-			ib := boxHas(bb, p) && insidePoly(b, p)
-			if ia && ib {
-				inter++
-			}
-			if ia || ib {
-				union++
+			if boxHas(box, p) && insidePoly(poly, p) && (keep == nil || keep(p)) {
+				n++
 			}
 		}
 	}
-	if union == 0 {
-		return 0
+	return n
+}
+
+// iou is the polygons' intersection over union on that grid, given each
+// one's own count over the same kept points.
+func iou(a, b []point, ab, bb vector.Rect, na, nb int, keep func(point) bool) float64 {
+	lo := point{X: math.Max(ab.Min.X, bb.Min.X), Y: math.Max(ab.Min.Y, bb.Min.Y)}
+	hi := point{X: math.Min(ab.Max.X, bb.Max.X), Y: math.Min(ab.Max.Y, bb.Max.Y)}
+	inter := 0
+	if lo.X < hi.X && lo.Y < hi.Y {
+		inter = gridCount(a, vector.Rect{}.Extend(lo).Extend(hi), func(p point) bool {
+			return boxHas(bb, p) && insidePoly(b, p) && (keep == nil || keep(p))
+		})
 	}
-	return float64(inter) / float64(union)
+	if u := na + nb - inter; u > 0 {
+		return float64(inter) / float64(u)
+	}
+	return 0
 }
 
 func boxOverlap(a, b vector.Rect) bool {
@@ -917,6 +933,48 @@ func scoreRooms(row *evalRow, areas []truthArea, tr *plan.Trace, inv vector.Affi
 		rooms = append(rooms, tr)
 	}
 	row.areas, row.traced = len(areas), len(rooms)
+	// Traced rooms run to wall centrelines, as the plan format says rooms
+	// do, and CAFM areas run to a wall's face or its centreline as the
+	// surveyor chose (core and outer walls to the face, partitions often
+	// to the middle): the same 2 m room with 100 mm walls scores IoU 0.9
+	// on one convention and 1 on the other. So in a traced drawing both
+	// are compared on floor only, every point inside a traced wall's
+	// thickness left out of both, which neither convention can tell
+	// apart. A traced CAFM plan's walls are the area outlines themselves,
+	// so its rooms are compared as they are.
+	var floor func(point) bool
+	if !spaceNames {
+		tw := tracedWalls(tr, inv)
+		g := newGrid(1000)
+		for i, w := range tw {
+			g.add(i, w.a, w.b)
+		}
+		floor = func(p point) bool {
+			for _, j := range g.near(p, 400) {
+				if segDist2(p, tw[j].a, tw[j].b) < tw[j].thick/2 {
+					return false
+				}
+			}
+			return true
+		}
+	}
+	counts := map[int]int{}
+	roomCount := func(i int) int {
+		if n, ok := counts[i]; ok {
+			return n
+		}
+		counts[i] = gridCount(rooms[i].poly, rooms[i].box, floor)
+		return counts[i]
+	}
+	lines := map[int]int{}
+	lineCount := func(i int) int {
+		if n, ok := lines[i]; ok {
+			return n
+		}
+		lines[i] = gridCount(rooms[i].poly, rooms[i].box, nil)
+		return lines[i]
+	}
+	c90, c75 := 0, 0
 	matchedRoom := make([]bool, len(rooms))
 	m90, m75, nameOK, nameN := 0, 0, 0, 0
 	mB, missing, merged, split, offset := 0, 0, 0, 0, 0
@@ -938,14 +996,25 @@ func scoreRooms(row *evalRow, areas []truthArea, tr *plan.Trace, inv vector.Affi
 			continue
 		}
 		row.encl++
+		na, naLine := gridCount(a.poly, a.box, floor), gridCount(a.poly, a.box, nil)
 		best, bestI := 0.0, -1
+		bestC := 0.0
 		for i, r := range rooms {
 			if !boxOverlap(r.box, a.box) {
 				continue
 			}
-			if v := iou(a.poly, r.poly, a.box, r.box); v > best {
+			if v := iou(a.poly, r.poly, a.box, r.box, na, roomCount(i), floor); v > best {
 				best, bestI = v, i
 			}
+			if floor != nil {
+				bestC = math.Max(bestC, iou(a.poly, r.poly, a.box, r.box, naLine, lineCount(i), nil))
+			}
+		}
+		if bestC >= 0.9 {
+			c90++
+		}
+		if bestC >= 0.75 {
+			c75++
 		}
 		bnd := bestI >= 0 && boundaryMatch(a.poly, rooms[bestI].poly, 200)
 		if bnd {
@@ -981,6 +1050,11 @@ func scoreRooms(row *evalRow, areas []truthArea, tr *plan.Trace, inv vector.Affi
 		}
 	}
 	row.roomR, row.roomR75 = ratio(m90, row.encl), ratio(m75, row.encl)
+	if floor != nil {
+		row.notes = append(row.notes, fmt.Sprintf(
+			"rooms compared on their centreline polygons instead (IoU >= 0.9 / >= 0.75): %s / %s",
+			pc(ratio(c90, row.encl)), pc(ratio(c75, row.encl))))
+	}
 	row.roomB = ratio(mB, row.encl)
 	row.notes = append(row.notes, fmt.Sprintf(
 		"enclosed areas not matched (IoU < 0.9 and boundary > 200 mm): %d inside a larger traced room, %d split, %d offset, %d in no room",
