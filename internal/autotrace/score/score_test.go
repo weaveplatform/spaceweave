@@ -100,10 +100,13 @@ func TestOpenings(t *testing.T) {
 		wall(3, 3, 3, 3, plan.Opening{A: 1, B: 2, Kind: "door"}), // degenerate: ignored
 	)
 	m := Openings(got, want, 4)
-	if d := m["door"]; d != (OpeningMatch{Matched: 1, Want: 2, Got: 2}) {
+	// Both doors default to hanging from a, so the matched one is hinged
+	// right; neither has a swing to agree on.
+	if d := m["door"]; d != (OpeningMatch{Matched: 1, Want: 2, Got: 2, Located: 1, Hinged: 1}) {
 		t.Errorf("door %+v", d)
 	}
-	if w := m["window"]; w != (OpeningMatch{Want: 1}) {
+	// The window was found, as an opening: located, not matched.
+	if w := m["window"]; w != (OpeningMatch{Want: 1, Located: 1}) {
 		t.Errorf("window %+v", w)
 	}
 	if g := m["opening"]; g != (OpeningMatch{Got: 1}) {
@@ -148,5 +151,68 @@ func TestFixtureAgainstItself(t *testing.T) {
 		if m.Matched != m.Want || m.Want != m.Got {
 			t.Errorf("%s %+v", k, m)
 		}
+	}
+}
+
+// A matched door counts as swung only when it opens to the same side, and as
+// hinged only when it hangs from the same end; double doors have no hinge.
+func TestOpeningSwingAndHinge(t *testing.T) {
+	want := trace(wall(0, 0, 300, 0,
+		plan.Opening{A: 20, B: 50, Kind: "door", Swing: "S", Hinge: "b"},
+		plan.Opening{A: 100, B: 130, Kind: "door", Swing: "N"},
+		plan.Opening{A: 200, B: 260, Kind: "double-door", Swing: "S"},
+	))
+	got := trace(wall(0, 0, 300, 0,
+		plan.Opening{A: 20, B: 50, Kind: "door", Swing: "S", Hinge: "b"},
+		plan.Opening{A: 100, B: 130, Kind: "door", Swing: "S", Hinge: "b"},
+		plan.Opening{A: 200, B: 260, Kind: "double-door", Swing: "S"},
+	))
+	m := Openings(got, want, 4)
+	if d := m["door"]; d != (OpeningMatch{Matched: 2, Want: 2, Got: 2, Located: 2, Swung: 1, Hinged: 1}) {
+		t.Errorf("door %+v", d)
+	}
+	if d := m["double-door"]; d != (OpeningMatch{Matched: 1, Want: 1, Got: 1, Located: 1, Swung: 1}) {
+		t.Errorf("double door %+v", d)
+	}
+}
+
+func box(name string, x0, y0, x1, y1 float64) plan.Room {
+	return plan.Room{Name: name, Polygon: [][2]float64{{x0, y0}, {x1, y0}, {x1, y1}, {x0, y1}}}
+}
+
+func TestRoomAreas(t *testing.T) {
+	want := &plan.Trace{Rooms: []plan.Room{
+		box("Office", 0, 0, 100, 100),   // traced exactly, named
+		box("Store", 100, 0, 200, 100),  // traced a little small, unnamed
+		box("Open A", 0, 100, 100, 200), // merged with Open B by the tracer
+		box("Open B", 100, 100, 200, 200),
+		box("Hall", 200, 0, 300, 200), // split in two by the tracer
+		box("Lost", 400, 0, 500, 100), // missed
+	}}
+	got := &plan.Trace{Rooms: []plan.Room{
+		box("office", 0, 0, 100, 100),
+		box("", 102, 2, 198, 98),
+		box("", 0, 100, 200, 200),
+		box("", 200, 0, 300, 100),
+		box("", 200, 100, 300, 200),
+		box("", 600, 0, 700, 100), // nothing there
+	}}
+	m := RoomAreas(got, want)
+	if m.Want != 6 || m.Got != 6 || m.Exact != 2 || m.Covered != 5 || m.Named != 1 {
+		t.Errorf("match %+v", m)
+	}
+	// Want covers 70 000 px² (the hall is twice the others); got covers
+	// all of it but Lost and a 784 px² sliver of the Store: 59 216.
+	// Got covers 69 216, the room at x = 600 outside every want room.
+	if !near(m.AreaRecall, 59216/70000.0) || !near(m.AreaPrecision, 59216/69216.0) {
+		t.Errorf("area recall %v precision %v", m.AreaRecall, m.AreaPrecision)
+	}
+	if m := RoomAreas(&plan.Trace{}, &plan.Trace{}); m != (AreaMatch{AreaRecall: 1, AreaPrecision: 1}) {
+		t.Errorf("empty %+v", m)
+	}
+	// A degenerate room has no area and matches nothing.
+	flat := &plan.Trace{Rooms: []plan.Room{box("", 0, 0, 100, 0)}}
+	if m := RoomAreas(flat, flat); m.Exact != 0 || m.Covered != 0 {
+		t.Errorf("flat %+v", m)
 	}
 }

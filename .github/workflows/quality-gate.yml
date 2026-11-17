@@ -56,6 +56,12 @@ jobs:
         shell: bash
         run: make test
 
+      # Without -race: the accuracy floors, and the plan.json hashes of the
+      # image fixtures, which must match on every operating system.
+      - name: Tracer accuracy and determinism
+        shell: bash
+        run: make eval
+
       - name: Upload unit coverage
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

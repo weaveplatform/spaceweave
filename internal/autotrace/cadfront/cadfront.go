@@ -14,6 +14,8 @@
 package cadfront
 
 import (
+	"bufio"
+	"bytes"
 	"errors"
 	"fmt"
 	"math"
@@ -22,6 +24,7 @@ import (
 	"strings"
 
 	"github.com/weaveplatform/spaceweave/internal/cad"
+	"github.com/weaveplatform/spaceweave/internal/dwg"
 	"github.com/weaveplatform/spaceweave/internal/dxf"
 	"github.com/weaveplatform/spaceweave/internal/floorgraph"
 	"github.com/weaveplatform/spaceweave/internal/vector"
@@ -67,7 +70,7 @@ func Read(doc *cad.Document, o Options) (floorgraph.Input, error) {
 	return r.in, nil
 }
 
-// ReadFile reads a DXF file. With a zero View it frames the drawing the
+// ReadFile reads a DXF or DWG file. With a zero View it frames the drawing the
 // way the converter does (cad.Draw, then vector.Rasterize with default
 // options) and takes the view, size and scale from that.
 func ReadFile(path string, o Options) (floorgraph.Input, error) {
@@ -76,9 +79,9 @@ func ReadFile(path string, o Options) (floorgraph.Input, error) {
 		return floorgraph.Input{}, fmt.Errorf("open drawing: %w", err)
 	}
 	defer func() { _ = f.Close() }()
-	doc, err := dxf.Read(f)
+	doc, err := readDoc(f)
 	if err != nil {
-		return floorgraph.Input{}, fmt.Errorf("read DXF: %w", err)
+		return floorgraph.Input{}, err
 	}
 	if o.View == (vector.Affine{}) {
 		framed, err := Frame(doc, vector.Options{})
@@ -92,6 +95,26 @@ func ReadFile(path string, o Options) (floorgraph.Input, error) {
 		o.Title = strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
 	}
 	return Read(doc, o)
+}
+
+// readDoc reads a drawing as DWG or DXF by its first bytes, not its name:
+// the worker stores every upload as original.<ext> from the sniffed format,
+// but ReadFile is also handed paths by people.
+func readDoc(f *os.File) (*cad.Document, error) {
+	br := bufio.NewReader(f)
+	head, _ := br.Peek(6) // a short file just fails in the DXF reader
+	if bytes.HasPrefix(head, []byte("AC1")) {
+		doc, err := dwg.Read(br)
+		if err != nil {
+			return nil, fmt.Errorf("read DWG: %w", err)
+		}
+		return doc, nil
+	}
+	doc, err := dxf.Read(br)
+	if err != nil {
+		return nil, fmt.Errorf("read DXF: %w", err)
+	}
+	return doc, nil
 }
 
 // Frame draws and rasterises a document as the converter does and returns
@@ -124,6 +147,12 @@ type leaf struct {
 	used  bool
 	// doorLeaf marks a line found to be a loose door's leaf.
 	doorLeaf bool
+	// curtain marks window-layer ink that runs on too far to be a window
+	// in a wall: curtain walling, read as glass walls.
+	curtain bool
+	// area marks a room outline taken for walls in a drawing that has
+	// none (see areaRooms).
+	area bool
 }
 
 // node is one block reference (one cell of an array).
@@ -157,7 +186,14 @@ type reader struct {
 	// whether its attributes belong to a door or a desk.
 	owners map[*cad.Insert][]*node
 	walls  []wall
-	in     floorgraph.Input
+	// windows are the loose window-layer groups that are windows, not
+	// curtain walling.
+	windows [][]int
+	// areaPlan says the walls are room outlines (see areaRooms).
+	areaPlan bool
+	// desks are an area plan's workplace outlines.
+	desks []outline
+	in    floorgraph.Input
 }
 
 // layerName is the layer an entity's name is judged by: its own, unless
@@ -270,9 +306,14 @@ func (r *reader) points(i int) []point {
 	return out
 }
 
-// scale settles the working unit: the drawing's own when the caller knows
-// the scale, otherwise an estimate from door swings or wall thicknesses.
+// scale settles the working unit: the areas written in the drawing's
+// outlines when they disagree with its units, else the drawing's own when
+// the caller knows the scale, otherwise an estimate from door swings or
+// wall thicknesses.
 func (r *reader) scale() {
+	if r.checkUnits() {
+		return
+	}
 	if r.o.PxPerMetre > 0 {
 		r.unit, r.known = r.px/r.o.PxPerMetre, true
 		p := r.o.PxPerMetre

@@ -91,7 +91,7 @@ type Job struct {
 
 // Drawing is what a drawing said about the image rendered from it.
 type Drawing struct {
-	Format string // "DXF", "SVG"
+	Format string // "DXF", "DWG", "SVG"
 	// PxPerMetre is the image's scale on the building, from the drawing's
 	// units; 0 when they aren't known. Assumed means they were guessed.
 	PxPerMetre float64

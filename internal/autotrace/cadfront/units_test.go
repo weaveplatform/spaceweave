@@ -83,8 +83,8 @@ func TestFurnitureType(t *testing.T) {
 
 func TestPairRules(t *testing.T) {
 	doc := metricDoc(
-		// Three parallel lines: two walls side by side, not one wall with
-		// a line through it.
+		// Three parallel lines: one wall with a line through it (a lining,
+		// a cavity), not two walls side by side with a slit between.
 		ln("A-WALL", 0, 0, 5, 0), ln("A-WALL", 0, 0.15, 5, 0.15), ln("A-WALL", 0, 0.3, 5, 0.3),
 		// A face drawn in pieces, one of them twice, is one face.
 		ln("A-WALL", 10, 0, 12, 0), ln("A-WALL", 10, 0, 12, 0), ln("A-WALL", 12, 0, 14, 0),
@@ -97,8 +97,7 @@ func TestPairRules(t *testing.T) {
 		a, b  point
 		thick float64
 	}{
-		{at(0, 0.075), at(5, 0.075), 15},
-		{at(0, 0.225), at(5, 0.225), 15},
+		{at(0, 0.15), at(5, 0.15), 30},
 		{at(10, 0.1), at(14, 0.1), 20},
 	} {
 		if got, ok := findWall(in, w.a, w.b, 0.01); !ok || math.Abs(got.Thickness-w.thick) > 1e-6 {
@@ -111,8 +110,8 @@ func TestPairRules(t *testing.T) {
 			paired++
 		}
 	}
-	if paired != 3 {
-		t.Errorf("walls %+v, want three pairs", in.Walls)
+	if paired != 2 {
+		t.Errorf("walls %+v, want two pairs", in.Walls)
 	}
 }
 

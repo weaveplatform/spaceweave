@@ -242,7 +242,14 @@ func TestUploadRejections(t *testing.T) {
 		{"dotfile", "image", ".png", ok, 400, "needs a name"},
 		{"not an image", "image", "a.png", []byte("hello"), 422, "doesn't look like a PNG"},
 		{"pdf", "image", "plan.pdf", []byte("%PDF-1.7\n"), 415, "PDF files aren't supported"},
-		{"dwg", "image", "plan.dwg", []byte("AC1032\x00\x00"), 415, "Save it as DXF"},
+		{
+			"dwg 2007",
+			"image",
+			"plan.dwg",
+			[]byte("AC1021\x00\x00"),
+			415,
+			"This DWG is AutoCAD 2007 format, which isn't supported",
+		},
 		{
 			"gif",
 			"image",
@@ -431,20 +438,22 @@ func TestRejectWakesTheWorker(t *testing.T) {
 }
 
 func TestUploadDrawing(t *testing.T) {
-	f := newFixture(t)
-	ct, body := form(
-		t,
-		"image",
-		"Office.dxf",
-		[]byte("  0\nSECTION\n  2\nENTITIES\n  0\nENDSEC\n  0\nEOF\n"),
-	)
-	w := f.post("/api/plans", ct, body)
-	got := decode[uploadReply](t, w)
-	// Accepted on its header alone; whether it draws is the worker's
-	// business, so the upload stays fast.
-	if w.Code != http.StatusCreated || got.Plan.Format != "dxf" ||
-		got.Plan.Upload != "original.dxf" ||
-		got.Plan.Source != "" {
-		t.Fatalf("%d %s", w.Code, w.Body)
+	for _, c := range []struct{ name, id, head string }{
+		{"Office.dxf", "dxf", "  0\nSECTION\n  2\nENTITIES\n  0\nENDSEC\n  0\nEOF\n"},
+		{"Office.DWG", "dwg", "AC1032\x00\x00\x00\x00\x00\x00"},
+	} {
+		t.Run(c.id, func(t *testing.T) {
+			f := newFixture(t)
+			ct, body := form(t, "image", c.name, []byte(c.head))
+			w := f.post("/api/plans", ct, body)
+			got := decode[uploadReply](t, w)
+			// Accepted on its header alone; whether it draws is the
+			// worker's business, so the upload stays fast.
+			if w.Code != http.StatusCreated || got.Plan.Format != c.id ||
+				got.Plan.Upload != "original."+c.id ||
+				got.Plan.Source != "" {
+				t.Fatalf("%d %s", w.Code, w.Body)
+			}
+		})
 	}
 }

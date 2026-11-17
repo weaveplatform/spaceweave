@@ -51,8 +51,8 @@ func (s seg) span() (lo, hi float64) { return dot(s.a, s.u), dot(s.b, s.u) }
 func (s seg) tol() float64 { return math.Max(s.t, minTol) }
 
 // column says the segment is a pier or column: no longer than it is thick.
-// Corner closing leaves columns alone, since extending one would turn a
-// free-standing pier into a wall.
+// Corner closing only joins columns to walls they touch, since extending one
+// further would turn a free-standing pier into a wall.
 func (s seg) column() bool { return s.t > 0 && s.length() <= 1.5*s.t }
 
 func cmpSeg(x, y seg) int {
@@ -517,9 +517,6 @@ var sinCorner = math.Sin(10 * math.Pi / 180)
 func closeCorners(segs []seg) []seg {
 	out := slices.Clone(segs)
 	for i, s := range segs {
-		if s.column() {
-			continue
-		}
 		for end := range 2 {
 			e, d := s.a, Point{X: -s.u.X, Y: -s.u.Y}
 			if end == 1 {
@@ -557,6 +554,12 @@ func nearestMeeting(segs []seg, i int, e, d Point) (Point, bool) {
 			continue
 		}
 		tol := 1.5 * max(s.t, o.t, 3)
+		if s.column() {
+			// A pier or column reaches only a wall it already touches: a
+			// short piece of a wall broken at a junction, not a free-standing
+			// pier a thickness away from one.
+			tol = minTol
+		}
 		sHit := cross(sub(o.a, e), o.u) / den
 		if math.Abs(sHit) > tol || math.Abs(sHit) >= bestS {
 			continue

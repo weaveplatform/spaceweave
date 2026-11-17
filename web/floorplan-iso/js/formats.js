@@ -12,15 +12,48 @@ const ascii = (bytes, from = 0, to = bytes.length) => String.fromCharCode(...byt
 const startsWith = (bytes, s) => bytes.length >= s.length && ascii(bytes, 0, s.length) === s;
 const isDigit = (c) => c >= 0x30 && c <= 0x39;
 
+// AutoCAD's "AC10nn" version string, or the older "AC1.40" style: any DWG,
+// whether or not its version is one the tracer reads.
+const isDWG = (b) => b.length >= 6 && startsWith(b, 'AC') && (b[2] === 0x31 || b[2] === 0x32)
+  && (isDigit(b[3]) || b[3] === 0x2e) && isDigit(b[4]) && isDigit(b[5]);
+
+// The AutoCAD release behind each DWG version string, and whether the
+// tracer reads it: convert.dwgReleases, which must agree.
+const DWG_RELEASES = {
+  'AC1.40': ['AutoCAD Release 1.4'],
+  'AC1.50': ['AutoCAD Release 2.05'],
+  'AC2.10': ['AutoCAD Release 2.10'],
+  AC1001: ['AutoCAD Release 2.2'],
+  AC1002: ['AutoCAD Release 2.5'],
+  AC1003: ['AutoCAD Release 2.6'],
+  AC1004: ['AutoCAD Release 9'],
+  AC1006: ['AutoCAD Release 10'],
+  AC1009: ['AutoCAD Release 11/12'],
+  AC1012: ['AutoCAD Release 13'],
+  AC1014: ['AutoCAD Release 14'],
+  AC1015: ['AutoCAD 2000', true],
+  AC1018: ['AutoCAD 2004', true],
+  AC1021: ['AutoCAD 2007'],
+  AC1024: ['AutoCAD 2010', true],
+  AC1027: ['AutoCAD 2013', true],
+  AC1032: ['AutoCAD 2018', true],
+};
+
+// A DWG of a version the tracer reads, or why one of another is refused.
+function sniffDWG(bytes) {
+  const code = ascii(bytes, 0, 6);
+  const [name = `AutoCAD ${code}`, read = false] = DWG_RELEASES[code] ?? [];
+  if (read) return { id: 'dwg' };
+  return { refused: `This DWG is ${name} format, which isn't supported. Save it as DWG 2018 or 2013, or as DXF.` };
+}
+
 // Formats people try that the tracer doesn't read, with what to do instead.
 const OTHER = [
-  ['DWG', 'Save it as DXF from your CAD program.', (b) => b.length >= 6 && startsWith(b, 'AC')
-    && (b[2] === 0x31 || b[2] === 0x32) && (isDigit(b[3]) || b[3] === 0x2e) && isDigit(b[4]) && isDigit(b[5])],
-  ['PDF', 'Export the page as PNG, or the drawing as DXF or SVG.', (b) => {
+  ['PDF', 'Export the page as PNG, or the drawing as DXF, DWG or SVG.', (b) => {
     const i = ascii(b, 0, 1024 + 5).indexOf('%PDF-');
     return i >= 0 && i < 1024;
   }],
-  ['DWF', 'Export the drawing as DXF instead.', (b) => startsWith(b, '(DWF V')],
+  ['DWF', 'Export the drawing as DWG or DXF instead.', (b) => startsWith(b, '(DWF V')],
   ['TIFF', 'Export it as PNG.', (b) => startsWith(b, 'II*\x00') || startsWith(b, 'MM\x00*')],
   ['GIF', 'Export it as PNG.', (b) => startsWith(b, 'GIF8')],
   ['BMP', 'Export it as PNG.', (b) => startsWith(b, 'BM')],
@@ -69,6 +102,7 @@ export function sniff(bytes, formats) {
   else if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) id = 'jpeg';
   else if (bytes.length >= 12 && ascii(bytes, 0, 4) === 'RIFF' && ascii(bytes, 8, 12) === 'WEBP') id = 'webp';
   else if (startsWith(bytes, 'AutoCAD Binary DXF\r\n\x1a\x00') || asciiDXF(bytes)) id = 'dxf';
+  else if (isDWG(bytes)) return sniffDWG(bytes);
   else if (isSVG(bytes)) id = 'svg';
   if (id) return { id };
   for (const [name, advice, match] of OTHER) {
@@ -77,7 +111,7 @@ export function sniff(bytes, formats) {
   return { refused: `This isn't a file spaceweave reads. Use ${names(formats)}.` };
 }
 
-/** "PNG, JPEG, WebP, DXF or SVG" */
+/** "PNG, JPEG, WebP, DXF, DWG or SVG" */
 export function names(formats) {
   const labels = formats.map((f) => f.label);
   return labels.length < 2 ? labels.join('') : `${labels.slice(0, -1).join(', ')} or ${labels.at(-1)}`;
@@ -110,6 +144,9 @@ export function check(name, bytes, formats) {
     return { ok: false, reason: `${ext} files aren't supported. Use ${names(formats)}.` };
   }
   if (byContent.refused) {
+    // A DWG of a version we don't read: "plan.dwg doesn't look like a DWG
+    // file" would be untrue.
+    if (byName.id === 'dwg' && isDWG(bytes)) return { ok: false, reason: byContent.refused };
     return { ok: false, reason: `${name} doesn't look like ${article(byName.label)} file. ${byContent.refused}` };
   }
   if (byContent.id !== byName.id) {

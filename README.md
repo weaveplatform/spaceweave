@@ -2,18 +2,18 @@
 
 Turns floor-plan images into interactive isometric models. The microsite is in
 [`web/floorplan-iso/`](web/floorplan-iso/README.md). `go run ./cmd/spaceweave serve`
-serves it with a drop zone: upload a plan image, or a DXF or SVG drawing, and
+serves it with a drop zone: upload a plan image, or a DXF, DWG or SVG drawing, and
 it is traced into the site as a draft for you to approve or send back.
 
 Tracing is deterministic and needs no API key: the same file gives the same
 plan every time, and nothing leaves the machine. `internal/autotrace` reads a
-DXF's entities (wall layers, door blocks, room text, exact units) and an
+DXF's or DWG's entities (wall layers, door blocks, room text, exact units) and an
 image's pixels (wall bands, openings, door arcs), and `internal/floorgraph`
 joins the walls into a graph and finds the rooms. Set `tracer: claude` to have
 a Claude agent trace instead.
 
 Drawings are rendered in Go by `internal/convert` (with `internal/dxf`,
-`internal/svgdraw`, `internal/cad` and `internal/vector`). No external
+`internal/dwg`, `internal/svgdraw`, `internal/cad` and `internal/vector`). No external
 converter is used. [`NOTICE`](NOTICE) lists the third-party material that
 ships in the binary, and what was consulted while writing the readers.
 

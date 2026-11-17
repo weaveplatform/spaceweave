@@ -42,7 +42,31 @@ type Options struct {
 	// JPEG round-trips the image through JPEG at this quality (1–100) for
 	// the ringing a scanned or downloaded plan has; 0 skips it.
 	JPEG int
+	// WallScale multiplies every wall's thickness, for the thinner and
+	// bolder pens drawings use; 1 when 0.
+	WallScale float64
+	// Walls is how wall bodies are drawn.
+	Walls WallStyle
 }
+
+// WallStyle is how a drawing inks its walls.
+type WallStyle uint8
+
+// Wall styles. Architects' drawings mostly outline walls, often with a
+// hatch or a fill (poché) between the lines; presentation plans fill them.
+const (
+	// Solid fills each wall black.
+	Solid WallStyle = iota
+	// Outline draws only the edge of the walls' union: two hairlines a
+	// wall's thickness apart, closed across its ends at every opening.
+	Outline
+	// Hatch outlines the walls and fills them with 45° hairlines
+	// HatchPitch px apart.
+	Hatch
+)
+
+// HatchPitch is the spacing of Hatch's lines, px.
+const HatchPitch = 6
 
 // LineWidth is the width of every thin line (door leaves, arcs, glazing,
 // furniture), px. Plans draw these as hairlines; one pixel is the thinnest
@@ -55,6 +79,7 @@ func Render(t *plan.Trace, o Options) *image.Gray {
 	for _, w := range t.Walls {
 		r.wall(w)
 	}
+	r.styleWalls()
 	if o.Furniture {
 		for _, it := range t.Furniture {
 			r.item(it)
@@ -71,10 +96,12 @@ func Render(t *plan.Trace, o Options) *image.Gray {
 type pt = vector.Point
 
 type renderer struct {
-	o    Options
-	t    *plan.Trace
-	ppm  [2]float64
-	mask *image.Alpha
+	o   Options
+	t   *plan.Trace
+	ppm [2]float64
+	// mask is the ink; walls holds the wall bodies until styleWalls inks
+	// them, so an outline follows the walls' union rather than each wall.
+	mask, walls *image.Alpha
 }
 
 func newRenderer(t *plan.Trace, o Options) *renderer {
@@ -83,6 +110,9 @@ func newRenderer(t *plan.Trace, o Options) *renderer {
 	}
 	if o.TextHeight <= 0 {
 		o.TextHeight = 0.22
+	}
+	if o.WallScale <= 0 {
+		o.WallScale = 1
 	}
 	ppm := t.Calibration.PxPerMetre
 	for i := range ppm {
@@ -96,7 +126,8 @@ func newRenderer(t *plan.Trace, o Options) *renderer {
 	if size.X <= 0 || size.Y <= 0 {
 		size = extent(t, o.Margin)
 	}
-	return &renderer{o: o, t: t, ppm: ppm, mask: image.NewAlpha(image.Rect(0, 0, size.X, size.Y))}
+	rect := image.Rect(0, 0, size.X, size.Y)
+	return &renderer{o: o, t: t, ppm: ppm, mask: image.NewAlpha(rect), walls: image.NewAlpha(rect)}
 }
 
 // extent is the smallest image from the origin that holds every wall and
@@ -123,17 +154,16 @@ func extent(t *plan.Trace, margin int) image.Point {
 func (r *renderer) px(m pt) pt { return pt{X: m.X * r.ppm[0], Y: m.Y * r.ppm[1]} }
 
 func (r *renderer) thickness(w plan.Wall) float64 {
-	if w.Thickness > 0 {
-		return w.Thickness
+	th := r.t.Thickness.Interior
+	switch {
+	case w.Thickness > 0:
+		th = w.Thickness
+	case w.Kind == "exterior":
+		th = r.t.Thickness.Exterior
+	case w.Kind == "glass":
+		th = r.t.Thickness.Glass
 	}
-	switch w.Kind {
-	case "exterior":
-		return r.t.Thickness.Exterior
-	case "glass":
-		return r.t.Thickness.Glass
-	default:
-		return r.t.Thickness.Interior
-	}
+	return th * r.o.WallScale
 }
 
 // frame is a wall's geometry in metres: the start in pixels, the unit
@@ -205,7 +235,32 @@ func (r *renderer) band(f frame, s0, s1, th float64) {
 		return
 	}
 	h := th / 2
-	r.fill([][]pt{{f.at(s0, -h), f.at(s1, -h), f.at(s1, h), f.at(s0, h)}}, true)
+	r.fillInto(r.walls, [][]pt{{f.at(s0, -h), f.at(s1, -h), f.at(s1, h), f.at(s0, h)}}, true)
+}
+
+// styleWalls inks the wall bodies in the chosen style. An outline pixel is
+// a wall pixel with paper beside it, so walls that meet share one outline
+// and an opening's jambs are closed across.
+func (r *renderer) styleWalls() {
+	b := r.walls.Rect
+	on := func(x, y int) bool {
+		return image.Pt(x, y).In(b) && r.walls.Pix[r.walls.PixOffset(x, y)] >= 128
+	}
+	for y := b.Min.Y; y < b.Max.Y; y++ {
+		for x := b.Min.X; x < b.Max.X; x++ {
+			i := r.walls.PixOffset(x, y)
+			a := r.walls.Pix[i]
+			if r.o.Walls != Solid {
+				edge := on(x, y) && (!on(x-1, y) || !on(x+1, y) || !on(x, y-1) || !on(x, y+1))
+				hatch := r.o.Walls == Hatch && on(x, y) && (x+y)%HatchPitch < 2
+				a = 0
+				if edge || hatch {
+					a = 255
+				}
+			}
+			r.mask.Pix[i] = max(r.mask.Pix[i], a)
+		}
+	}
 }
 
 var swings = map[string]pt{"N": {Y: -1}, "S": {Y: 1}, "E": {X: 1}, "W": {X: -1}}
@@ -367,7 +422,9 @@ func (r *renderer) stroke(pts []pt) {
 // coverage, so overlapping shapes wound opposite ways would cancel to
 // white; orient makes every ring wind the same way. Glyphs skip it because
 // their holes rely on the opposite winding.
-func (r *renderer) fill(rings [][]pt, orient bool) {
+func (r *renderer) fill(rings [][]pt, orient bool) { r.fillInto(r.mask, rings, orient) }
+
+func (r *renderer) fillInto(dst *image.Alpha, rings [][]pt, orient bool) {
 	bb := image.Rectangle{}
 	first := true
 	for _, ring := range rings {
@@ -385,7 +442,7 @@ func (r *renderer) fill(rings [][]pt, orient bool) {
 			}
 		}
 	}
-	bb = bb.Intersect(r.mask.Rect)
+	bb = bb.Intersect(dst.Rect)
 	if bb.Empty() {
 		return
 	}
@@ -405,7 +462,7 @@ func (r *renderer) fill(rings [][]pt, orient bool) {
 		}
 		z.ClosePath()
 	}
-	z.Draw(r.mask, bb, image.Opaque, image.Point{})
+	z.Draw(dst, bb, image.Opaque, image.Point{})
 }
 
 // glyphs fills a text outline, curves and all, in one pass so the counters

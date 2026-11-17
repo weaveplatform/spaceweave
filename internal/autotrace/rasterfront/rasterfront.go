@@ -107,10 +107,20 @@ type reader struct {
 func (r *reader) read(in *floorgraph.Input) {
 	dt := sqDist(r.w, r.h, invert(r.ink.px), true)
 	bd, ok := wallBand(r.w, r.h, r.ink.px, dt)
+	solid := 0
+	if ok {
+		solid = bd.weight
+	}
+	if filled, n := fillWalls(r.w, r.h, r.ink.px, solid); n > 0 {
+		r.ink.px, r.inked = filled, r.inked+n
+		dt = sqDist(r.w, r.h, invert(r.ink.px), true)
+		bd, ok = wallBand(r.w, r.h, r.ink.px, dt)
+		in.Notes = append(in.Notes, "walls drawn as outlines or hatching were filled to read them")
+	}
 	if !ok {
 		in.Notes = append(
 			in.Notes,
-			"no walls found: the plan has no long strokes thicker than a hairline; walls drawn as two thin lines aren't read yet",
+			"no walls found: the plan has no long strokes thicker than a hairline, and no outlined walls",
 		)
 		r.wall = mask{w: r.w, h: r.h, px: make([]bool, r.w*r.h)}
 		in.Coverage = r.coverage(nil, 0)
@@ -118,6 +128,49 @@ func (r *reader) read(in *floorgraph.Input) {
 	}
 	r.wall = mask{w: r.w, h: r.h, px: open(r.w, r.h, dt, bd.lo)}
 	thinnest := 2*bd.lo - 1
+	kept := r.bands(thinnest)
+	tRef := refThickness(kept)
+	kept = dropThin(kept, tRef)
+	lim := r.limits(in.Scale, tRef)
+	hair := r.hairlines(thinnest, tRef, kept, max(lim[0].maxGap, lim[1].maxGap))
+	kept = append(kept, hair...)
+	var ops []floorgraph.Opening
+	in.Walls = segments(kept, thinnest)
+	for _, l := range lines(kept) {
+		o, stubs := r.openings(l, lim[l.ax])
+		ops = append(ops, o...)
+		in.Walls = append(in.Walls, stubs...)
+	}
+	slant, slantOps, dirs := r.slanted(thinnest, tRef, lim)
+	in.Walls = append(in.Walls, slant...)
+	ops = append(ops, slantOps...)
+	in.Openings = ops
+	in.Coverage = r.coverage(ops, thinnest)
+	how := "axis-aligned"
+	if dirs > 0 {
+		how = "axis-aligned and " + count(dirs, "slanted direction", "slanted directions")
+	}
+	in.Notes = append(in.Notes, fmt.Sprintf(
+		"walls read as bands %d–%d px thick, %s; curved walls aren't read yet",
+		thinnest, 2*bd.hi, how))
+}
+
+func count(n int, one, many string) string {
+	if n == 1 {
+		return "1 " + one
+	}
+	return fmt.Sprintf("%d %s", n, many)
+}
+
+// minSolid is the least share of its rectangle a band must fill. A wall
+// along the axis fills it but for a ragged pixel at its ends; a slanted
+// wall's band is a parallelogram in a rectangle, which the slanted pass
+// reads instead.
+const minSolid = 0.8
+
+// bands finds the wall pieces on both axes of the wall mask, keeping them
+// all in r.pieces, and returns those long enough to report.
+func (r *reader) bands(thinnest int) []piece {
 	var ps []piece
 	for _, ax := range [2]axis{horizontal, vertical} {
 		ps = append(ps, r.wall.pieces(ax, thinnest)...)
@@ -128,27 +181,25 @@ func (r *reader) read(in *floorgraph.Input) {
 	// serve as jambs for the openings either side. Pieces thinner than the
 	// thinnest wall are slivers: a hairline lying along a wall face thickens
 	// the mask there by a line, which stacks as a band of its own.
-	ps = slices.DeleteFunc(ps, func(p piece) bool { return p.thick() < thinnest })
+	ps = slices.DeleteFunc(ps, func(p piece) bool {
+		return p.thick() < thinnest || p.solid < minSolid
+	})
 	r.pieces = ps
 	kept := slices.DeleteFunc(
 		slices.Clone(ps),
 		func(p piece) bool { return p.length() < 2*thinnest },
 	)
-	kept = unslice(kept)
-	tRef := refThickness(kept)
-	lim := r.limits(in.Scale, tRef)
-	var ops []floorgraph.Opening
-	in.Walls = segments(kept, thinnest)
-	for _, l := range lines(kept) {
-		o, stubs := r.openings(l, lim[l.ax])
-		ops = append(ops, o...)
-		in.Walls = append(in.Walls, stubs...)
-	}
-	in.Openings = ops
-	in.Coverage = r.coverage(ops, thinnest)
-	in.Notes = append(in.Notes, fmt.Sprintf(
-		"walls read as axis-aligned bands %d–%d px thick; slanted and curved walls aren't read yet",
-		thinnest, 2*bd.hi))
+	return unslice(kept)
+}
+
+// dropThin drops pieces under half the ordinary partition's thickness
+// unless they are long: a glazed screen or a thin partition is a wall,
+// while short ones are the strokes of lettering big enough to pass the
+// width cut, which on a high-resolution sheet is as thick as glazing.
+func dropThin(ps []piece, tRef int) []piece {
+	return slices.DeleteFunc(ps, func(p piece) bool {
+		return 2*p.thick() <= tRef && p.length() < 6*tRef
+	})
 }
 
 // unslice drops pieces that lie mostly inside a bigger perpendicular one.

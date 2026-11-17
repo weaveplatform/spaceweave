@@ -18,10 +18,26 @@ const (
 
 // Sizes the estimate assumes, metres: a door leaf, a plain doorway, an
 // interior partition, and the span of a building with nothing else to go on.
+// Single leaves run 0.76–0.93 m (2'6"–3'0" in the US, 762–926 mm doorsets
+// in the UK), most of them 0.82–0.9 m; 0.86 m is the middle of those, and
+// with a dozen doors the median of what is drawn sits within a few per
+// cent of it. 0.9 m, the top of the range, read every plan a few per cent
+// small.
 const (
-	leafM      = 0.9
+	leafM      = 0.86
 	partitionM = 0.15
 	guessSpanM = 20.0
+)
+
+// Anisotropy: an image squashed on one axis shows it in its doors, which
+// read wider along one axis than the other. Each axis needs minAxisDoors
+// doors of its own (doors in one plan run 0.75–1 m, so a handful on each
+// axis can differ by a fifth), and the two medians must differ by more than
+// minSquash, or door-to-door variation (a few per cent between two small
+// samples) would pass for a squash.
+const (
+	minAxisDoors = 8
+	minSquash    = 0.06
 )
 
 type scaleInfo struct {
@@ -67,27 +83,54 @@ func estimateScale(
 		return info
 	}
 	var doors, gaps []float64
+	var byAxis [2][]float64
 	for _, o := range ops {
 		w := dist(o.A, o.B)
 		switch o.Kind {
 		case Door:
-			doors = append(doors, w)
 		case DoubleDoor:
-			doors = append(doors, w/2)
+			w /= 2
 		case Gap:
 			gaps = append(gaps, w)
+			continue
+		default:
+			continue
+		}
+		doors = append(doors, w)
+		d := sub(o.B, o.A)
+		// Only doors on axis-aligned walls measure one axis alone.
+		switch {
+		case math.Abs(d.Y) <= 0.02*math.Abs(d.X):
+			byAxis[0] = append(byAxis[0], w)
+		case math.Abs(d.X) <= 0.02*math.Abs(d.Y):
+			byAxis[1] = append(byAxis[1], w)
 		}
 	}
 	uniform := func(pxPerM float64, source int, evidence string) scaleInfo {
 		v := math.Round(pxPerM*1000) / 1000
 		return scaleInfo{sx: v, sy: v, source: source, evidence: evidence}
 	}
+	if len(byAxis[0]) >= minAxisDoors && len(byAxis[1]) >= minAxisDoors {
+		mx, my := median(byAxis[0]), median(byAxis[1])
+		if math.Abs(mx/my-1) > minSquash {
+			return scaleInfo{
+				sx:     math.Round(mx/leafM*1000) / 1000,
+				sy:     math.Round(my/leafM*1000) / 1000,
+				source: scaleDoors,
+				evidence: fmt.Sprintf(
+					"assumed from %d door widths across and %d down (%.2f m per leaf); "+
+						"they differ by %.0f%%, so the image is taken as squashed",
+					len(byAxis[0]), len(byAxis[1]), leafM, 100*math.Abs(mx/my-1),
+				),
+			}
+		}
+	}
 	if len(doors) > 0 {
 		return uniform(
 			median(doors)/leafM,
 			scaleDoors,
 			fmt.Sprintf(
-				"assumed from %s (%.1f m per leaf)",
+				"assumed from %s (%.2f m per leaf)",
 				count(len(doors), "door width", "door widths"),
 				leafM,
 			),
@@ -111,7 +154,7 @@ func estimateScale(
 			median(band)/leafM,
 			scaleGaps,
 			fmt.Sprintf(
-				"assumed from %s (%.1f m each)",
+				"assumed from %s (%.2f m each)",
 				count(len(band), "doorway width", "doorway widths"),
 				leafM,
 			),

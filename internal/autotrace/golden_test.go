@@ -6,14 +6,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"flag"
-	"fmt"
-	"maps"
 	"os"
-	"slices"
-	"strings"
 	"testing"
 
-	"github.com/weaveplatform/spaceweave/internal/autotrace/score"
 	"github.com/weaveplatform/spaceweave/internal/dxf/dxftest"
 	"github.com/weaveplatform/spaceweave/internal/trace"
 )
@@ -29,15 +24,21 @@ const goldenFile = "testdata/golden.json"
 // same plan" is only true per machine.
 func golden(t *testing.T) map[string]trace.Job {
 	t.Helper()
-	office, _ := imageJob(t, "office")
-	corporate, _ := imageJob(t, "corporate")
-	return map[string]trace.Job{
+	jobs := map[string]trace.Job{
 		"office.dxf":      drawingJob(t, dxftest.Office(4).Bytes()),
 		"office-unitless": drawingJob(t, dxftest.Office(-1).Bytes()),
 		"plan.dxf":        drawingJob(t, dxftest.Plan().Bytes()),
-		"office.png":      office,
-		"corporate.png":   corporate,
 	}
+	// The images take over a minute under the race detector, which with
+	// coverage pushes the package past go test's ten-minute limit. The
+	// drawings still take every path through floorgraph there, and `make
+	// eval` (run on every CI operating system, without -race) checks the
+	// image hashes.
+	if !raceDetector {
+		jobs["office.png"], _ = imageJob(t, "office")
+		jobs["corporate.png"], _ = imageJob(t, "corporate")
+	}
+	return jobs
 }
 
 func TestGoldenHashes(t *testing.T) {
@@ -51,6 +52,9 @@ func TestGoldenHashes(t *testing.T) {
 		got[name] = hex.EncodeToString(sum[:])
 	}
 	if *update {
+		if raceDetector {
+			t.Fatal("-update would drop the image hashes under -race; run it without")
+		}
 		b, _ := json.MarshalIndent(got, "", "  ")
 		if err := os.WriteFile(goldenFile, append(b, '\n'), 0o600); err != nil {
 			t.Fatal(err)
@@ -72,33 +76,4 @@ func TestGoldenHashes(t *testing.T) {
 				name, sum[:12], want[name][:min(12, len(want[name]))])
 		}
 	}
-}
-
-// TestAccuracy scores the image tracer against the hand traces the test
-// images were drawn from, and logs the table `make eval` prints. The floors
-// are what this version reaches, so a change that loses accuracy fails.
-func TestAccuracy(t *testing.T) {
-	floors := map[string]float64{"office": 0.95, "corporate": 0.75}
-	var rows []string
-	for _, name := range slices.Sorted(maps.Keys(floors)) {
-		job, want := imageJob(t, name)
-		res, err := Run(context.Background(), trace.Options{Validator: verdict{}}, job)
-		if err != nil {
-			t.Fatalf("%s: %v", name, err)
-		}
-		recall, precision := score.Walls(res.Trace, want, 3)
-		var opened, wantOpen int
-		for _, m := range score.Openings(res.Trace, want, 8) {
-			opened += m.Matched
-			wantOpen += m.Want
-		}
-		scale := res.Trace.Calibration.PxPerMetre[0]/want.Calibration.PxPerMetre[0] - 1
-		rows = append(rows, fmt.Sprintf("%-10s walls %.2f/%.2f  rooms %d/%d  openings %d/%d  scale %+.0f%%  confidence %.2f",
-			name, recall, precision, len(res.Trace.Rooms), len(want.Rooms), opened, wantOpen, scale*100, res.Confidence))
-		if recall < floors[name] {
-			t.Errorf("%s: wall recall %.3f fell below %.2f", name, recall, floors[name])
-		}
-	}
-	t.Logf("synthetic renders of the hand traces (walls recall/precision within 3 px):\n%s",
-		strings.Join(rows, "\n"))
 }

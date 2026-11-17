@@ -32,10 +32,10 @@ for (const c of cases.check) {
 }
 
 test('names and accept come from the list', () => {
-  assert.equal(names(formats), 'PNG, JPEG, WebP, DXF or SVG');
+  assert.equal(names(formats), 'PNG, JPEG, WebP, DXF, DWG or SVG');
   assert.equal(names(formats.slice(0, 1)), 'PNG');
   const accept = acceptAttr(formats).split(',');
-  for (const want of ['.png', '.jpeg', '.dxf', '.svg', 'image/svg+xml']) assert.ok(accept.includes(want), want);
+  for (const want of ['.png', '.jpeg', '.dxf', '.dwg', '.svg', 'image/svg+xml', 'image/vnd.dwg']) assert.ok(accept.includes(want), want);
 });
 
 test('a drag is refused only when every type is known and not ours', () => {
@@ -50,6 +50,7 @@ test('pasted files get a name with the right extension', () => {
   assert.equal(pastedName({ name: 'image.png', type: 'image/png' }, formats), 'Pasted plan.png');
   assert.equal(pastedName({ name: '', type: 'image/jpeg' }, formats), 'Pasted plan.jpg');
   assert.equal(pastedName({ name: 'office.dxf', type: '' }, formats), 'office.dxf');
+  assert.equal(pastedName({ name: '', type: 'image/vnd.dwg' }, formats), 'Pasted plan.dwg');
   assert.equal(pastedName({ name: '', type: 'application/pdf' }, formats), 'Pasted file');
 });
 
