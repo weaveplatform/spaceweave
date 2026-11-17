@@ -209,27 +209,29 @@ func (b *builder) findFaces() {
 // label-grown regions, or graph faces when there are no labels. Inference
 // never displaces a supplied space's identity or kind.
 func (b *builder) rooms() error {
-	if b.outer < 0 {
+	if b.outer < 0 && len(b.in.Spaces) == 0 {
 		return nil
 	}
-	voids := b.voidFaces()
-	labels := slices.Clone(b.in.Labels)
-	slices.SortFunc(labels, func(x, y Label) int {
-		if c := cmpPoint(x.At, y.At); c != 0 {
-			return c
+	if b.outer >= 0 {
+		voids := b.voidFaces()
+		labels := slices.Clone(b.in.Labels)
+		slices.SortFunc(labels, func(x, y Label) int {
+			if c := cmpPoint(x.At, y.At); c != 0 {
+				return c
+			}
+			if c := cmpFloat(x.Height, y.Height); c != 0 {
+				return c
+			}
+			return cmpString(x.Text, y.Text)
+		})
+		labels = slices.DeleteFunc(labels, func(l Label) bool {
+			// A void's own label ("ATRIUM") names no room.
+			return slices.ContainsFunc(b.voids, func(v []Point) bool { return inside(l.At, v) })
+		})
+		if !b.labelSpaces(labels, voids) {
+			b.faceRooms(voids)
+			b.strayLabels = nameRooms(b.rs, labels)
 		}
-		if c := cmpFloat(x.Height, y.Height); c != 0 {
-			return c
-		}
-		return cmpString(x.Text, y.Text)
-	})
-	labels = slices.DeleteFunc(labels, func(l Label) bool {
-		// A void's own label ("ATRIUM") names no room.
-		return slices.ContainsFunc(b.voids, func(v []Point) bool { return inside(l.At, v) })
-	})
-	if !b.labelSpaces(labels, voids) {
-		b.faceRooms(voids)
-		b.strayLabels = nameRooms(b.rs, labels)
 	}
 	if err := b.packageSpaces(); err != nil {
 		return err

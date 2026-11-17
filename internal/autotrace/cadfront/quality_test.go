@@ -86,6 +86,7 @@ func TestQualityTrials(t *testing.T) {
 			}
 			inv, _ := inverse(o.View)
 			truth := readArexTruth(doc)
+			conflicts := score.SpaceConflicts(want)
 			for _, trial := range []struct {
 				name     string
 				mode     floorgraph.SpaceSnap
@@ -123,17 +124,18 @@ func TestQualityTrials(t *testing.T) {
 						t.Errorf("validation: %s", valid)
 					}
 					row := struct {
-						OpeningPlacement floorgraph.OpeningStats `json:"openingPlacement"`
-						Floor            string                  `json:"floor"`
-						Mode             string                  `json:"mode"`
-						Spaces           score.Spaces            `json:"spaces"`
-						WallRecall       float64                 `json:"wallRecall"`
-						WallPrecision    float64                 `json:"wallPrecision"`
-						DoorRecall       float64                 `json:"doorRecall"`
-						DoorPrecision    float64                 `json:"doorPrecision"`
-						Seconds          float64                 `json:"seconds"`
-						Valid            string                  `json:"valid"`
-					}{OpeningPlacement: result.Openings, Floor: floor, Mode: trial.name, Spaces: score.SpaceIdentity(result.Trace, want), Seconds: time.Since(start).Seconds(), Valid: valid}
+						ReferenceConflicts []score.SpaceConflict   `json:"referenceConflicts"`
+						OpeningPlacement   floorgraph.OpeningStats `json:"openingPlacement"`
+						Floor              string                  `json:"floor"`
+						Mode               string                  `json:"mode"`
+						Spaces             score.Spaces            `json:"spaces"`
+						WallRecall         float64                 `json:"wallRecall"`
+						WallPrecision      float64                 `json:"wallPrecision"`
+						DoorRecall         float64                 `json:"doorRecall"`
+						DoorPrecision      float64                 `json:"doorPrecision"`
+						Seconds            float64                 `json:"seconds"`
+						Valid              string                  `json:"valid"`
+					}{ReferenceConflicts: conflicts, OpeningPlacement: result.Openings, Floor: floor, Mode: trial.name, Spaces: score.SpaceIdentity(result.Trace, want), Seconds: time.Since(start).Seconds(), Valid: valid}
 					tw := tracedWalls(result.Trace, inv)
 					row.WallRecall, row.WallPrecision = wallScores(truth.walls, tw)
 					doors := evalRow{}

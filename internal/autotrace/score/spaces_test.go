@@ -1,6 +1,7 @@
 package score
 
 import (
+	"math"
 	"testing"
 
 	"github.com/weaveplatform/spaceweave/internal/plan"
@@ -64,5 +65,34 @@ func TestSpaceIdentityReportsSplitsAndBoundaryError(t *testing.T) {
 	duplicateTruth := &plan.Trace{Rooms: []plan.Room{room(0, 100), room(0, 100)}}
 	if result := SpaceIdentity(want, duplicateTruth); result.Matched != 1 {
 		t.Fatalf("one prediction matched duplicate references: %+v", result)
+	}
+}
+
+func TestSpaceConflicts(t *testing.T) {
+	box := func(x0, y0, x1, y1 float64) plan.Room {
+		return plan.Room{Polygon: [][2]float64{{x0, y0}, {x1, y0}, {x1, y1}, {x0, y1}}}
+	}
+	for _, tc := range []struct {
+		name  string
+		rooms []plan.Room
+		pairs int
+	}{
+		{"empty", nil, 0},
+		{"adjacent", []plan.Room{box(0, 0, 100, 100), box(100, 0, 200, 100)}, 0},
+		{"rounding overlap", []plan.Room{box(0, 0, 100, 100), box(99.5, 0, 200, 100)}, 0},
+		{"subpixel", []plan.Room{box(0, 0, .5, 1), box(0, 0, .5, 1)}, 0},
+		{"empty outline", []plan.Room{{}, box(0, 0, 100, 100)}, 0},
+		{"enclosed", []plan.Room{box(0, 0, 100, 100), box(20, 20, 60, 60)}, 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			conflicts := SpaceConflicts(&plan.Trace{Rooms: tc.rooms})
+			if len(conflicts) != tc.pairs {
+				t.Fatalf("got %v, want %d overlap pairs", conflicts, tc.pairs)
+			}
+			if tc.pairs > 0 && (conflicts[0].First != 0 || conflicts[0].Second != 1 ||
+				math.Abs(conflicts[0].FirstFraction-.16) > 1e-9 || conflicts[0].SecondFraction != 1) {
+				t.Fatalf("incorrect overlap fractions: %+v", conflicts)
+			}
+		})
 	}
 }
