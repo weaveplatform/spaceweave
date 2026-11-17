@@ -140,7 +140,7 @@ func (r *reader) furnish(n *node, leaves []int, nums []point) ([]plan.Item, verd
 			return nil, untypedBlock
 		}
 		v = placedByShape
-		ps = r.guess(&s, sanitaryLayer(n.layer), in, sizes, count)
+		ps = r.guess(&s, n.info.sanitary, in, sizes, count)
 		if ps == nil {
 			return nil, unknownBlock
 		}
@@ -203,7 +203,7 @@ func (r *reader) deskNumbers() []point {
 	var out []point
 	for i := range r.leaves {
 		l := &r.leaves[i]
-		if !deskNumberLayer(l.layer) {
+		if !l.info.desks {
 			continue
 		}
 		lines := cad.TextLines(l.e, l.m)

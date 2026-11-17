@@ -12,6 +12,13 @@ image's pixels (wall bands, openings, door arcs), and `internal/floorgraph`
 joins the walls into a graph and finds the rooms. Set `tracer: claude` to have
 a Claude agent trace instead.
 
+What each layer of a drawing holds comes from layer profiles
+(`internal/autotrace/profile`): built-in ones for Uniclass 2015 codes, AIA/NCS
+names, facilities-management exports and plain words, under a client's own
+`profiles/<name>.yaml` in the output folder (`profile:` in the config). A
+draft's Layers panel shows each layer's role and where it came from; changing
+one saves it in the client profile and traces the plan again.
+
 Drawings are rendered in Go by `internal/convert` (with `internal/dxf`,
 `internal/dwg`, `internal/svgdraw`, `internal/cad` and `internal/vector`). No external
 converter is used. [`NOTICE`](NOTICE) lists the third-party material that

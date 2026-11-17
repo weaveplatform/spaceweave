@@ -31,12 +31,13 @@ import (
 	"github.com/go-chi/chi/v5"
 	_ "golang.org/x/image/webp"
 
+	"github.com/weaveplatform/spaceweave/internal/autotrace/profile"
 	"github.com/weaveplatform/spaceweave/internal/catalog"
 	"github.com/weaveplatform/spaceweave/internal/convert"
 )
 
-// RequestHeader must accompany every POST to the API. It must match
-// js/api.js.
+// RequestHeader must accompany every POST and PUT to the API. It must
+// match js/api.js.
 const RequestHeader = "X-Spaceweave"
 
 // Upload limits. MaxPixels stops a small, highly compressed file from
@@ -59,6 +60,10 @@ type Info struct {
 	MaxUSD         float64          `json:"maxUsd,omitempty"`
 	MaxUploadBytes int64            `json:"maxUploadBytes"`
 	Formats        []convert.Format `json:"formats"`
+	// Profile is the client layer profile drawings are read with, "" for
+	// none yet; Profiles says the server can save one.
+	Profile  string `json:"profile,omitempty"`
+	Profiles bool   `json:"profiles"`
 }
 
 // Server serves the site and the API.
@@ -72,6 +77,9 @@ type Server struct {
 	Wake      func()
 	Log       *slog.Logger
 	MaxUpload int64 // DefaultMaxUpload when 0
+	// Profiles are the client layer profiles the page reads and saves; the
+	// profile routes are off without them.
+	Profiles *profile.Library
 }
 
 // Handler routes requests.
@@ -83,6 +91,10 @@ func (s *Server) Handler() http.Handler {
 		r.Get("/info", s.info)
 		r.Post("/plans", s.upload)
 		r.Post("/plans/{id}/{action}", s.review)
+		if s.Profiles != nil {
+			r.Get("/profiles/{name}", s.getProfile)
+			r.Put("/profiles/{name}", s.putProfile)
+		}
 		r.NotFound(func(w http.ResponseWriter, _ *http.Request) {
 			writeError(w, http.StatusNotFound, "no such API")
 		})
@@ -180,6 +192,16 @@ func (s *Server) info(w http.ResponseWriter, _ *http.Request) {
 	i := s.Info
 	i.MaxUploadBytes = s.maxUpload()
 	i.Formats = convert.Formats
+	if s.Profiles != nil {
+		// Read each time: the first profile saved from the page becomes
+		// the one in use.
+		active, err := s.Profiles.Active()
+		if err != nil {
+			s.internal(w, err)
+			return
+		}
+		i.Profile, i.Profiles = active, true
+	}
 	writeJSON(w, http.StatusOK, i)
 }
 

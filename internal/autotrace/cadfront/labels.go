@@ -12,12 +12,12 @@ import (
 	"github.com/weaveplatform/spaceweave/internal/vector"
 )
 
-// Room outlines: closed polylines on area layers (A-AREA, ROOM, SPACE,
-// A-FLOR-IDEN) would say where rooms are outright, but floorgraph.Input
-// carries no polygons; floorgraph finds rooms from the walls, named by the
-// labels below. Area layers are excluded from walls (notWallWords), so
-// their outlines don't turn into walls meanwhile, except in a drawing with
-// no walls at all, where they are the only evidence (see areaRooms).
+// Room outlines: closed polylines on area layers (A-AREA, ROOM, SPACE)
+// would say where rooms are outright, but floorgraph.Input carries no
+// polygons; floorgraph finds rooms from the walls, named by the labels
+// below. An area layer's lines are never walls, so its outlines don't turn
+// into walls meanwhile, except in a drawing with no walls at all, where
+// they are the only evidence (see areaRooms).
 
 // findLabels reads every piece of text that isn't part of a door, window,
 // piece of furniture or dimension. MTEXT gives its first line, the name in
@@ -25,7 +25,7 @@ import (
 // a room, and how, is labelKind's to say.
 func (r *reader) findLabels() {
 	named := slices.ContainsFunc(r.leaves, func(l leaf) bool {
-		return !r.consumed(&l) && textLayer(l.layer) == textName &&
+		return !r.consumed(&l) && l.info.text == textName &&
 			len(cad.TextLines(l.e, l.m)) > 0
 	})
 	for i := range r.leaves {
@@ -49,10 +49,11 @@ func (r *reader) findLabels() {
 		if _, ok := statedArea(text); ok || r.deskLabel(box.Center()) {
 			continue
 		}
-		kind, ok := labelKind(l.layer, text, named)
+		kind, ok := labelKind(l.info.text, text, named)
 		if !ok {
 			continue
 		}
+		l.labelled = true
 		r.in.Labels = append(r.in.Labels, floorgraph.Label{
 			At: r.toPx(box.Center()), Text: text, Height: lines[0].Height * r.px, Kind: kind,
 		})

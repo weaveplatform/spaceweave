@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/weaveplatform/spaceweave/internal/autotrace/cadfront"
+	"github.com/weaveplatform/spaceweave/internal/autotrace/profile"
 	"github.com/weaveplatform/spaceweave/internal/autotrace/rasterfront"
 	"github.com/weaveplatform/spaceweave/internal/floorgraph"
 	"github.com/weaveplatform/spaceweave/internal/raster"
@@ -42,7 +43,11 @@ func Run(ctx context.Context, opts trace.Options, job trace.Job) (*trace.Result,
 	if job.Image == nil {
 		return res, ErrNoImage
 	}
-	in, err := read(job)
+	in, layers, err := read(job)
+	// The layers go in the report even when the trace fails: a drawing
+	// whose walls are on a layer no profile names fails for want of walls,
+	// and the layers list is where a reviewer says which layer holds them.
+	res.Layers = layers
 	if err != nil {
 		return res, err
 	}
@@ -81,21 +86,26 @@ func Run(ctx context.Context, opts trace.Options, job trace.Job) (*trace.Result,
 // read picks the front end. A drawing is read as entities only when the
 // worker kept the transform onto its image; without it the entities can't
 // be placed on the overlay, and the image is the next best thing.
-func read(job trace.Job) (floorgraph.Input, error) {
+func read(job trace.Job) (floorgraph.Input, []profile.Layer, error) {
 	w, h := job.Image.Size()
 	d := job.Drawing
 	exact := d != nil && d.PxPerMetre > 0 && !d.Assumed
 	ext := strings.ToLower(filepath.Ext(job.Original))
 	if job.View != nil && (ext == ".dxf" || ext == ".dwg") {
-		o := cadfront.Options{View: *job.View, Size: [2]int{w, h}, Title: job.Title}
+		o := cadfront.Options{
+			View:    *job.View,
+			Size:    [2]int{w, h},
+			Title:   job.Title,
+			Profile: job.Profile,
+		}
 		if d != nil {
 			o.PxPerMetre, o.Exact = d.PxPerMetre, exact
 		}
-		in, err := cadfront.ReadFile(job.Original, o)
+		in, layers, err := cadfront.AnalyseFile(job.Original, o)
 		if err != nil {
-			return in, fmt.Errorf("read drawing: %w", err)
+			return in, layers, fmt.Errorf("read drawing: %w", err)
 		}
-		return in, nil
+		return in, layers, nil
 	}
 	var o rasterfront.Options
 	if exact {
@@ -107,10 +117,10 @@ func read(job trace.Job) (floorgraph.Input, error) {
 	}
 	in, err := rasterfront.Read(job.Image, o)
 	if err != nil {
-		return in, fmt.Errorf("read image: %w", err)
+		return in, nil, fmt.Errorf("read image: %w", err)
 	}
 	if in.Title == "" {
 		in.Title = job.Title
 	}
-	return in, nil
+	return in, nil, nil
 }

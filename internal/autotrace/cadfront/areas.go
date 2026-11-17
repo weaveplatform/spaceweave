@@ -206,9 +206,6 @@ func (r *reader) extent() float64 {
 	return math.Max(all.Size().X, all.Size().Y)
 }
 
-// areaWords name layers of room and space outlines.
-var areaWords = []string{"AREA*", "ROOM*", "RM", "SPACE*", "RAUM*", "ZONE*"}
-
 // minRoomArea is the least median area, in square metres, of a layer of
 // room outlines: workplace outlines are desk-sized and smaller.
 const minRoomArea = 2.0
@@ -238,7 +235,7 @@ func (r *reader) areaRooms() bool {
 	byLayer := map[string][]outline{}
 	for _, o := range r.outlines() {
 		l := &r.leaves[o.leaf]
-		if l.owner == nil && matches(tokens(l.layer), areaWords) {
+		if l.owner == nil && l.info.area {
 			byLayer[l.layer] = append(byLayer[l.layer], o)
 		}
 	}

@@ -25,6 +25,7 @@ import (
 	"github.com/anthropics/anthropic-sdk-go/v2/option"
 	"github.com/spf13/cobra"
 
+	"github.com/weaveplatform/spaceweave/internal/autotrace/profile"
 	"github.com/weaveplatform/spaceweave/internal/buildinfo"
 	"github.com/weaveplatform/spaceweave/internal/catalog"
 	"github.com/weaveplatform/spaceweave/internal/config"
@@ -62,6 +63,7 @@ type flags struct {
 	model   string
 	maxUSD  float64
 	workers int
+	profile string
 	verbose bool
 	addr    string
 	site    string
@@ -113,6 +115,12 @@ func New(app App) *cobra.Command {
 	p.StringVar(&f.model, "model", "", "Claude model")
 	p.Float64Var(&f.maxUSD, "max-usd", 0, "spending cap per plan, US dollars")
 	p.IntVar(&f.workers, "workers", 0, "plans traced at once")
+	p.StringVar(
+		&f.profile,
+		"profile",
+		"",
+		"client layer profile to read drawings with (profiles/<name>.yaml in the output folder)",
+	)
 	p.BoolVarP(&f.verbose, "verbose", "v", false, "debug logging")
 
 	root.AddCommand(
@@ -160,6 +168,9 @@ func (f *flags) load(cmd *cobra.Command, app App) (config.Config, error) {
 	}
 	if set("workers") {
 		c.Workers = f.workers
+	}
+	if set("profile") {
+		c.Profile = f.profile
 	}
 	if set("addr") {
 		c.Serve.Addr = f.addr
@@ -218,10 +229,11 @@ func newWorker(
 		v = plan.NodeValidator{Node: c.Node, Script: c.Validator}
 	}
 	w := &worker.Worker{
-		Store:   store,
-		Log:     log,
-		Tracer:  c.Tracer,
-		Options: trace.Options{Validator: v},
+		Store:    store,
+		Log:      log,
+		Tracer:   c.Tracer,
+		Options:  trace.Options{Validator: v},
+		Profiles: profiles(c, store),
 	}
 	if c.Tracer == config.TracerClaude {
 		w.Trace = trace.Run
@@ -231,6 +243,19 @@ func newWorker(
 	}
 	return w, nil
 }
+
+// profiles are the client layer profiles, beside the plans in the output
+// folder. The worker and the server each get one; they share only the
+// folder, so a profile saved from the page reaches the next trace however
+// the two are run.
+func profiles(c config.Config, store *catalog.Store) *profile.Library {
+	return &profile.Library{Dir: filepath.Join(store.Dir, ProfilesDir), Fixed: c.Profile}
+}
+
+// ProfilesDir is the client profiles' folder in the output folder. No
+// plan's folder can clash with it: a plan's name always ends in a dash and
+// six hex digits of its hash.
+const ProfilesDir = "profiles"
 
 // info is what the page is told about the tracer.
 func info(c config.Config) server.Info {
@@ -386,12 +411,13 @@ func serveCmd(app App, f *flags) *cobra.Command {
 				) // a named interface answers to its own address
 			}
 			srv := &server.Server{
-				Site:  s.Site,
-				Store: d.store,
-				Hosts: hosts,
-				Wake:  d.poke,
-				Log:   d.log,
-				Info:  info(d.c),
+				Site:     s.Site,
+				Store:    d.store,
+				Hosts:    hosts,
+				Wake:     d.poke,
+				Log:      d.log,
+				Info:     info(d.c),
+				Profiles: profiles(d.c, d.store),
 			}
 			hs := &http.Server{Handler: srv.Handler(), ReadHeaderTimeout: 10 * time.Second}
 			d.log.Info("serving", "url", "http://"+ln.Addr().String()+"/", "site", s.Site)

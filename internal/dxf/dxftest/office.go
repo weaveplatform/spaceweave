@@ -239,6 +239,29 @@ func Unlayered(units int) *Doc {
 	return d
 }
 
+// Partitioned is Unlayered's two rooms with their layers named: the shell
+// on A-WALL, a door block on A-DOOR, the names on A-ANNO-TEXT, and the
+// 100 mm partition between West and East on the layer given. A drawing
+// that names a wall layer has its walls read from it, so a partition on a
+// layer no profile knows is no wall, and West and East are one room until
+// that layer is given the wall role.
+func Partitioned(units int, partition string) *Doc {
+	door := []Ent{Line("0", 0, 0, 0, 900), Arc("0", 0, 0, 900, 0, 90), Line("0", -50, 0, 950, 0)}
+	d := New(units).Layer("A-WALL", 7, 0).Layer(partition, 7, 0).Layer("A-DOOR", 2, 0).
+		Layer("A-ANNO-TEXT", 7, 0).Block("DOOR900", 0, 0, door...)
+	d.Add(faces("A-WALL", true, 0, -100, 10100, 200)...)
+	d.Add(faces("A-WALL", true, 6000, -100, 10100, 200)...)
+	d.Add(faces("A-WALL", false, 0, -100, 6100, 200)...)
+	d.Add(faces("A-WALL", false, 10000, -100, 6100, 200)...)
+	d.Add(faces(partition, false, 5000, 100, 5900, 100, [2]float64{1000, 1900})...)
+	d.Add(
+		Insert("A-DOOR", "DOOR900", 5000, 1900, -90),
+		Text("A-ANNO-TEXT", 2000, 3000, 250, "West"),
+		Text("A-ANNO-TEXT", 7000, 3000, 250, "East"),
+	)
+	return d
+}
+
 // Grid is an nx × ny grid of 4 m rooms with 200 mm walls in millimetres,
 // each room with a door in its south wall and a name, every wall face
 // broken where another wall crosses it: about 6·nx·ny lines, for timing.

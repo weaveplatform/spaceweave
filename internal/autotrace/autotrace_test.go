@@ -10,9 +10,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
+	"github.com/weaveplatform/spaceweave/internal/autotrace/profile"
 	"github.com/weaveplatform/spaceweave/internal/autotrace/synth"
 	"github.com/weaveplatform/spaceweave/internal/convert"
 	"github.com/weaveplatform/spaceweave/internal/dxf/dxftest"
@@ -134,6 +136,23 @@ func TestDrawingIsReadAsEntities(t *testing.T) {
 	}
 	if res.CostUSD != 0 || res.Turns != 0 {
 		t.Errorf("no model, no cost: %+v", res)
+	}
+	walls := slices.IndexFunc(res.Layers, func(l profile.Layer) bool { return l.Name == "A-WALL" })
+	if walls < 0 || res.Layers[walls].Role != profile.Wall {
+		t.Errorf("the layers are reported: %+v", res.Layers)
+	}
+
+	// The job's profile reaches the reader: a client who says A-WALL
+	// holds nothing gets no walls, and so no trace.
+	none, err := profile.NewSet("acme", &profile.Profile{Rules: []profile.Rule{{Role: profile.Ignore, Layer: "A-WALL"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ignored := job
+	ignored.Profile = none
+	failed, err := Run(context.Background(), opts, ignored)
+	if err == nil || len(failed.Layers) == 0 {
+		t.Errorf("no walls, and still the layers to say why: %v %+v", err, failed.Layers)
 	}
 
 	again, err := Run(context.Background(), opts, job)

@@ -352,6 +352,18 @@ button.primary:hover { filter: brightness(1.08); }
 }
 .reject-form textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
+.layers { margin: 4px 0 12px; font-size: 12px; }
+.layers h3 { margin: 0 0 4px; font-size: 13px; }
+.layers .hint { margin: 0 0 6px; }
+.layer-table { width: 100%; border-collapse: collapse; }
+.layer-table th { text-align: left; font-weight: 600; color: var(--muted); padding: 2px 4px; }
+.layer-table td { padding: 2px 4px; border-top: 1px solid var(--line); vertical-align: middle; }
+.layer-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.layer-table .layer-name { overflow-wrap: anywhere; }
+.layer-table select { font: inherit; max-width: 100%; }
+.layer-table .source { display: block; color: var(--muted); font-size: 11px; }
+.layer-table tr.guessed .source { color: var(--accent); font-weight: 600; }
+
 .dropzone {
   display: grid; justify-items: center; gap: 2px; text-align: center; cursor: pointer;
   padding: 16px 12px; border: 1.5px dashed var(--line); border-radius: 10px;

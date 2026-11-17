@@ -204,7 +204,7 @@ func (r *reader) findDoors() []opening {
 		}
 		leaves := r.subtree(n, nil)
 		lo, hi, weight := minNamedLeaf, maxNamedLeaf, weightNamedDoor
-		if blockRole(n.ins.Block, n.layer) != roleDoor {
+		if blockRole(n.ins.Block, n.info.lines) != roleDoor {
 			lo, hi, weight = minLeaf, maxLeaf, weightSwingBlock
 		}
 		var ss []swing

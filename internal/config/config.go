@@ -22,6 +22,8 @@ import (
 	"time"
 
 	"go.yaml.in/yaml/v3"
+
+	"github.com/weaveplatform/spaceweave/internal/autotrace/profile"
 )
 
 // Config is the worker's configuration.
@@ -44,6 +46,11 @@ type Config struct {
 	// is picked up, so a file still being copied isn't read half-written.
 	Settle time.Duration `yaml:"settle"`
 	Serve  Serve         `yaml:"serve"`
+	// Profile names the client layer profile drawings are read with,
+	// profiles/<name>.yaml in the output folder, over the built-in ones.
+	// Empty lets the page name one the first time a layer's role is
+	// changed there.
+	Profile string `yaml:"profile"`
 }
 
 // Serve configures `spaceweave serve`.
@@ -149,17 +156,19 @@ var Env = map[string]string{
 	"SPACEWEAVE_WORKERS": "workers",
 	"SPACEWEAVE_MAX_USD": "limits.maxUsd",
 	"SPACEWEAVE_ADDR":    "serve.addr",
+	"SPACEWEAVE_PROFILE": "profile",
 }
 
 func (c *Config) applyEnv(getenv func(string) (string, bool)) error {
 	strs := map[string]*string{
-		"SPACEWEAVE_INBOX":  &c.Inbox,
-		"SPACEWEAVE_OUTPUT": &c.Output,
-		"SPACEWEAVE_NODE":   &c.Node,
-		"SPACEWEAVE_MODEL":  &c.Model,
-		"SPACEWEAVE_EFFORT": &c.Effort,
-		"SPACEWEAVE_TRACER": &c.Tracer,
-		"SPACEWEAVE_ADDR":   &c.Serve.Addr,
+		"SPACEWEAVE_INBOX":   &c.Inbox,
+		"SPACEWEAVE_OUTPUT":  &c.Output,
+		"SPACEWEAVE_NODE":    &c.Node,
+		"SPACEWEAVE_MODEL":   &c.Model,
+		"SPACEWEAVE_EFFORT":  &c.Effort,
+		"SPACEWEAVE_TRACER":  &c.Tracer,
+		"SPACEWEAVE_ADDR":    &c.Serve.Addr,
+		"SPACEWEAVE_PROFILE": &c.Profile,
 	}
 	for k, p := range strs {
 		if v, ok := getenv(k); ok {
@@ -212,6 +221,11 @@ func (c Config) Validate() error {
 	}
 	if c.Serve.Addr == "" || c.Serve.Site == "" {
 		bad("serve.addr and serve.site must be set")
+	}
+	if c.Profile != "" {
+		if err := profile.CheckName(c.Profile); err != nil {
+			bad("profile: %v", err)
+		}
 	}
 	if len(problems) > 0 {
 		return fmt.Errorf("%w: %s", ErrInvalid, strings.Join(problems, "\n"))

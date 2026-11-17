@@ -205,7 +205,11 @@ func TestFurnitureWords(t *testing.T) {
 		}
 	}
 	for layer, want := range map[string]bool{
-		"A-Pr_40_20-Sanitary": true, "A-Pr_40_20_Fittings": true, "P-SANI-FIXT": true, "WC": true, "A-Ss_40_15": false, "PR-40": false,
+		"A-Pr_40_20-Sanitary": true, "A-Pr_40_20_Fittings": true, "P-SANI-FIXT": true, "A-Ss_40_15": false, "PR-40": false,
+		// A WC layer isn't a furniture layer, so an unnamed block on it is
+		// never guessed by shape, which is all sanitary changes; a client
+		// profile that wants its blocks read as fittings says sanitary.
+		"WC": false,
 	} {
 		if got := sanitaryLayer(layer); got != want {
 			t.Errorf("sanitaryLayer(%q) = %v, want %v", layer, got, want)
