@@ -75,6 +75,11 @@ type Opening struct {
 	// guessed from the room sizes and a caveat.
 	Leaf   Point
 	Leafed bool
+	// Doorway says the front end found a plain opening to be a doorway (a
+	// door's ink in it, or a door's width between two pieces of a wall):
+	// spaces stop at it as at a door. A wider plain opening without it is
+	// a walkway, and the spaces either side are one.
+	Doorway bool
 	// Weight is how sure the front end is, 0–1.
 	Weight float64
 }

@@ -24,7 +24,7 @@ import (
 // Version identifies the tracer's rules in report.json. Bump it when a
 // change can alter the plan traced from the same file, so a reviewer can
 // tell an old draft from a new one.
-const Version = "5"
+const Version = "6"
 
 // ErrNoImage is returned for a job without an image to trace.
 var ErrNoImage = errors.New("autotrace: no image")

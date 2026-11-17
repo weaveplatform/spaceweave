@@ -55,6 +55,8 @@ type opening struct {
 	hingeA, leafed bool
 	weight         float64
 	rad            float64 // the leaf's width, for pairing single doors into doubles
+	// doorway marks a gap found to be a doorway (see doorways).
+	doorway bool
 }
 
 // swings are the arcs in a leaf: an ARC, or the bulges of a polyline.
@@ -516,7 +518,7 @@ func (r *reader) findOpenings() {
 		}
 		r.in.Openings = append(r.in.Openings, floorgraph.Opening{
 			A: r.toPx(o.a), B: r.toPx(o.b), Kind: o.kind, HingeA: o.hingeA,
-			Leaf: r.toPx(o.leaf), Leafed: o.leafed, Weight: o.weight,
+			Leaf: r.toPx(o.leaf), Leafed: o.leafed, Doorway: o.doorway, Weight: o.weight,
 		})
 	}
 }

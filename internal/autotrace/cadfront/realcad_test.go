@@ -94,6 +94,7 @@ const realcadLegend = `Legend (all lengths in drawing millimetres unless said):
   roomB   share of enclosed areas whose boundary and the best traced room's lie, on average, within 200 mm of each other both ways (forgives face vs centreline)
   roomP   share of traced rooms matching an enclosed area with IoU >= 0.9
   openCov share of open (not enclosed) area covered by traced rooms
+  zones   traced zones (open-plan spaces with no walls of their own); zoneR: share of open areas whose best traced zone has IoU >= 0.5 (200 mm grid); zoneCv: share of open area covered by traced zones
   nameOK  of rooms matched at IoU >= 0.75 that the drawing traced names (AREX: a room-name text inside the area; SPACE: its area number), share whose traced name holds that name or number or is its first line
   scale   traced px/m over the truth (AREX: from millimetres; SPACE: from stated square feet vs polygon areas)
   furn    share of top-level furniture and sanitary inserts with a plan item centred in their box, long side within 30% and depth 40–130% of the box's (a cupboard's box holds its doors' swing), or several items that between them cover it; type checks in the notes
@@ -108,7 +109,8 @@ type evalRow struct {
 	areas, encl                     int
 	roomR, roomR75, roomP, openCov  float64
 	roomB                           float64
-	traced                          int
+	traced, zones                   int
+	zoneR, zoneCov                  float64
 	nameOK                          float64
 	nameN                           int
 	scale                           float64
@@ -120,14 +122,16 @@ type evalRow struct {
 
 func table(rows []evalRow) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "%-10s %6s %6s %6s %6s | %5s %6s %5s %5s %5s %5s | %5s %5s %12s %5s %5s %6s %6s | %6s %7s | %10s %6s |\n",
+	fmt.Fprintf(&b, "%-10s %6s %6s %6s %6s | %5s %6s %5s %5s %5s %5s | %5s %5s %12s %5s %5s %6s %6s | %5s %5s %6s | %6s %7s | %10s %6s |\n",
 		"floor", "read", "build", "wallR", "wallP", "doors", "doorR", "kind", "hinge", "swing", "doorP",
-		"areas", "encl", "roomR(.75)", "roomB", "roomP", "rooms", "openCv", "nameOK", "scale", "furn", "valid")
+		"areas", "encl", "roomR(.75)", "roomB", "roomP", "rooms", "openCv", "zones", "zoneR", "zoneCv",
+		"nameOK", "scale", "furn", "valid")
 	for _, r := range rows {
-		fmt.Fprintf(&b, "%-10s %6.1fs %5.1fs %6s %6s | %5d %6s %5s %5s %5s %5s | %5d %5d %5s (%5s) %5s %5s %6d %6s | %6s %7.4f | %10s %6s |\n",
+		fmt.Fprintf(&b, "%-10s %6.1fs %5.1fs %6s %6s | %5d %6s %5s %5s %5s %5s | %5d %5d %5s (%5s) %5s %5s %6d %6s | %5d %5s %6s | %6s %7.4f | %10s %6s |\n",
 			r.name, r.read.Seconds(), r.build.Seconds(), pc(r.wallR), pc(r.wallP), r.doors, pc(r.doorR),
 			pc(r.kind), pc(r.hinge), pc(r.swing), pc(r.dP), r.areas, r.encl, pc(r.roomR), pc(r.roomR75),
-			pc(r.roomB), pc(r.roomP), r.traced, pc(r.openCov), fmt.Sprintf("%s/%d", pc(r.nameOK), r.nameN), r.scale,
+			pc(r.roomB), pc(r.roomP), r.traced, pc(r.openCov), r.zones, pc(r.zoneR), pc(r.zoneCov),
+			fmt.Sprintf("%s/%d", pc(r.nameOK), r.nameN), r.scale,
 			fmt.Sprintf("%s/%d", pc(r.furn), r.furnN), r.valid)
 		for _, n := range r.notes {
 			fmt.Fprintf(&b, "    %s\n", n)
@@ -882,6 +886,7 @@ type tracedRoom struct {
 	poly []point
 	name string
 	box  vector.Rect
+	zone bool
 }
 
 // gridCount counts the points of a 50 mm grid, aligned to the drawing's
@@ -893,6 +898,23 @@ func gridCount(poly []point, box vector.Rect, keep func(point) bool) int {
 		for x := math.Floor(box.Min.X/50)*50 + 25; x < box.Max.X; x += 50 {
 			p := point{X: x, Y: y}
 			if boxHas(box, p) && insidePoly(poly, p) && (keep == nil || keep(p)) {
+				n++
+			}
+		}
+	}
+	return n
+}
+
+// gridCountStep counts the points of a step mm grid aligned to the
+// drawing's origin that lie in the box, inside poly and inside every one
+// of also.
+func gridCountStep(poly []point, box vector.Rect, step float64, also ...[]point) int {
+	n := 0
+	for y := math.Floor(box.Min.Y/step)*step + step/2; y < box.Max.Y; y += step {
+		for x := math.Floor(box.Min.X/step)*step + step/2; x < box.Max.X; x += step {
+			p := point{X: x, Y: y}
+			if boxHas(box, p) && insidePoly(poly, p) &&
+				!slices.ContainsFunc(also, func(q []point) bool { return !insidePoly(q, p) }) {
 				n++
 			}
 		}
@@ -924,7 +946,7 @@ func boxOverlap(a, b vector.Rect) bool {
 func scoreRooms(row *evalRow, areas []truthArea, tr *plan.Trace, inv vector.Affine, spaceNames bool) {
 	var rooms []tracedRoom
 	for _, r := range tr.Rooms {
-		tr := tracedRoom{name: r.Name}
+		tr := tracedRoom{name: r.Name, zone: r.Kind == plan.KindZone}
 		for _, q := range r.Polygon {
 			p := inv.Apply(point{X: q[0], Y: q[1]})
 			tr.poly = append(tr.poly, p)
@@ -978,7 +1000,15 @@ func scoreRooms(row *evalRow, areas []truthArea, tr *plan.Trace, inv vector.Affi
 	matchedRoom := make([]bool, len(rooms))
 	m90, m75, nameOK, nameN := 0, 0, 0, 0
 	mB, missing, merged, split, offset := 0, 0, 0, 0, 0
-	var openArea, openCovered float64
+	var openArea, openCovered, zoneCovered float64
+	zoneCount := map[int]int{}
+	opens, zoneHit := 0, 0
+	for i, r := range rooms {
+		if r.zone {
+			row.zones++
+			zoneCount[i] = gridCountStep(r.poly, r.box, 200)
+		}
+	}
 	for _, a := range areas {
 		if !a.enclosed {
 			openArea += polyArea2(a.poly)
@@ -988,9 +1018,33 @@ func scoreRooms(row *evalRow, areas []truthArea, tr *plan.Trace, inv vector.Affi
 					if !insidePoly(a.poly, p) {
 						continue
 					}
-					if slices.ContainsFunc(rooms, func(r tracedRoom) bool { return boxHas(r.box, p) && insidePoly(r.poly, p) }) {
+					in := func(r tracedRoom) bool { return boxHas(r.box, p) && insidePoly(r.poly, p) }
+					if slices.ContainsFunc(rooms, in) {
 						openCovered += 200 * 200
 					}
+					if slices.ContainsFunc(rooms, func(r tracedRoom) bool { return r.zone && in(r) }) {
+						zoneCovered += 200 * 200
+					}
+				}
+			}
+			// The zone that best matches the open area, on a coarser grid
+			// than rooms: a zone may be the whole floor.
+			opens++
+			na := gridCountStep(a.poly, a.box, 200)
+			for i, n := range zoneCount {
+				r := rooms[i]
+				if !boxOverlap(r.box, a.box) {
+					continue
+				}
+				lo := point{X: math.Max(a.box.Min.X, r.box.Min.X), Y: math.Max(a.box.Min.Y, r.box.Min.Y)}
+				hi := point{X: math.Min(a.box.Max.X, r.box.Max.X), Y: math.Min(a.box.Max.Y, r.box.Max.Y)}
+				inter := 0
+				if lo.X < hi.X && lo.Y < hi.Y {
+					inter = gridCountStep(a.poly, vector.Rect{}.Extend(lo).Extend(hi), 200, r.poly)
+				}
+				if u := na + n - inter; u > 0 && float64(inter)/float64(u) >= 0.5 {
+					zoneHit++
+					break
 				}
 			}
 			continue
@@ -1066,10 +1120,11 @@ func scoreRooms(row *evalRow, areas []truthArea, tr *plan.Trace, inv vector.Affi
 		}
 	}
 	row.roomP = ratio(n, len(rooms))
-	row.openCov = math.NaN()
+	row.openCov, row.zoneCov = math.NaN(), math.NaN()
 	if openArea > 0 {
-		row.openCov = openCovered / openArea
+		row.openCov, row.zoneCov = openCovered/openArea, zoneCovered/openArea
 	}
+	row.zoneR = ratio(zoneHit, opens)
 	row.nameOK, row.nameN = ratio(nameOK, nameN), nameN
 }
 
