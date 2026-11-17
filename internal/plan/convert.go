@@ -56,6 +56,7 @@ type MWall struct {
 type MRoom struct {
 	ID      string       `json:"id"`
 	Name    string       `json:"name"`
+	Kind    string       `json:"kind,omitempty"`
 	Zone    string       `json:"zone"`
 	Floor   string       `json:"floor"`
 	Polygon [][2]float64 `json:"polygon"`
@@ -160,7 +161,14 @@ func Convert(t *Trace, meta Meta) (*Plan, error) {
 		p.Walls = append(p.Walls, convertWall(s, w))
 	}
 	for _, r := range t.Rooms {
-		m := MRoom{ID: r.ID, Name: r.Name, Zone: r.Zone, Floor: r.Floor, Polygon: s.poly(r.Polygon)}
+		m := MRoom{
+			ID:      r.ID,
+			Name:    r.Name,
+			Kind:    r.Kind,
+			Zone:    r.Zone,
+			Floor:   r.Floor,
+			Polygon: s.poly(r.Polygon),
+		}
 		if r.Label != nil {
 			l := s.pt(*r.Label)
 			m.Label = &l

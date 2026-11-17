@@ -85,6 +85,7 @@ func TestCheckFindsEachMistake(t *testing.T) {
 		{"room repeat", func(t *Trace) { t.Rooms[1].ID = "a" }, "room id a is repeated"},
 		{"room name", func(t *Trace) { t.Rooms[0].Name = "" }, "room a has no name"},
 		{"zone", func(t *Trace) { t.Rooms[0].Zone = "lounge" }, "zone must be one of"},
+		{"kind", func(t *Trace) { t.Rooms[0].Kind = "corridor" }, `room a: kind must be one of [room zone], got "corridor"`},
 		{"floor", func(t *Trace) { t.Rooms[0].Floor = "lava" }, "floor must be one of"},
 		{"polygon", func(t *Trace) { t.Rooms[0].Polygon = t.Rooms[0].Polygon[:2] }, "polygon needs at least 3"},
 		{"patch", func(t *Trace) { t.FloorPatches[0].Floor = "grass" }, "floor patch t"},
@@ -109,6 +110,47 @@ func TestCheckFindsEachMistake(t *testing.T) {
 				t.Fatalf("want %q in %q", c.want, problems)
 			}
 		})
+	}
+}
+
+// A room may say it is a room, or be a zone; saying nothing is a room.
+func TestCheckAcceptsEachKind(t *testing.T) {
+	tr := validTrace()
+	tr.Rooms[0].Kind = KindZone
+	tr.Rooms[1].Kind = KindRoom
+	if problems := Check(tr); len(problems) != 0 {
+		t.Fatal(problems)
+	}
+}
+
+// A zone's edge is dashed in its own colour, the dashes running on round
+// corners, with its name drawn once.
+func TestShapesDrawsAZoneDashed(t *testing.T) {
+	tr := validTrace()
+	tr.Rooms = []Room{{
+		ID: "z", Name: "Open plan", Kind: KindZone, Zone: "work", Floor: "carpet",
+		// 10 × 7 m at 10 px/m, with a repeated corner that has no edge.
+		Polygon: [][2]float64{{0, 0}, {100, 0}, {100, 0}, {100, 70}, {0, 70}},
+	}}
+	tr.Walls, tr.Furniture = nil, nil
+	shapes := Shapes(tr)
+	label := shapes[len(shapes)-1]
+	if label.Text != "Open plan" || len(label.Points) != 0 || label.Color != zoneColour ||
+		label.At != centroid(tr.Rooms[0].Polygon) {
+		t.Fatalf("label %+v", label)
+	}
+	dashes := shapes[:len(shapes)-1]
+	inked := 0.0
+	for _, d := range dashes {
+		if len(d.Points) != 2 || d.Closed || d.Color != zoneColour {
+			t.Fatalf("dash %+v", d)
+		}
+		inked += math.Hypot(d.Points[1][0]-d.Points[0][0], d.Points[1][1]-d.Points[0][1])
+	}
+	// A 340 px perimeter in 7 px cycles of 4 px on: 48 whole cycles and 4 px
+	// of the 49th, which is on. A dash split at a corner counts as two.
+	if math.Abs(inked-(48*4+4)) > 1e-9 || len(dashes) < 49 {
+		t.Fatalf("%d dashes inking %v px", len(dashes), inked)
 	}
 }
 

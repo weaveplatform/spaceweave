@@ -240,3 +240,21 @@ func TestConvertVoids(t *testing.T) {
 		t.Fatalf("voids %v width %v", p.Voids, p.Width)
 	}
 }
+
+// A zone stays a zone in plan.json; a room that doesn't say keeps no kind,
+// so plans traced before zones existed convert byte for byte as they did.
+func TestConvertKinds(t *testing.T) {
+	tr := validTrace()
+	tr.Rooms[1].Kind = KindZone
+	p, err := Convert(tr, Meta{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := json.Marshal(p.Rooms)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Rooms[1].Kind != KindZone || strings.Count(string(b), `"kind"`) != 1 {
+		t.Fatalf("rooms %s", b)
+	}
+}

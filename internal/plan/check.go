@@ -127,6 +127,9 @@ func checkRooms(t *Trace, add report) {
 		if strings.TrimSpace(r.Name) == "" {
 			add("room %s has no name", id)
 		}
+		if r.Kind != "" && !slices.Contains(Kinds, r.Kind) {
+			add("room %s: kind must be one of %v, got %q", id, Kinds, r.Kind)
+		}
 		if !slices.Contains(Zones, r.Zone) {
 			add("room %s: zone must be one of %v, got %q", id, Zones, r.Zone)
 		}

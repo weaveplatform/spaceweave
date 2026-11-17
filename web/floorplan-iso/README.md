@@ -155,7 +155,8 @@ same `plan.json`:
 - **Both** go through the same core: walls are snapped, joined at corners and
   T-junctions, and split into a planar graph; its faces are the rooms; walls
   on the outer face are exterior; rooms are named, zoned and floored from
-  their labels. The result passes the same checks as a hand trace (the site's
+  their labels, and a room of 100 m² or more is published as an open-plan
+  zone unless its name makes it a meeting room. The result passes the same checks as a hand trace (the site's
   validator, `tools/validate.mjs`) before it is published, with a confidence
   computed from the evidence and caveats saying what was guessed.
 
@@ -237,7 +238,9 @@ runs `tools/validate.mjs`.
 - Drag the elevation and wall-height sliders. The default wall height is 1.5 m
   because full-height walls hide most of the furniture from an isometric camera.
 - Use **Cut away near walls** to drop the exterior walls facing the camera, whichever way it points.
-- Hover a room for its zone and area; click it to fly to it. Scroll or drag to zoom and pan.
+- Hover a room for its zone and area; click it to fly to it. Open-plan zones
+  (named areas with no walls of their own) are a lighter tint with a dashed
+  edge and an italic name. Scroll or drag to zoom and pan.
 - Toggle furniture, doors, glazing, room names and people.
 
 ## Styles
@@ -280,7 +283,7 @@ pixel. The Corporate image turned out to be squashed about 13% horizontally, its
 labelled room sizes disagreeing by axis, so `pxPerMetre` may be `[x, y]`.
 
 `tools/overlay.mjs` draws a traced plan back over its source image (walls,
-openings, rooms and furniture footprints, with an optional metre grid), which is
+openings, rooms, zones and furniture footprints, with an optional metre grid), which is
 how tracing errors were found:
 
 ```sh
@@ -288,9 +291,12 @@ node tools/overlay.mjs js/plans/pt-clinic.js ~/plans/clinic.png /tmp/clinic.svg 
 rsvg-convert /tmp/clinic.svg -o /tmp/clinic.png
 ```
 
-`test/plans.test.js` checks the invariants every plan must meet: rooms inside
-the outline, openings on their walls, furniture inside the building, and every
-prism projecting to finite screen points.
+`test/plans.test.js` checks the invariants every plan must meet: rooms and
+zones inside the outline and out of its voids, no two of them sharing floor
+(measured by polygon intersection, allowing a tracing slip of 0.25 m² or 0.5%
+of the smaller), openings on their walls, furniture inside the building, and
+every prism projecting to finite screen points. A room is `kind: 'room'` (the
+default) when walls enclose it, or `kind: 'zone'` for a named open-plan area.
 
 **Depth.** SVG has no depth buffer, so faces must be painted far to near. Sorting
 by a single depth value breaks when a long wall sits beside a small chair. Instead,

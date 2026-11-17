@@ -3,6 +3,8 @@ package floorgraph
 import (
 	"slices"
 	"testing"
+
+	"github.com/weaveplatform/spaceweave/internal/plan"
 )
 
 // curtained is a 20 × 16 m floor with a curtain wall 0.8 m outside its top
@@ -125,6 +127,29 @@ func TestOpenPlanNames(t *testing.T) {
 	if names := roomNames(r); !slices.Contains(names, openPlanName) || !slices.Contains(names, "Room 1") ||
 		!slices.Contains(r.Caveats, "1 large room with no name was called Open plan.") {
 		t.Errorf("rooms %v caveats %v", names, r.Caveats)
+	}
+	// The open plan is a zone, the walled room a room; a large named room
+	// is open plan too.
+	for _, rm := range r.Trace.Rooms {
+		if want := map[string]string{openPlanName: plan.KindZone}[rm.Name]; rm.Kind != want {
+			t.Errorf("%s is kind %q, want %q", rm.Name, rm.Kind, want)
+		}
+	}
+	in.Labels = []Label{{At: P(500, 400), Text: "Workspace", Kind: LabelName}}
+	r = mustBuild(t, in)
+	kindOf := func(name string) string {
+		return r.Trace.Rooms[slices.IndexFunc(r.Trace.Rooms, func(rm plan.Room) bool {
+			return rm.Name == name
+		})].Kind
+	}
+	if k := kindOf("Workspace"); k != plan.KindZone {
+		t.Errorf("Workspace is kind %q", k)
+	}
+	// A meeting room that big is a conference suite, walled.
+	in.Labels[0].Text = "Training Room"
+	r = mustBuild(t, in)
+	if k := kindOf("Training Room"); k != "" {
+		t.Errorf("Training Room is kind %q", k)
 	}
 }
 

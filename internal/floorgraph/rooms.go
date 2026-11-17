@@ -25,6 +25,8 @@ type room struct {
 	name    string
 	label   Point
 	labeled bool
+	// open says the room is open plan, published as a plan.KindZone.
+	open bool
 }
 
 // faceRoom turns a bounded face into a room, or reports it too small or
@@ -131,9 +133,10 @@ func betterLabel(x, y Label, xt, yt string) bool {
 	return xt < yt
 }
 
-// An unnamed room this big, m², is open plan, not a numbered room: a
-// meeting room or office is smaller, and a floor's unwalled workspace is
-// what's left between its rooms and cores.
+// A room this big, m², is open plan, not a numbered room: a meeting room or
+// office is smaller, and a floor's unwalled workspace is what's left between
+// its rooms and cores. Named or not, it is published as a zone, unless its
+// name makes it a meeting room.
 const openPlanArea = 100.0
 
 // openPlanName is what an unnamed open-plan room is called.
