@@ -46,6 +46,8 @@ type Input struct {
 	// Spaces are the outlines of a space plan placed on the drawing (see
 	// space_input.go); empty without one.
 	Spaces []Space
+	// SpaceSnap selects the registered-outline snapping trial; the zero value preserves source geometry.
+	SpaceSnap SpaceSnap
 }
 
 // Segment is a stretch of wall centreline.
@@ -130,8 +132,20 @@ func (s Scale) Known() bool { return s.PxPerMetre[0] > 0 && s.PxPerMetre[1] > 0 
 // Result is the trace and how far to trust it.
 type Result struct {
 	Trace *plan.Trace
+	// Openings records placement losses separately from front-end detection.
+	Openings OpeningStats
 	// Confidence is 0–1, computed from the evidence (see Build).
 	Confidence float64
 	Summary    string
 	Caveats    []string
+}
+
+// OpeningStats accounts for every cleaned opening hypothesis. Placed +
+// Unplaced + Narrow + Overlapped equals Input.
+type OpeningStats struct {
+	Input      int `json:"input"`
+	Placed     int `json:"placed"`
+	Unplaced   int `json:"unplaced"`
+	Narrow     int `json:"narrow"`
+	Overlapped int `json:"overlapped"`
 }

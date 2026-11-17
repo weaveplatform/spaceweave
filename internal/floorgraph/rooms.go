@@ -19,12 +19,14 @@ const (
 
 // room is a face of the wall graph being made into a plan.Room.
 type room struct {
-	poly    []Point
-	areaM   float64
-	c       Point
-	name    string
-	label   Point
-	labeled bool
+	poly     []Point
+	areaM    float64
+	c        Point
+	name     string
+	number   string
+	explicit bool
+	label    Point
+	labeled  bool
 	// open says the room is open plan, published as a plan.KindZone.
 	open bool
 	// seeded says a label was in it (labelSpaces), named from it or not.

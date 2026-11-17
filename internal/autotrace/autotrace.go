@@ -26,7 +26,7 @@ import (
 // Version identifies the tracer's rules in report.json. Bump it when a
 // change can alter the plan traced from the same file, so a reviewer can
 // tell an old draft from a new one.
-const Version = "6"
+const Version = "7"
 
 // ErrNoImage is returned for a job without an image to trace.
 var ErrNoImage = errors.New("autotrace: no image")
@@ -172,7 +172,7 @@ func readSpaces(job trace.Job, in floorgraph.Input) (floorgraph.Input, *trace.Sp
 	if reg.Poor {
 		return in, rep, fmt.Sprintf(
 			"The space plan %s doesn't line up with the drawing: %.0f%% of the corners of its %d outlines lie "+
-				"on a wall once placed, where at least half should. Its spaces were not used, and rooms were "+
+				"on a wall once placed, where at least 70%% should. Its spaces were not used, and rooms were "+
 				"found from the drawing alone; check the two files are the same floor.",
 			rep.File,
 			100*math.Max(reg.Matched, 0),

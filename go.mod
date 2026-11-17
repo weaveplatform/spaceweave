@@ -2,6 +2,8 @@ module github.com/weaveplatform/spaceweave
 
 go 1.27
 
+toolchain go1.27.4
+
 tool (
 	github.com/vladopajic/go-test-coverage/v2
 	golang.org/x/vuln/cmd/govulncheck
@@ -11,6 +13,7 @@ require (
 	github.com/anthropics/anthropic-sdk-go/v2 v2.10.0
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/go-chi/chi/v5 v5.5.0
+	github.com/peterstace/simplefeatures v0.59.0
 	github.com/spf13/cobra v1.10.2
 	go.yaml.in/yaml/v3 v3.0.6
 	golang.org/x/image v0.48.0

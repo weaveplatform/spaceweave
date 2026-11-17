@@ -89,3 +89,9 @@ build:
 gate: vet lint test eval acceptance cover vuln build
 
 .PHONY: help init fmt lint vet test acceptance eval cover vuln build gate
+
+## quality: report-only CAD package and raster extraction trials (private CAD needs SPACEWEAVE_DWG_DIR)
+quality:
+	SPACEWEAVE_QUALITY_TRIALS=1 $(GO) test -count=1 -run 'TestQualityTrials|TestRasterTrials' -v ./internal/autotrace ./internal/autotrace/cadfront
+
+.PHONY: quality

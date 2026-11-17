@@ -44,6 +44,12 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 The Go modules spaceweave depends on carry their own licences; see go.mod.
 
+Polygon overlays use github.com/peterstace/simplefeatures, copyright (c) 2019
+the contributors, under the MIT License. That module includes a JTS port,
+copyright (c) 2016-2024 LocationTech and Contributors, under the Eclipse
+Distribution License 1.0; see its THIRD_PARTY_LICENSES file.
+
+
 -------------------------------------------------------------------------------
 References
 -------------------------------------------------------------------------------

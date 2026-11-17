@@ -56,6 +56,7 @@ type MWall struct {
 type MRoom struct {
 	ID      string       `json:"id"`
 	Name    string       `json:"name"`
+	Number  string       `json:"number,omitempty"`
 	Kind    string       `json:"kind,omitempty"`
 	Zone    string       `json:"zone"`
 	Floor   string       `json:"floor"`
@@ -164,6 +165,7 @@ func Convert(t *Trace, meta Meta) (*Plan, error) {
 		m := MRoom{
 			ID:      r.ID,
 			Name:    r.Name,
+			Number:  r.Number,
 			Kind:    r.Kind,
 			Zone:    r.Zone,
 			Floor:   r.Floor,

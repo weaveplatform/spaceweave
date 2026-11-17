@@ -43,6 +43,8 @@ type Options struct {
 	Scale floorgraph.Scale
 	// MaxPixels is the largest width × height read; DefaultMaxPixels when 0.
 	MaxPixels int
+	// WallFaces enables the paired-face extraction trial.
+	WallFaces bool
 }
 
 // Read finds the evidence in src.
@@ -65,7 +67,7 @@ func Read(src *raster.Source, o Options) (floorgraph.Input, error) {
 			limit,
 		)
 	}
-	r := &reader{w: w, h: h, ink: mask{w: w, h: h, px: make([]bool, w*h)}}
+	r := &reader{w: w, h: h, wallFaces: o.WallFaces, ink: mask{w: w, h: h, px: make([]bool, w*h)}}
 	inked := 0
 	for y := range h {
 		row := src.Gray.Pix[src.Gray.PixOffset(b.Min.X, b.Min.Y+y):]
@@ -96,10 +98,11 @@ func Read(src *raster.Source, o Options) (floorgraph.Input, error) {
 
 // reader holds one image's masks while Read works through it.
 type reader struct {
-	w, h  int
-	ink   mask
-	wall  mask
-	inked int
+	w, h      int
+	wallFaces bool
+	ink       mask
+	wall      mask
+	inked     int
 	// pieces are all the wall bands found, kept or not.
 	pieces []piece
 }
@@ -131,6 +134,9 @@ func (r *reader) read(in *floorgraph.Input) {
 	kept := r.bands(thinnest)
 	tRef := refThickness(kept)
 	kept = dropThin(kept, tRef)
+	if r.wallFaces {
+		kept = append(kept, r.recoverFaces(thinnest, tRef)...)
+	}
 	lim := r.limits(in.Scale, tRef)
 	hair := r.hairlines(thinnest, tRef, kept, max(lim[0].maxGap, lim[1].maxGap))
 	kept = append(kept, hair...)
