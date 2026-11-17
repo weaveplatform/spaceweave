@@ -27,6 +27,8 @@ type room struct {
 	labeled bool
 	// open says the room is open plan, published as a plan.KindZone.
 	open bool
+	// seeded says a label was in it (labelSpaces), named from it or not.
+	seeded bool
 }
 
 // faceRoom turns a bounded face into a room, or reports it too small or

@@ -92,7 +92,7 @@ func (r *reader) doorways(ops []opening) []opening {
 			case s > r.metres(maxPlainDoorway) || !inline:
 				continue
 			}
-			out = append(out, opening{a: e, b: far, kind: kind, weight: weight})
+			out = append(out, opening{a: e, b: far, kind: kind, weight: weight, doorway: true})
 		}
 	}
 	return out

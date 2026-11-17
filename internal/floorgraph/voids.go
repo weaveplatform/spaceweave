@@ -63,7 +63,14 @@ func (b *builder) voidEdges(walls []seg) []seg {
 		pts = append(pts, s.a, s.b)
 	}
 	building := math.Abs(signedArea(hull(pts)))
-	m := newMask(walls, ink, voidCell*pxm, voidSeal*pxm)
+	seal := voidSeal * pxm
+	m := newMask(slices.Concat(walls, ink), voidCell*pxm, seal, maxVoidCells)
+	for _, s := range walls {
+		m.stamp(s.a, s.b, seal+s.t/2)
+	}
+	for _, s := range ink {
+		m.stamp(s.a, s.b, seal)
+	}
 	names := m.nameCells(b.in.Labels, at, voidLabelReach*pxm)
 	var out []seg
 	for _, p := range at {
@@ -111,8 +118,8 @@ func (m *mask) nameCells(labels []Label, at []Point, reach float64) map[int]bool
 	return out
 }
 
-// mask is the grid voids are flooded on: blocked cells are within the seal
-// of a wall or an edge.
+// mask is a grid of cells, blocked within a seal of the lines stamped on
+// it: what voids are flooded on, and spaces grown in.
 type mask struct {
 	cell    float64
 	x0, y0  float64
@@ -120,9 +127,11 @@ type mask struct {
 	blocked []bool
 }
 
-func newMask(walls, ink []seg, cell, seal float64) *mask {
+// newMask is an unblocked grid over the segments with a seal's margin, of
+// cells cell px square or, to keep within maxCells, coarser.
+func newMask(segs []seg, cell, seal float64, maxCells int) *mask {
 	lo, hi := Point{X: math.Inf(1), Y: math.Inf(1)}, Point{X: math.Inf(-1), Y: math.Inf(-1)}
-	for _, s := range slices.Concat(walls, ink) {
+	for _, s := range segs {
 		for _, p := range [2]Point{s.a, s.b} {
 			lo = Point{X: math.Min(lo.X, p.X), Y: math.Min(lo.Y, p.Y)}
 			hi = Point{X: math.Max(hi.X, p.X), Y: math.Max(hi.Y, p.Y)}
@@ -132,16 +141,10 @@ func newMask(walls, ink []seg, cell, seal float64) *mask {
 	// reaches the border.
 	margin := seal + 2*cell
 	lo, hi = Point{X: lo.X - margin, Y: lo.Y - margin}, Point{X: hi.X + margin, Y: hi.Y + margin}
-	cell = math.Max(cell, math.Sqrt((hi.X-lo.X)*(hi.Y-lo.Y)/maxVoidCells))
+	cell = math.Max(cell, math.Sqrt(float64((hi.X-lo.X)*(hi.Y-lo.Y))/float64(maxCells)))
 	m := &mask{cell: cell, x0: lo.X, y0: lo.Y}
 	m.w, m.h = int(math.Ceil((hi.X-lo.X)/cell))+1, int(math.Ceil((hi.Y-lo.Y)/cell))+1
 	m.blocked = make([]bool, m.w*m.h)
-	for _, s := range walls {
-		m.stamp(s.a, s.b, seal+s.t/2)
-	}
-	for _, s := range ink {
-		m.stamp(s.a, s.b, seal)
-	}
 	return m
 }
 
@@ -230,6 +233,15 @@ func (m *mask) grow(in []bool, r float64) {
 // keeps the region on its right in image coordinates (y down), starting
 // along the top of the topmost, then leftmost, cell.
 func (m *mask) outline(in []bool) []Point {
+	start := slices.Index(in, true)
+	return m.walk(in, start%m.w, start/m.w, 0)
+}
+
+// walk follows the boundary of a region of cells from corner (sx, sy),
+// heading d (0 →, 1 ↓, 2 ←, 3 ↑) with the region on its right, until it
+// is back at the corner: outline's walk, from wherever a boundary is
+// known to pass (round a hole, its top edge).
+func (m *mask) walk(in []bool, sx, sy, d int) []Point {
 	cell := func(i, j int) bool { return i >= 0 && j >= 0 && i < m.w && j < m.h && in[j*m.w+i] }
 	steps := [4][2]int{{1, 0}, {0, 1}, {-1, 0}, {0, -1}} // → ↓ ← ↑
 	// sides are the cells to the right and left of the unit step from
@@ -245,12 +257,13 @@ func (m *mask) outline(in []bool) []Point {
 		}
 		return cell(x, y-1), cell(x-1, y-1)
 	}
-	start := slices.Index(in, true)
-	sx, sy := start%m.w, start/m.w
-	x, y, d := sx, sy, 0
+	x, y := sx, sy
 	var ring []Point
 	for len(ring) <= len(in) {
-		ring = append(ring, Point{X: m.x0 + float64(x)*m.cell, Y: m.y0 + float64(y)*m.cell})
+		ring = append(ring, Point{
+			X: m.x0 + float64(float64(x)*m.cell),
+			Y: m.y0 + float64(float64(y)*m.cell),
+		})
 		x, y = x+steps[d][0], y+steps[d][1]
 		// Right turn first: where two of the region's cells touch only at
 		// a corner they are not joined there, and the right turn keeps to

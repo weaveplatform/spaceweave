@@ -112,6 +112,11 @@ type builder struct {
 	strips, openPlan int
 	// outsideWalls were left out for standing outside the outline.
 	outsideWalls int
+	// spaced says the rooms were grown from labels (labelSpaces), not
+	// taken from faces; shared are its caveats for rooms holding several
+	// names.
+	spaced bool
+	shared []string
 }
 
 // graph cleans the walls and openings and builds the planar wall graph.
@@ -191,16 +196,64 @@ func (b *builder) findFaces() {
 	b.sc = estimateScale(b.in.Scale, b.ops, ts, ls, math.Max(hi.X-lo.X, hi.Y-lo.Y))
 }
 
-// rooms makes the outer component's bounded faces into named rooms.
+// rooms finds the rooms and zones: grown from the labels where there are
+// any (labelSpaces), else the outer component's bounded faces, named from
+// the labels in them.
 func (b *builder) rooms() {
 	if b.outer < 0 {
 		return
 	}
+	voids := b.voidFaces()
+	labels := slices.Clone(b.in.Labels)
+	slices.SortFunc(labels, func(x, y Label) int {
+		if c := cmpPoint(x.At, y.At); c != 0 {
+			return c
+		}
+		if c := cmpFloat(x.Height, y.Height); c != 0 {
+			return c
+		}
+		return cmpString(x.Text, y.Text)
+	})
+	labels = slices.DeleteFunc(labels, func(l Label) bool {
+		// A void's own label ("ATRIUM") names no room.
+		return slices.ContainsFunc(b.voids, func(v []Point) bool { return inside(l.At, v) })
+	})
+	if !b.labelSpaces(labels, voids) {
+		b.faceRooms(voids)
+		b.strayLabels = nameRooms(b.rs, labels)
+	}
+	sy := b.sc.sy
+	readingOrder(b.rs, 0.5*sy)
+	for i := range b.rs {
+		r := &b.rs[i]
+		// Unlabelled floor bigger than a store between walls is floor no
+		// room was drawn round: a corridor, a bay of desks.
+		unwalled := b.spaced && !r.seeded && r.areaM >= smallRoomArea
+		switch {
+		case r.name != "":
+		case r.areaM >= openPlanArea || unwalled:
+			r.name = openPlanName
+			b.openPlan++
+		default:
+			b.unnamed++
+			r.name = fmt.Sprintf("Room %d", b.unnamed)
+		}
+		if !r.labeled {
+			r.label = qp(pole(r.poly, 1))
+		}
+		// A meeting or training room this big is still behind walls.
+		zone, _ := classify(r.name)
+		r.open = (r.areaM >= openPlanArea || unwalled) && zone != "meet"
+	}
+}
+
+// faceRooms makes the outer component's bounded faces, less voids and
+// façade strips, into rooms.
+func (b *builder) faceRooms(voids map[int]bool) {
 	g, sx, sy := b.g, b.sc.sx, b.sc.sy
 	comp := g.components(b.alive)
 	main := comp.find(b.fs[b.outer].verts[0])
 	side := faceSides(b.fs, 2*len(g.edges))
-	voids := b.voidFaces()
 	strip := b.facadeStrips(side, voids)
 	for i, f := range b.fs {
 		if f.area <= 0 || voids[i] {
@@ -239,41 +292,6 @@ func (b *builder) rooms() {
 			}
 		}
 		b.rs = kept
-	}
-
-	labels := slices.Clone(b.in.Labels)
-	slices.SortFunc(labels, func(x, y Label) int {
-		if c := cmpPoint(x.At, y.At); c != 0 {
-			return c
-		}
-		if c := cmpFloat(x.Height, y.Height); c != 0 {
-			return c
-		}
-		return cmpString(x.Text, y.Text)
-	})
-	labels = slices.DeleteFunc(labels, func(l Label) bool {
-		// A void's own label ("ATRIUM") names no room.
-		return slices.ContainsFunc(b.voids, func(v []Point) bool { return inside(l.At, v) })
-	})
-	b.strayLabels = nameRooms(b.rs, labels)
-	readingOrder(b.rs, 0.5*sy)
-	for i := range b.rs {
-		r := &b.rs[i]
-		switch {
-		case r.name != "":
-		case r.areaM >= openPlanArea:
-			r.name = openPlanName
-			b.openPlan++
-		default:
-			b.unnamed++
-			r.name = fmt.Sprintf("Room %d", b.unnamed)
-		}
-		if !r.labeled {
-			r.label = qp(pole(r.poly, 1))
-		}
-		// A meeting or training room this big is still behind walls.
-		zone, _ := classify(r.name)
-		r.open = r.areaM >= openPlanArea && zone != "meet"
 	}
 }
 
@@ -416,21 +434,36 @@ func outsideWalls(t *plan.Trace) (walls []int, ok bool) {
 
 // keepOutline makes the trace fit its outline by leaving out the loose
 // walls outside it, and reports whether the outline can stay.
+//
+// Leaving walls out moves the plan's origin to the bounds of those left,
+// and Convert rounds every coordinate afresh to the millimetre: on a sliver
+// of an outline that can move a wall that was inside by a probe's width
+// out. So the test is run again on what is left, until nothing more
+// leaves; a few rounds settle it, and an outline that won't is dropped.
 func (b *builder) keepOutline(t *plan.Trace) bool {
-	out, ok := outsideWalls(t)
-	if !ok {
-		return false
+	walls, left := t.Walls, 0
+	for range 4 {
+		try := *t
+		try.Walls = walls
+		out, ok := outsideWalls(&try)
+		if !ok {
+			return false
+		}
+		if len(out) == 0 {
+			if !slices.ContainsFunc(walls, func(w plan.Wall) bool { return w.Kind == exterior }) {
+				return false
+			}
+			t.Walls = walls
+			b.outsideWalls = left
+			return true
+		}
+		walls = slices.Clone(walls)
+		for _, i := range slices.Backward(out) {
+			walls = slices.Delete(walls, i, i+1)
+		}
+		left += len(out)
 	}
-	walls := slices.Clone(t.Walls)
-	for _, i := range slices.Backward(out) {
-		walls = slices.Delete(walls, i, i+1)
-	}
-	if !slices.ContainsFunc(walls, func(w plan.Wall) bool { return w.Kind == exterior }) {
-		return false
-	}
-	t.Walls = walls
-	b.outsideWalls = len(out)
-	return true
+	return false
 }
 
 // entrance is the middle of the widest exterior door (the one nearest the
@@ -668,6 +701,7 @@ func (b *builder) caveats() []string {
 		"%d narrow strips along the façade were taken as part of the wall, not rooms.")
 	add(b.openPlan, "%d large room with no name was called "+openPlanName+".",
 		"%d large rooms with no name were called "+openPlanName+".")
+	out = append(out, b.shared...)
 	add(b.islands, "%d area enclosed by walls apart from the building was not made a room.",
 		"%d areas enclosed by walls apart from the building were not made rooms.")
 	add(b.overlapRooms, "%d overlapping room was dropped.", "%d overlapping rooms were dropped.")

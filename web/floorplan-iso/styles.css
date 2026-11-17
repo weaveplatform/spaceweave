@@ -355,7 +355,13 @@ button.primary:hover { filter: brightness(1.08); }
 .layers { margin: 4px 0 12px; font-size: 12px; }
 .layers h3 { margin: 0 0 4px; font-size: 13px; }
 .layers .hint { margin: 0 0 6px; }
-.layer-table { width: 100%; border-collapse: collapse; }
+/* Fixed layout: with automatic layout, overflow-wrap: anywhere lets the name
+   column shrink to one character, while the role menu claims the width, so
+   long CAD layer names stacked a letter per line. */
+.layer-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.layer-table th:nth-child(2) { width: 3.5em; }
+.layer-table th:nth-child(3) { width: 44%; }
+.layer-table select { width: 100%; }
 .layer-table th { text-align: left; font-weight: 600; color: var(--muted); padding: 2px 4px; }
 .layer-table td { padding: 2px 4px; border-top: 1px solid var(--line); vertical-align: middle; }
 .layer-table .num { text-align: right; font-variant-numeric: tabular-nums; }

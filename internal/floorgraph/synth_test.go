@@ -336,12 +336,15 @@ func TestCoreBecomesRooms(t *testing.T) {
 	r := mustBuild(t, cored())
 	names := roomNames(r)
 	slices.Sort(names)
-	if !slices.Equal(names, []string{"Lift", "Room 1", "Stair"}) {
+	if !slices.Equal(names, []string{"Lift", openPlanName, "Stair"}) {
 		t.Fatalf("rooms %v", names)
 	}
 	// The open floor goes round the core: its area is the floor's less the
-	// core's.
-	floor := roomNamed(t, r, "Room 1")
+	// core's. Unlabelled and bigger than a store, it is a zone.
+	floor := roomNamed(t, r, openPlanName)
+	if floor.Kind != plan.KindZone {
+		t.Errorf("open floor kind %q", floor.Kind)
+	}
 	poly := make([]Point, len(floor.Polygon))
 	for i, p := range floor.Polygon {
 		poly[i] = pp(p)
