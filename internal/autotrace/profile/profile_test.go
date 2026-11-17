@@ -317,17 +317,23 @@ func TestLibraryErrors(t *testing.T) {
 	if err := l.Put("acme", &Profile{}); err == nil {
 		t.Error("the profiles folder can't be made")
 	}
-	if _, err := l.Active(); err == nil {
+	// Unreadable record and profile: folders stand where the files should be.
+	// Reading through a regular file instead would be "not a directory" on
+	// Unix but "not found" on Windows, which is a missing profile, not an
+	// error.
+	if err := os.Mkdir(filepath.Join(dir, activeFile), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := (&Library{Dir: dir}).Active(); err == nil {
 		t.Error("the record can't be read")
 	}
-	if _, err := l.Get("acme"); err == nil || errors.Is(err, ErrNotFound) {
-		t.Errorf("the profile can't be read: %v", err)
-	}
-	// A folder where the profile should be.
-	l = &Library{Dir: dir, Fixed: "acme"}
 	if err := os.Mkdir(filepath.Join(dir, "acme.yaml"), 0o750); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := (&Library{Dir: dir}).Get("acme"); err == nil || errors.Is(err, ErrNotFound) {
+		t.Errorf("the profile can't be read: %v", err)
+	}
+	l = &Library{Dir: dir, Fixed: "acme"}
 	if err := l.Put("acme", &Profile{}); err == nil {
 		t.Error("the profile can't replace a folder")
 	}
