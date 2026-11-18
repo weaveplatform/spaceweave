@@ -120,9 +120,20 @@
         <input id="wall-height" type="range" min="0.3" max="3" step="0.1">
       </label>
 
+      <h2 id="cutaway-heading">Wall cutaways</h2>
+      <label class="cutaway-toggle"><input type="checkbox" data-toggle="cutaway">Camera cutaways</label>
+      <label class="select-field">
+        <span>Room focus</span>
+        <select id="room-focus" aria-describedby="cutaway-help"><option value="">Whole floor</option></select>
+      </label>
+      <label class="range">
+        <span>Cutaway height <output id="cut-height-out"></output></span>
+        <input id="cut-height" type="range" min="0" max="3" step="0.1" aria-describedby="cutaway-help">
+      </label>
+      <p class="hint" id="cutaway-help">Choose a room here or click its floor to cut walls blocking the camera. Rear walls stay up. At 0 m, cut walls are hidden. Whole floor cuts near exterior walls.</p>
+
       <h2>Show</h2>
       <div class="toggles">
-        <label><input type="checkbox" data-toggle="cutaway">Cut away near walls</label>
         <label><input type="checkbox" data-toggle="furniture">Furniture</label>
         <label><input type="checkbox" data-toggle="doors">Doors</label>
         <label><input type="checkbox" data-toggle="glass">Glazing</label>
@@ -141,7 +152,7 @@
         through an orbiting parallel camera and ordered by separating axis so near things paint over
         far ones. D3 then joins the visible faces to SVG paths and handles zoom, transitions and colour.
       </p>
-      <p class="hint" id="model-help">Hover a room for its area; click to fly to it. Hover a desk to highlight it; click to select. Esc clears selection. Scroll or drag to zoom and pan.</p>
+      <p class="hint" id="model-help">Hover a room for its area; click to focus its cutaway and fly to it. Hover a desk to highlight it; click to select. Esc clears desk selection. Scroll or drag to zoom and pan.</p>
       <p id="stats" class="stats" aria-live="off"></p>
     </aside>
   </main>

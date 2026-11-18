@@ -237,7 +237,12 @@ runs `tools/validate.mjs`.
 - Morph between the **Isometric**, **Bird's-eye** and **Plan** presets, and rotate in 90° steps.
 - Drag the elevation and wall-height sliders. The default wall height is 1.5 m
   because full-height walls hide most of the furniture from an isometric camera.
-- Use **Cut away near walls** to drop the exterior walls facing the camera, whichever way it points.
+- **Wall cutaways** follow the camera. Choose **Room focus** or click a room's
+  floor to lower walls blocking that room, including intervening interior walls.
+  Rear walls keep the main wall height. Set **Cutaway height** to **0 m** to hide
+  the cut walls and their doors completely. **Fit** returns to **Whole floor**,
+  which cuts near-facing exterior walls. Turn **Camera cutaways** off to restore
+  every wall.
 - Hover a room for its zone and area; click it to fly to it. Open-plan zones
   (named areas with no walls of their own) are a lighter tint with a dashed
   edge and an italic name. Scroll or drag to zoom and pan.
