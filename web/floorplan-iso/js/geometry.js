@@ -619,6 +619,10 @@ export function compareFootprints(a, b, view) {
 export function compareItems(a, b, view) {
   const byFootprint = compareFootprints(a, b, view);
   if (byFootprint !== null) return byFootprint;
+  return compareHeights(a, b);
+}
+
+function compareHeights(a, b) {
   // Stacked parts (a seat on its post, a lintel over a door): lower first,
   // because the camera is always above the floor.
   if (a.z0e >= b.z1e - 1e-6) return 1;
@@ -630,16 +634,66 @@ function boxesOverlap(p, q) {
   return p[0] < q[2] && q[0] < p[2] && p[1] < q[3] && q[1] < p[3];
 }
 
+// For each item, later items with overlapping screen boxes, in input order.
+// Sweep across x instead of scanning every pair. Keep the original pair order:
+// it also controls the heap's tie-breaking when equal-depth parts form a cycle.
+export function overlapCandidates(items) {
+  const candidates = Array.from({ length: items.length }, () => []);
+  const byX = items.map((_, i) => i).sort((i, j) => items[i].bbox[0] - items[j].bbox[0] || i - j);
+  for (let k = 0; k < byX.length; k++) {
+    const i = byX[k], box = items[i].bbox;
+    for (let m = k + 1; m < byX.length; m++) {
+      const j = byX[m];
+      if (items[j].bbox[0] >= box[2]) break;
+      if (boxesOverlap(box, items[j].bbox)) candidates[Math.min(i, j)].push(Math.max(i, j));
+    }
+  }
+  for (const row of candidates) row.sort((a, b) => a - b);
+  return candidates;
+}
+
+// A scene keeps immutable footprints while the build changes only heights.
+// Cache their separating-axis result, including null (genuine overlap), but
+// recompute height/depth comparisons on every frame. New geometry uses new
+// polygon objects, and changing the view direction releases the old cache.
+export function createItemOrderer() {
+  let vx, vy, cache = new WeakMap();
+  return (items, view) => {
+    const [x, y] = view.toViewer;
+    if (x !== vx || y !== vy) {
+      vx = x; vy = y; cache = new WeakMap();
+      // A camera tween changes direction every frame. Start caching only
+      // after it holds still, instead of allocating a throwaway pair cache.
+      return orderBy(items, view, compareItems);
+    }
+    return orderBy(items, view, (a, b) => {
+      let others = cache.get(a.poly);
+      if (!others) { others = new WeakMap(); cache.set(a.poly, others); }
+      const wallPair = a.kind === 'wall' && b.kind === 'wall';
+      let entry = others.get(b.poly);
+      if (!entry || entry.wallPair !== wallPair) {
+        entry = { wallPair, order: compareFootprints(a, b, view) };
+        others.set(b.poly, entry);
+      }
+      return entry.order === null ? compareHeights(a, b) : entry.order;
+    });
+  };
+}
+
 // Topological sort of items ({poly, z0e, z1e, bbox, key}) into draw order.
 // key is the fallback depth; ties and cycles resolve by it, far first.
 export function orderItems(items, view) {
+  return orderBy(items, view, compareItems);
+}
+
+function orderBy(items, view, compare) {
   const n = items.length;
   const succ = Array.from({ length: n }, () => []);
   const indeg = new Array(n).fill(0);
+  const candidates = overlapCandidates(items);
   for (let i = 0; i < n; i++) {
-    for (let j = i + 1; j < n; j++) {
-      if (!boxesOverlap(items[i].bbox, items[j].bbox)) continue;
-      const c = compareItems(items[i], items[j], view);
+    for (const j of candidates[i]) {
+      const c = compare(items[i], items[j], view);
       if (c < 0) {
         succ[i].push(j);
         indeg[j]++;
@@ -654,13 +708,16 @@ export function orderItems(items, view) {
   for (let i = 0; i < n; i++) if (indeg[i] === 0) heap.push(i);
   const done = new Uint8Array(n);
   const out = [];
+  let fallback = null, nextFallback = 0;
   while (out.length < n) {
     let i = heap.pop();
     if (i === undefined) {
-      // A cycle: release the farthest unfinished item and carry on.
-      let pick = -1;
-      for (let k = 0; k < n; k++) if (!done[k] && (pick < 0 || items[k].key < items[pick].key)) pick = k;
-      i = pick;
+      // Dense furniture can need hundreds of cycle breaks. Rank once instead
+      // of rescanning the whole floor each time; input index preserves the
+      // original first-unfinished choice when depths tie.
+      fallback ??= items.map((_, k) => k).sort((a, b) => items[a].key - items[b].key || a - b);
+      while (done[fallback[nextFallback]]) nextFallback++;
+      i = fallback[nextFallback++];
     }
     if (done[i]) continue;
     done[i] = 1;

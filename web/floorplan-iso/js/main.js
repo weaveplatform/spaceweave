@@ -93,7 +93,7 @@ function motion(transition) {
       invalidate(); // bring back what was skipped in motion (hatching)
     }
   };
-  return transition.on('end.motion', settle).on('interrupt.motion', settle);
+  return transition.on('end.motion', settle).on('interrupt.motion', settle).on('cancel.motion', settle);
 }
 
 function animateView(target, duration = 1100) {

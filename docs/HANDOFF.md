@@ -365,3 +365,20 @@ them, or name the client or building in commits, PRs or docs.
     neighbouring space once the space plan is used.
 - **CI on main:** the quality gate for the #16 merge commit (`1cfa263`) was
   still running when this was written. Check it before starting.
+
+## Build-animation performance follow-up
+
+The owner explicitly wants to keep the full build animation. Improve its frame
+pacing; do not skip it or shorten its 2.8-second reveal to make loading appear
+faster. Work on `perf/smooth-floor-animation` replaces the all-pairs draw-order
+scan, caches stationary footprint comparisons and finished geometry, ranks
+cycle-break choices once, and avoids redundant SVG writes. Pending transition
+cancellation also releases motion state. Trace output and version do not change.
+
+See [the performance trials](research/build-animation.md). All 150 site tests
+and 80 fixed-state SVG comparisons pass, including skins, heights and toggles.
+The selected paired run reduces frame-gap p95 by 27–67%, with the complete
+animation retained. Heavy floors still miss a consistent 30/60 fps budget;
+floor 02 remains a hotspot. An upfront hidden-node pool was rejected after
+measurement. Use the new `tools/animation-trial.mjs` for future comparisons;
+keep private trial output outside the repository.
