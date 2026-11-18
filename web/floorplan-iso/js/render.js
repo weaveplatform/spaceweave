@@ -4,6 +4,7 @@
 
 import { makeView } from './projection.js';
 import { deskTargets, createDeskHighlight } from './desks.js';
+import { createRoomCutaway } from './cutaway.js';
 import {
   wallPrisms, balustradePrisms, furniturePrisms, projectPrism, createItemOrderer, centroid, polygonArea, floorFootprint, projectFootprint,
 } from './geometry.js';
@@ -11,7 +12,6 @@ import {
 const d3 = globalThis.d3;
 
 const PX_PER_M = 40;
-const CUT_HEIGHT = 0.3; // what the walls nearest the camera are cut down to
 const PLINTH = 0.22;
 const TILE = 0.3;
 
@@ -73,7 +73,7 @@ function readPalette(el) {
   };
 }
 
-export function createScene({ svg: svgEl, tooltip: tooltipEl, styleRoot, plan, onStats }) {
+export function createScene({ svg: svgEl, tooltip: tooltipEl, styleRoot, plan, onStats, onRoomActivate }) {
   const svg = d3.select(svgEl);
   const tooltip = d3.select(tooltipEl);
   const W = plan.WIDTH;
@@ -178,6 +178,18 @@ export function createScene({ svg: svgEl, tooltip: tooltipEl, styleRoot, plan, o
   const holes = footprint.flatMap((polygon) => polygon.slice(1));
 
   const rooms = plan.rooms.map((r) => ({ ...r, area: polygonArea(r.polygon), c: r.label ?? centroid(r.polygon) }));
+  const roomsById = new Map(rooms.map(r => [r.id, r]));
+  const roomCutaways = createRoomCutaway(plan.walls, plan.THICKNESS);
+  let exteriorCuts = new Set(), exteriorAt = {};
+  function exteriorCutaways(solids, view) {
+    if (exteriorAt.solids !== solids || exteriorAt.theta !== view.theta || exteriorAt.phi !== view.phi) {
+      const [vx, vy] = view.toViewer, length = Math.hypot(vx, vy);
+      exteriorCuts = new Set(solids.filter(p => p.outward && length > 1e-6 &&
+        (p.outward[0] * vx + p.outward[1] * vy) / length > 0.3).map(p => p.wallId));
+      exteriorAt = { solids, theta: view.theta, phi: view.phi };
+    }
+    return exteriorCuts;
+  }
 
   // Tile grid lines, clipped to each tiled rectangle. A zone is a tint, not a
   // finish, so it gets none.
@@ -240,7 +252,7 @@ export function createScene({ svg: svgEl, tooltip: tooltipEl, styleRoot, plan, o
       .on('pointerenter', (e, r) => { hovered = r; drawHover(); showTip(e, r); })
       .on('pointermove', (e, r) => showTip(e, r))
       .on('pointerleave', () => { hovered = null; drawHover(); tooltip.attr('hidden', true); })
-      .on('click', (e, r) => zoomToRoom(r)))
+      .on('click', (e, r) => { onRoomActivate?.(r.id); zoomToRoom(r); }))
       .attr('d', (r) => pathOf(floorPts(r.polygon)))
       .attr('class', spaceClass)
       .attr('fill', (r) => spaceFill(r, palette, (a, b, t) => d3.interpolateRgb(a, b)(t)));
@@ -259,7 +271,7 @@ export function createScene({ svg: svgEl, tooltip: tooltipEl, styleRoot, plan, o
   const growth = (build, delay) => d3.easeCubicOut(Math.max(0, Math.min(1, (build - delay) / 0.22)));
 
   // ---- frame
-  let hovered = null;
+  let hovered = null, activeRoom = null, lastWallHeight = 1.5;
   let lastView = null;
   const orderItems = createItemOrderer();
   const painted = new WeakMap();
@@ -269,6 +281,7 @@ export function createScene({ svg: svgEl, tooltip: tooltipEl, styleRoot, plan, o
   let projected = new WeakMap(), projectedAt = null;
   let groundPalette = null, lastLabels = null;
   let lastPeople = null, lastLift = null;
+  let hoverAt = {};
 
   function render(state) {
     const t0 = performance.now();
@@ -279,8 +292,8 @@ export function createScene({ svg: svgEl, tooltip: tooltipEl, styleRoot, plan, o
       projectedAt = { theta: state.theta, phi: state.phi };
     }
     lastView = view;
-    const [vx, vy] = view.toViewer;
-    const vlen = Math.hypot(vx, vy);
+    lastWallHeight = state.wallHeight;
+    activeRoom = roomsById.get(state.activeRoom) ?? null;
     const sinP = Math.sin((state.phi * Math.PI) / 180);
     const cosP = Math.cos((state.phi * Math.PI) / 180);
 
@@ -291,6 +304,10 @@ export function createScene({ svg: svgEl, tooltip: tooltipEl, styleRoot, plan, o
 
     // Solids
     const { solids, leaves } = wallsFor(state.wallHeight);
+    const cutHeight = Math.max(0, Math.min(state.wallHeight, state.cutHeight ?? 0.3));
+    const cutWalls = state.cutaway && cutHeight < state.wallHeight
+      ? activeRoom ? roomCutaways(activeRoom.polygon, view, state.wallHeight) : exteriorCutaways(solids, view)
+      : null;
     let active = solids;
     if (state.doors) active = active.concat(leaves);
     if (state.furniture) active = active.concat(furniture);
@@ -300,8 +317,8 @@ export function createScene({ svg: svgEl, tooltip: tooltipEl, styleRoot, plan, o
       if (!state.glass && p.mat === 'glass') continue;
       let z0 = p.z0;
       let z1 = p.z1;
-      if (state.cutaway && p.outward && vlen > 1e-6 && (p.outward[0] * vx + p.outward[1] * vy) / vlen > 0.3) {
-        z1 = Math.min(z1, CUT_HEIGHT);
+      if (p.wallId && cutWalls?.has(p.wallId)) {
+        z1 = Math.min(z1, cutHeight);
         if (z0 >= z1) continue;
       }
       const g = growth(state.build, p.delay);
@@ -329,7 +346,8 @@ export function createScene({ svg: svgEl, tooltip: tooltipEl, styleRoot, plan, o
         for (const f of it.faces) {
           const d = pathOf(f.pts);
           it.drawn.push({ id: `${it.p.id}:${f.side}`, d, fill: shade(it.p.mat, f, view), mat: it.p.mat,
-            deskId: it.p.deskId, deskTarget: Boolean(it.p.deskId && it.p.mat === 'wood' && f.side === 'top') });
+            deskId: it.p.deskId, deskTarget: Boolean(it.p.deskId && it.p.mat === 'wood' && f.side === 'top'),
+            wallId: it.p.wallId, z0: it.z0e, z1: it.z1e });
           // Pencil hatching is a second, line-only path over the coloured face.
           if (hatch && f.side !== 'top' && HATCHED.has(it.p.mat)) {
             const dark = view.screenNormalX(f.nx, f.ny) < 0;
@@ -400,7 +418,10 @@ export function createScene({ svg: svgEl, tooltip: tooltipEl, styleRoot, plan, o
 
   function drawHover() {
     const view = lastView;
-    const data = hovered && view ? [hovered] : [];
+    const room = hovered ?? activeRoom;
+    if (hoverAt.room === room && hoverAt.theta === view?.theta && hoverAt.phi === view?.phi) return;
+    hoverAt = { room, theta: view?.theta, phi: view?.phi };
+    const data = room && view ? [room] : [];
     for (const g of [gHoverFill, gOverlay]) {
       g.selectAll('path').data(data, (r) => r.id).join('path')
         .attr('d', (r) => pathOf(r.polygon.map(([x, y]) => view.project(x, y, 0.01))));
@@ -456,7 +477,7 @@ export function createScene({ svg: svgEl, tooltip: tooltipEl, styleRoot, plan, o
 
   function zoomToRoom(r) {
     const view = lastView;
-    const pts = r.polygon.flatMap(([x, y]) => [view.project(x, y, 0), view.project(x, y, 1.2)]);
+    const pts = r.polygon.flatMap(([x, y]) => [view.project(x, y, 0), view.project(x, y, lastWallHeight)]);
     svg.transition('camera').duration(750).ease(d3.easeCubicInOut).call(zoom.transform, transformToFit(screenBounds(pts), 0.6));
   }
 
@@ -473,5 +494,7 @@ export function createScene({ svg: svgEl, tooltip: tooltipEl, styleRoot, plan, o
     tooltip.attr('hidden', true);
   }
 
-  return { render, fit, refreshPalette, destroy, svg };
+  return { render, fit, refreshPalette, destroy, svg,
+    focusRoom(id) { const room = roomsById.get(id); if (room) zoomToRoom(room); },
+  };
 }

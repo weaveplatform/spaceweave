@@ -13,6 +13,8 @@ const state = {
   // from an isometric camera. The slider goes back up to full height.
   wallHeight: 1.5,
   cutaway: true,
+  cutHeight: 0.3,
+  activeRoom: null,
   furniture: true,
   doors: true,
   glass: true,
@@ -68,12 +70,25 @@ const elevation = document.querySelector('#elevation');
 const elevationOut = document.querySelector('#elevation-out');
 const wallHeight = document.querySelector('#wall-height');
 const wallHeightOut = document.querySelector('#wall-height-out');
+const cutHeight = document.querySelector('#cut-height');
+const cutHeightOut = document.querySelector('#cut-height-out');
+const roomFocus = document.querySelector('#room-focus');
+
+function setRoomFocus(id) {
+  state.activeRoom = id || null;
+  roomFocus.value = id || '';
+  invalidate();
+}
 
 function syncOutputs() {
   elevation.value = state.phi;
   elevationOut.textContent = `${Math.round(state.phi)}°`;
   wallHeight.value = state.wallHeight;
   wallHeightOut.textContent = `${state.wallHeight.toFixed(1)} m`;
+  cutHeight.max = state.wallHeight;
+  cutHeight.value = state.cutHeight;
+  const height = Math.min(state.cutHeight, state.wallHeight);
+  cutHeightOut.textContent = height === 0 ? 'Hidden' : `${height.toFixed(1)} m`;
 }
 
 // SVG filters (Sketch's wobble, Neon's glow, the soft ground shadow) are
@@ -132,7 +147,10 @@ document.querySelectorAll('[data-preset]').forEach((b) => b.addEventListener('cl
 document.querySelector('#rotate-left').addEventListener('click', () => animateView({ theta: state.theta - 90 }, 900));
 document.querySelector('#rotate-right').addEventListener('click', () => animateView({ theta: state.theta + 90 }, 900));
 document.querySelector('#rebuild').addEventListener('click', () => build());
-document.querySelector('#reset').addEventListener('click', () => scene?.fit(state, 600));
+document.querySelector('#reset').addEventListener('click', () => {
+  setRoomFocus(null);
+  scene?.fit(state, 600);
+});
 
 elevation.addEventListener('input', () => {
   state.phi = +elevation.value;
@@ -143,6 +161,16 @@ wallHeight.addEventListener('input', () => {
   state.wallHeight = +wallHeight.value;
   syncOutputs();
   invalidate();
+});
+cutHeight.addEventListener('input', () => {
+  state.cutHeight = +cutHeight.value;
+  syncOutputs();
+  invalidate();
+});
+roomFocus.addEventListener('change', () => {
+  setRoomFocus(roomFocus.value);
+  if (state.activeRoom) scene?.focusRoom(state.activeRoom);
+  else scene?.fit(state, 600);
 });
 document.querySelectorAll('[data-toggle]').forEach((input) => {
   input.checked = state[input.dataset.toggle];
@@ -288,11 +316,16 @@ async function loadPlan(id) {
   }
   if (ticket !== loading) return; // a later click won
   scene?.destroy();
+  setRoomFocus(null);
+  const wholeFloor = new Option('Whole floor', '');
+  roomFocus.replaceChildren(wholeFloor, ...plan.rooms.map(room =>
+    new Option(`${room.name}${room.number && room.number !== room.name ? ` · ${room.number}` : ''}`, room.id)));
   scene = createScene({
     styleRoot: stageWrap,
     svg: document.querySelector('#stage'),
     tooltip: document.querySelector('#tooltip'),
     plan,
+    onRoomActivate: setRoomFocus,
     onStats: ({ prisms, faces, ms }) => {
       stats.textContent = `${prisms} prisms · ${faces} faces · ${ms.toFixed(1)} ms/frame`;
     },

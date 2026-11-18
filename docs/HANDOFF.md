@@ -466,3 +466,26 @@ node web/floorplan-iso/tools/desk-trial.mjs http://127.0.0.1:8011/ "$SCRATCH/des
 
 This branch builds on the accepted animation work in PR #23; merge that first.
 Tracing and generated plan data are unchanged by desk highlighting.
+
+## Room wall cutaways
+
+`feat/room-wall-cutaways` extends the existing exterior cutaway with room focus
+and a separate cut height. Choose a room in the picker or click its floor;
+occluding walls drop away as the camera rotates, while rear walls stay up.
+Set the cut height to 0 m to hide those wall assemblies. Fit returns to the
+whole-floor exterior policy. Turning Camera cutaways off restores every wall.
+Room focus resets on a new floor. The main height slider remains independent.
+
+`js/cutaway.js` tests the room against each wall's camera-projected floor shadow,
+subtracting footprint overlap to preserve rear walls on source centrelines.
+Results are cached across build frames. Host-wall IDs keep doors and glazing
+at the same cut height; void guardrails and furniture are unaffected. Cuts act
+on complete source wall segments, which can extend beyond the focused room.
+
+Read [the implementation and measured trials](research/room-cutaways.md).
+All 157 Node tests, 25 real-floor camera poses, all 306 room-picker entries and
+the 1,801-desk interaction trial pass. Full animation and zero settled SVG
+writes/native ordering queries remain. Eight default SVG fingerprints change
+only because exterior door leaves now follow their host's cut; the other 37
+match the accepted desk build. Tracing and generated data are unchanged.
+This branch builds on PR #24 and its animation dependency #23; merge those first.
