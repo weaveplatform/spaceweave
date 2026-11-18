@@ -382,3 +382,13 @@ animation retained. Heavy floors still miss a consistent 30/60 fps budget;
 floor 02 remains a hotspot. An upfront hidden-node pool was rejected after
 measurement. Use the new `tools/animation-trial.mjs` for future comparisons;
 keep private trial output outside the repository.
+
+The desk-specific follow-up replaces D3's remaining document-wide position
+queries with `orderSiblings` in the complete solids layer. The owner reported
+smooth walls but stuttering desks; the new trial reports progress before/after
+0.42 separately. A dense-floor replay changes 47,746 native position queries
+to zero, with exact SVG output preserved. All 152 site tests and 80 SVG checks
+pass. See the furniture-phase table in the same performance report: slow
+render-JavaScript time falls 49–64% in the recorded pair, while actual frame
+gaps improve 17–42%. Heavy furniture frames still miss a reliable 30/60 fps
+budget. Keep the complete animation and all furniture detail.

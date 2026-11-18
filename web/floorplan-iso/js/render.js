@@ -33,6 +33,18 @@ export function spaceFill(r, palette, mix) {
 export const spaceClass = (r) => (isZone(r) ? 'zone' : 'room');
 export const spaceTip = (r) => `${ZONE_NAMES[r.zone]}${isZone(r) ? ' · open plan' : ''} · ${r.area.toFixed(1)} m²`;
 
+// nodes is the layer's complete child list, in paint order. D3's order uses
+// compareDocumentPosition for every pair; that is costly across thousands of
+// SVG furniture faces. Immediate sibling identity gives the same final order.
+export function orderSiblings(parent, nodes) {
+  let next = null;
+  for (let i = nodes.length - 1; i >= 0; i--) {
+    const node = nodes[i];
+    if (node.nextSibling !== next) parent.insertBefore(node, next);
+    next = node;
+  }
+}
+
 const fmt = (v) => (Math.round(v * PX_PER_M * 10) / 10).toString();
 const pathOf = (pts) => `M${pts.map((p) => `${fmt(p[0])},${fmt(p[1])}`).join('L')}Z`;
 
@@ -326,7 +338,7 @@ export function createScene({ svg: svgEl, tooltip: tooltipEl, styleRoot, plan, o
     // Growth usually keeps the same face order; don't walk thousands of DOM
     // siblings or invalidate paths that already have their final attributes.
     if (faces.length !== lastFaceIds.length || faces.some((f, i) => f.id !== lastFaceIds[i])) {
-      paths.order();
+      orderSiblings(gSolids.node(), paths.nodes());
       lastFaceIds = faces.map((f) => f.id);
     }
 

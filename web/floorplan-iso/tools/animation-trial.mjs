@@ -48,17 +48,23 @@ async function measureFloor(id) {
   const state = floorplan.state;
   Object.assign(state, { theta: -45, phi: 35.26, furniture: true });
   const longTasks = [], renders = [], intervals = [];
+  const phases = { walls: { renders: [], intervals: [] }, furniture: { renders: [], intervals: [] } };
+  // Match the earliest furniture delay in render.js; report the later build
+  // separately so cheap wall frames cannot hide desk-and-chair hitches.
+  const phase = () => state.build < .42 ? phases.walls : phases.furniture;
   let loaded = Infinity;
   const tasks = new PerformanceObserver(list => longTasks.push(...list.getEntries().map(e => ({ start: e.startTime, duration: e.duration }))));
   tasks.observe({ entryTypes: ['longtask'] });
   const stats = new MutationObserver(() => {
     const match = document.querySelector('#stats').textContent.match(/([\d.]+) ms\/frame/);
-    if (match && performance.now() >= loaded) renders.push(+match[1]);
+    if (match && performance.now() >= loaded) {
+      renders.push(+match[1]); phase().renders.push(+match[1]);
+    }
   });
   stats.observe(document.querySelector('#stats'), { childList: true });
   let stopped = false, previous;
   const frame = now => {
-    if (now > previous) intervals.push(now - previous);
+    if (now > previous) { intervals.push(now - previous); phase().intervals.push(now - previous); }
     previous = now;
     if (!stopped) requestAnimationFrame(frame);
   };
@@ -78,10 +84,15 @@ async function measureFloor(id) {
   stopped = true; tasks.disconnect(); stats.disconnect();
   const percentile = (values, q) => [...values].sort((a, b) => a - b)[Math.floor((values.length - 1) * q)] ?? 0;
   const duringBuild = longTasks.filter(e => e.start >= loaded);
+  const phaseMetrics = Object.fromEntries(Object.entries(phases).map(([name, values]) => [name, {
+    frames: values.intervals.length, frameMsP95: percentile(values.intervals, .95),
+    renderMsP95: percentile(values.renders, .95),
+  }]));
   return { loadMs: loaded - start, settledMs: performance.now() - start, animationMs: performance.now() - loaded,
     frames: intervals.length, frameMsP95: percentile(intervals, .95),
     renderMsP95: percentile(renders, .95), longTasks: duringBuild.length,
-    maxLongTaskMs: Math.max(0, ...duringBuild.map(e => e.duration)), paths: document.querySelectorAll('#stage path').length };
+    maxLongTaskMs: Math.max(0, ...duringBuild.map(e => e.duration)), paths: document.querySelectorAll('#stage path').length,
+    phases: phaseMetrics };
 }
 
 async function fingerprint(state) {
@@ -133,6 +144,25 @@ try {
         ...await evaluate(`(${fingerprint})(${JSON.stringify(state)})`) });
     }
   }
+  // Check the costly native API separately, so the spy does not affect timings.
+  const positionQueries = await evaluate(`(async()=>{
+    let calls=0;
+    const original=Node.prototype.compareDocumentPosition;
+    Node.prototype.compareDocumentPosition=function(other){
+      if(this.parentNode?.classList?.contains('solids'))calls++;
+      return original.call(this,other);
+    };
+    try{
+      Object.assign(floorplan.state,{theta:-45,phi:35.26,furniture:true});
+      await floorplan.loadPlan(${JSON.stringify(plans[Math.min(1, plans.length-1)].id)});
+      d3.timerFlush();d3.select(document.body).interrupt('build');
+      for(const build of [.45,.6,.7,.85,1]){
+        Object.assign(floorplan.state,{build,moving:build<1});floorplan.invalidate();
+        await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+      }
+    }finally{Node.prototype.compareDocumentPosition=original}
+    return calls;
+  })()`);
   const checks = await evaluate(`(async()=>{
     let attributes=0,children=0;
     const observer=new MutationObserver(list=>{for(const m of list){if(m.type==='attributes')attributes++;else children++}});
@@ -141,6 +171,7 @@ try {
     floorplan.build();d3.select(document.body).interrupt('build');await new Promise(r=>setTimeout(r,40));
     return {unchangedSvgAttributes:attributes,unchangedSvgChildren:children,cancelledMotionSettled:!floorplan.state.moving};
   })()`);
+  checks.furniturePositionQueries = positionQueries;
   await writeFile(output, JSON.stringify({ browser: version.Browser, viewport: [1440, 1000], skin: 'model', metrics, snapshots, checks }, null, 2)+'\n');
   if (baseline) {
     const before = JSON.parse(await readFile(baseline, 'utf8'));
@@ -149,6 +180,7 @@ try {
   assert.equal(checks.unchangedSvgAttributes, 0, 'settled SVG should not be rewritten');
   assert.equal(checks.unchangedSvgChildren, 0, 'settled SVG should not be reordered');
   assert.equal(checks.cancelledMotionSettled, true, 'pending cancellation must release motion');
+  assert.equal(checks.furniturePositionQueries, 0, 'furniture ordering must avoid document-wide position queries');
   assert.deepEqual(page.errors, [], 'no uncaught browser errors');
   console.log(`PASS: ${snapshots.length} SVG fingerprints, retained animation, unchanged SVG and cancellation`);
 } finally {
