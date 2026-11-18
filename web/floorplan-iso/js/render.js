@@ -4,7 +4,7 @@
 
 import { makeView } from './projection.js';
 import {
-  wallPrisms, balustradePrisms, furniturePrisms, projectPrism, orderItems, centroid, polygonArea, floorFootprint, projectFootprint,
+  wallPrisms, balustradePrisms, furniturePrisms, projectPrism, createItemOrderer, centroid, polygonArea, floorFootprint, projectFootprint,
 } from './geometry.js';
 
 const d3 = globalThis.d3;
@@ -32,6 +32,18 @@ export function spaceFill(r, palette, mix) {
 }
 export const spaceClass = (r) => (isZone(r) ? 'zone' : 'room');
 export const spaceTip = (r) => `${ZONE_NAMES[r.zone]}${isZone(r) ? ' · open plan' : ''} · ${r.area.toFixed(1)} m²`;
+
+// nodes is the layer's complete child list, in paint order. D3's order uses
+// compareDocumentPosition for every pair; that is costly across thousands of
+// SVG furniture faces. Immediate sibling identity gives the same final order.
+export function orderSiblings(parent, nodes) {
+  let next = null;
+  for (let i = nodes.length - 1; i >= 0; i--) {
+    const node = nodes[i];
+    if (node.nextSibling !== next) parent.insertBefore(node, next);
+    next = node;
+  }
+}
 
 const fmt = (v) => (Math.round(v * PX_PER_M * 10) / 10).toString();
 const pathOf = (pts) => `M${pts.map((p) => `${fmt(p[0])},${fmt(p[1])}`).join('L')}Z`;
@@ -179,21 +191,8 @@ export function createScene({ svg: svgEl, tooltip: tooltipEl, styleRoot, plan, o
     return c;
   }
 
-  const growth = (build, delay) => d3.easeCubicOut(Math.max(0, Math.min(1, (build - delay) / 0.22)));
-
-  // ---- frame
-  let hovered = null;
-  let lastView = null;
-
-  function render(state) {
-    const t0 = performance.now();
-    const view = makeView({ theta: state.theta, phi: state.phi, cx: W / 2, cy: D / 2 });
-    lastView = view;
-    const [vx, vy] = view.toViewer;
-    const vlen = Math.hypot(vx, vy);
-    const sinP = Math.sin((state.phi * Math.PI) / 180);
-    const cosP = Math.cos((state.phi * Math.PI) / 180);
-
+  // Ground geometry stays fixed while the build changes prism heights.
+  function drawGround(view) {
     // Ground shadow (skins with --shadow-opacity), base slab and floors
     const shadowPath = footprint.map(([ring]) => pathOf(ring.map(([x, y]) => {
       const [sx, sy] = view.project(x, y, -PLINTH);
@@ -240,6 +239,40 @@ export function createScene({ svg: svgEl, tooltip: tooltipEl, styleRoot, plan, o
         const q = view.project(b[0], b[1], 0.003);
         return `M${fmt(p[0])},${fmt(p[1])}L${fmt(q[0])},${fmt(q[1])}`;
       }).join(''));
+  }
+
+  const growth = (build, delay) => d3.easeCubicOut(Math.max(0, Math.min(1, (build - delay) / 0.22)));
+
+  // ---- frame
+  let hovered = null;
+  let lastView = null;
+  const orderItems = createItemOrderer();
+  const painted = new WeakMap();
+  let lastFaceIds = [];
+  // Most parts finish before the stagger ends. Reuse their projection and
+  // painted paths while the remaining parts grow, releasing them on a turn.
+  let projected = new WeakMap(), projectedAt = null;
+  let groundPalette = null, lastLabels = null;
+  let lastPeople = null, lastLift = null;
+
+  function render(state) {
+    const t0 = performance.now();
+    const view = makeView({ theta: state.theta, phi: state.phi, cx: W / 2, cy: D / 2 });
+    const sameView = projectedAt?.theta === state.theta && projectedAt?.phi === state.phi;
+    if (!sameView) {
+      projected = new WeakMap();
+      projectedAt = { theta: state.theta, phi: state.phi };
+    }
+    lastView = view;
+    const [vx, vy] = view.toViewer;
+    const vlen = Math.hypot(vx, vy);
+    const sinP = Math.sin((state.phi * Math.PI) / 180);
+    const cosP = Math.cos((state.phi * Math.PI) / 180);
+
+    if (!sameView || groundPalette !== palette) {
+      drawGround(view);
+      groundPalette = palette;
+    }
 
     // Solids
     const { solids, leaves } = wallsFor(state.wallHeight);
@@ -260,57 +293,86 @@ export function createScene({ svg: svgEl, tooltip: tooltipEl, styleRoot, plan, o
       if (g < 0.002) continue;
       z0 *= g;
       z1 *= g;
-      const proj = projectPrism(p, view, z0, z1);
-      const [, yr] = view.rotate(p.c[0], p.c[1]);
-      items.push({
-        p, poly: p.sortPoly ?? p.poly, kind: p.kind, z0e: z0, z1e: z1, bbox: proj.bbox, faces: proj.faces,
-        key: yr * cosP + ((z0 + z1) / 2) * sinP,
-      });
+      let item = projected.get(p);
+      if (!item || item.z0e !== z0 || item.z1e !== z1) {
+        const proj = projectPrism(p, view, z0, z1);
+        const [, yr] = view.rotate(p.c[0], p.c[1]);
+        item = {
+          p, poly: p.sortPoly ?? p.poly, kind: p.kind, z0e: z0, z1e: z1, bbox: proj.bbox, faces: proj.faces,
+          key: yr * cosP + ((z0 + z1) / 2) * sinP,
+        };
+        projected.set(p, item);
+      }
+      items.push(item);
     }
     const ordered = orderItems(items, view);
     const faces = [];
+    const hatch = palette.hatch && !state.moving;
     for (const it of ordered) {
-      for (const f of it.faces) {
-        const d = pathOf(f.pts);
-        faces.push({ id: `${it.p.id}:${f.side}`, d, fill: shade(it.p.mat, f, view), mat: it.p.mat });
-        // Pencil hatching is a second, line-only path over the coloured face,
-        // so the watercolour shows through; denser on the side away from the light.
-        if (palette.hatch && !state.moving && f.side !== 'top' && HATCHED.has(it.p.mat)) {
-          const dark = view.screenNormalX(f.nx, f.ny) < 0;
-          faces.push({ id: `${it.p.id}:${f.side}:h`, d, fill: `url(#hatch-${dark ? 'dark' : 'light'})`, mat: 'hatch' });
+      if (it.paintedPalette !== palette || it.paintedHatch !== hatch) {
+        it.drawn = [];
+        for (const f of it.faces) {
+          const d = pathOf(f.pts);
+          it.drawn.push({ id: `${it.p.id}:${f.side}`, d, fill: shade(it.p.mat, f, view), mat: it.p.mat });
+          // Pencil hatching is a second, line-only path over the coloured face.
+          if (hatch && f.side !== 'top' && HATCHED.has(it.p.mat)) {
+            const dark = view.screenNormalX(f.nx, f.ny) < 0;
+            it.drawn.push({ id: `${it.p.id}:${f.side}:h`, d, fill: `url(#hatch-${dark ? 'dark' : 'light'})`, mat: 'hatch' });
+          }
         }
+        it.paintedPalette = palette; it.paintedHatch = hatch;
       }
+      faces.push(...it.drawn);
     }
-    gSolids.selectAll('path').data(faces, (f) => f.id).join('path')
-      .attr('d', (f) => f.d)
-      .attr('fill', (f) => f.fill)
-      .attr('class', (f) => f.mat)
-      .order();
+    const bound = gSolids.selectAll('path').data(faces, (f) => f.id);
+    bound.exit().remove();
+    const paths = bound.enter().append('path').merge(bound);
+    paths.each(function (f) {
+      const previous = painted.get(this);
+      if (previous?.d !== f.d) this.setAttribute('d', f.d);
+      if (previous?.fill !== f.fill) this.setAttribute('fill', f.fill);
+      if (previous?.mat !== f.mat) this.setAttribute('class', f.mat);
+      painted.set(this, f);
+    });
+    // D3's join orders the DOM, and an explicit order did it a second time.
+    // Growth usually keeps the same face order; don't walk thousands of DOM
+    // siblings or invalidate paths that already have their final attributes.
+    if (faces.length !== lastFaceIds.length || faces.some((f, i) => f.id !== lastFaceIds[i])) {
+      orderSiblings(gSolids.node(), paths.nodes());
+      lastFaceIds = faces.map((f) => f.id);
+    }
 
     // Labels
-    const roomLabels = state.labels ? rooms : [];
-    gLabels.selectAll('text.room').data(roomLabels, (r) => r.id).join('text')
-      .attr('class', (r) => `room${isZone(r) ? ' zone' : ''}`)
-      .attr('transform', (r) => {
-        const [sx, sy] = view.project(r.c[0], r.c[1], 0.05);
-        return `translate(${fmt(sx)},${fmt(sy)})`;
-      })
-      .text((r) => r.name);
-    const peopleLabels = state.people && state.furniture ? people : [];
+    if (!sameView || lastLabels !== state.labels) {
+      const roomLabels = state.labels ? rooms : [];
+      gLabels.selectAll('text.room').data(roomLabels, (r) => r.id).join('text')
+        .attr('class', (r) => `room${isZone(r) ? ' zone' : ''}`)
+        .attr('transform', (r) => {
+          const [sx, sy] = view.project(r.c[0], r.c[1], 0.05);
+          return `translate(${fmt(sx)},${fmt(sy)})`;
+        })
+        .text((r) => r.name);
+      lastLabels = state.labels;
+    }
+    const showPeople = state.people && state.furniture;
     const lift = 1.2 * growth(state.build, 0.75);
-    gLabels.selectAll('g.person').data(peopleLabels, (p) => p.name).join((enter) => {
-      const g = enter.append('g').attr('class', 'person');
-      g.append('line');
-      g.append('text');
-      return g;
-    })
-      .attr('transform', (p) => {
-        const [sx, sy] = view.project(p.x, p.y, lift);
-        return `translate(${fmt(sx)},${fmt(sy)})`;
+    if (!sameView || lastPeople !== showPeople || lastLift !== lift) {
+      const peopleLabels = showPeople ? people : [];
+      gLabels.selectAll('g.person').data(peopleLabels, (p) => p.name).join((enter) => {
+        const g = enter.append('g').attr('class', 'person');
+        g.append('line');
+        g.append('text');
+        return g;
       })
-      .attr('opacity', lift > 0.1 ? 1 : 0)
-      .call((g) => g.select('line').attr('y2', fmt(lift * Math.cos((state.phi * Math.PI) / 180) * 0.62)))
-      .call((g) => g.select('text').text((p) => p.name));
+        .attr('transform', (p) => {
+          const [sx, sy] = view.project(p.x, p.y, lift);
+          return `translate(${fmt(sx)},${fmt(sy)})`;
+        })
+        .attr('opacity', lift > 0.1 ? 1 : 0)
+        .call((g) => g.select('line').attr('y2', fmt(lift * Math.cos((state.phi * Math.PI) / 180) * 0.62)))
+        .call((g) => g.select('text').text((p) => p.name));
+      lastPeople = showPeople; lastLift = lift;
+    }
 
     drawHover();
     onStats?.({ prisms: items.length, faces: faces.length, ms: performance.now() - t0 });
