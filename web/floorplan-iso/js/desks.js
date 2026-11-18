@@ -9,7 +9,7 @@ export function deskTargets(furniture) {
 
 // One delegated interaction per scene; hovering never rebuilds the geometry.
 // Source identity survives replacement prisms when the skin or build changes.
-export function createDeskHighlight({ container, svg, targets, show, hide }) {
+export function createDeskHighlight({ container, svg, targets, show, hide, onSelect }) {
   const desks = new Map(targets.map(desk => [desk.id, desk]));
   const parts = new Map(), listeners = [];
   let hovered = null, focused = null, selected = null;
@@ -51,11 +51,12 @@ export function createDeskHighlight({ container, svg, targets, show, hide }) {
     if (before !== id) repaint(before, id);
     present();
   }
-  function select(id) {
+  function select(id, notify = true) {
     const before = selected;
     selected = id;
     if (before !== id) repaint(before, id);
     present();
+    if (before !== id && notify) onSelect?.(desks.get(id) ?? null);
   }
   function listen(target, type, handler) {
     target.addEventListener(type, handler);
@@ -93,7 +94,7 @@ export function createDeskHighlight({ container, svg, targets, show, hide }) {
     }
   });
   listen(svg.ownerDocument, 'keydown', event => {
-    if (event.key !== 'Escape') return;
+    if (event.key !== 'Escape' || event.defaultPrevented || svg.ownerDocument.querySelector('dialog[open]')) return;
     select(null);
     hover(null, null);
     if (idAt(svg.ownerDocument.activeElement)) svg.ownerDocument.activeElement.blur();
@@ -117,6 +118,7 @@ export function createDeskHighlight({ container, svg, targets, show, hide }) {
     }
   }
   return {
+    setSelected(id) { select(id, false); },
     bind(node, face) {
       const old = node.getAttribute('data-desk-id');
       if (old && old !== face.deskId) unbind(node);

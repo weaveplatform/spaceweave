@@ -2,6 +2,7 @@
 // Attach to an isolated Chrome debugging port; open and close only our own tab.
 // Outputs desk counts and interaction results, never coordinates or drawings.
 import assert from 'node:assert/strict';
+import { connect } from './browser.mjs';
 import { writeFile } from 'node:fs/promises';
 
 const [site, output] = process.argv.slice(2);
@@ -15,33 +16,6 @@ const catalogue = await (await fetch(new URL('generated/catalog.json', base))).j
 const plans = catalogue.plans.filter(p => ['draft', 'approved'].includes(p.status));
 assert.ok(plans.length, 'need at least one generated floor');
 
-async function connect(url) {
-  const ws = new WebSocket(url), pending = new Map(), errors = [];
-  let serial = 0;
-  await new Promise((resolve, reject) => {
-    ws.addEventListener('open', resolve, { once: true });
-    ws.addEventListener('error', reject, { once: true });
-  });
-  ws.addEventListener('message', e => {
-    const message = JSON.parse(e.data);
-    if (message.id) {
-      const p = pending.get(message.id);
-      pending.delete(message.id);
-      if (message.error) p.reject(Error(JSON.stringify(message.error)));
-      else p.resolve(message.result);
-    } else if (message.method === 'Runtime.exceptionThrown') {
-      errors.push(message.params.exceptionDetails.text);
-    }
-  });
-  return {
-    call: (method, params = {}) => new Promise((resolve, reject) => {
-      const id = ++serial;
-      pending.set(id, { resolve, reject });
-      ws.send(JSON.stringify({ id, method, params }));
-    }),
-    close: () => ws.close(), errors,
-  };
-}
 
 // Real pointer events exercise SVG hit testing, D3 pan suppression and focus.
 const version = await (await fetch(`${debug}/json/version`)).json();
@@ -100,7 +74,7 @@ try {
     const source = await (await fetch(new URL(`generated/${plan.id}/plan.json`, base))).json();
     const expected = source.furniture.filter(f=>f.type==='desk').length;
     await evaluate(`(async()=>{await floorplan.loadPlan(${JSON.stringify(plan.id)});d3.timerFlush();d3.select(document.body).interrupt('build')})()`);
-    await state({ build: 1, moving: false, theta: -45, phi: 35.26, furniture: true });
+    await state({ build: 1, moving: false, theta: -45, phi: 35.26, furniture: true, cutawayMode: 'exterior' });
     const coverage = await evaluate(`(()=>{
       const nodes=[...document.querySelectorAll('[data-desk-id]')],targets=[...document.querySelectorAll('[data-desk-target]')];
       return {desks:new Set(nodes.map(n=>n.dataset.deskId)).size,targets:targets.length,
@@ -170,7 +144,11 @@ try {
     const beforeRoom = await evaluate(`document.querySelector('.viewport').getAttribute('transform')`);
     await click(room);
     await evaluate(`new Promise(r=>setTimeout(r,850))`);
-    assert.notEqual(await evaluate(`document.querySelector('.viewport').getAttribute('transform')`), beforeRoom, 'room click still zooms');
+    assert.equal(await evaluate(`document.querySelector('.viewport').getAttribute('transform')`), beforeRoom, 'room selection does not zoom');
+    assert.equal(await evaluate('floorplan.selection.type'),'room');
+    await evaluate(`document.querySelector('#selection-focus').click()`);
+    await evaluate(`new Promise(r=>setTimeout(r,850))`);
+    assert.notEqual(await evaluate(`document.querySelector('.viewport').getAttribute('transform')`),beforeRoom,'explicit Focus zooms to the room');
     results.push({floor:plan.title,desks:expected,coverage,interactions:'passed'});
     console.log(JSON.stringify(results.at(-1)));
   }

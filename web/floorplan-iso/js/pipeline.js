@@ -46,7 +46,7 @@ export function describe(entry, maxUsd, drawings = new Set()) {
       detail = 'Uploading…';
       break;
     case 'queued':
-      detail = entry.note ? `Waiting for the tracer, with your note: “${entry.note}”` : 'Waiting for the tracer';
+      detail = entry.note && entry.tracer === 'claude' ? `Waiting for the tracer, with your note: “${entry.note}”` : 'Waiting for the tracer';
       break;
     case 'converting':
       detail = `Turning the ${kind} drawing into an image…`;
@@ -60,7 +60,6 @@ export function describe(entry, maxUsd, drawings = new Set()) {
     }
     case 'draft':
       detail = ['Ready for review',
-        Number.isFinite(entry.confidence) ? `confidence ${Math.round(entry.confidence * 100)}%` : null,
         spent(entry.costUsd), drawing ? `from ${kind}` : null, scale].filter(Boolean).join(' · ');
       action = 'open';
       break;

@@ -1,8 +1,8 @@
-# Isometric floor plan (trial)
+# Spaceweave floor plan workspace
 
-A test of whether [D3](https://d3js.org/) can turn a flat 2D floor plan into an
-interactive 3D isometric model. Four published plan images were traced by hand;
-the Floor plan picker switches between them, and `?plan=` links to one directly.
+A static viewer and review workspace for floor plans traced into interactive
+3D models. Imported floors appear in the header; four hand-traced examples
+are available separately under **Examples**. `?plan=` links directly to a floor.
 
 | Plan | Source | Size | Calibration |
 |---|---|---|---|
@@ -15,8 +15,8 @@ The images are linked, not copied, because they belong to their publishers.
 Each plan module's header comment records how its scale was measured.
 
 New plans don't need tracing by hand: drop an image on the page (or into a
-folder) and the `spaceweave` worker traces it and adds it to the picker as a
-draft. See [Adding plans automatically](#adding-plans-automatically).
+folder) and the `spaceweave` worker traces it and adds it to the floor selector
+for review. See [Adding plans automatically](#adding-plans-automatically).
 
 This is a static site with no build step and no npm dependencies. D3 7.9.0 loads
 from jsDelivr, pinned with a subresource-integrity hash.
@@ -39,27 +39,36 @@ tracer alongside it:
 go run ./cmd/spaceweave serve         # then open http://127.0.0.1:8000
 ```
 
-Under **Add a plan**, drop a plan on the page, choose one, or paste a
-screenshot. The list below the drop zone follows each plan through
-**Uploaded → Queued → Tracing → Review**. A drawing gets a **Converting** step first
-(see [Drawings](#drawings)). When it finishes, the plan joins the
-picker marked **Draft**, with its confidence and links to the overlay and the
-report. Open it, then:
+Use **Import plan** to choose drawings, drop files or paste an image into the
+import dialog. Processing appears in **Review**, through
+**Uploaded → Queued → Tracing → Review** (drawings also have a **Converting** step).
+A ready floor is marked **Needs review**. Review it against **Trace overlay**
+and **Source**, then:
 
-- **Approve** drops the Draft badge.
-- **Send back…** asks what the next pass should fix. The automatic tracer
-  gives the same trace again (it doesn't read notes, and says so in the
-  caveats); with `tracer: claude` the agent starts from the rejected trace
-  with your note as guidance.
-- **Retry** appears on a plan that failed.
+- **Approve floor** marks the trace approved.
+- **Retrace** uses the current source files and saved layer roles. The automatic
+  tracer produces the same result for unchanged inputs.
+- **Request changes…** appears only with the Claude tracer, which can use the note.
+- **Retry** appears on a failed processing job.
+
+Checks and warnings are visible in Review. Confidence and raw reports are kept
+under **Technical details**; tracer confidence is not a measured accuracy score.
+
+**Layer roles** stages edits per floor. Switching floors preserves those drafts
+in this page; leaving the page with unsaved edits prompts before discarding them.
+Choose a profile name and use **Apply and retrace** to save every staged role in
+one request and queue one trace. A failed save retains the edits. If saving
+succeeds but queuing fails, **Retry retrace** queues the saved roles without
+saving twice. **Discard changes** returns to the reported roles. A completed retrace refreshes the active
+model. Source files and space-plan attachments are also managed in Review.
 
 The server answers only to `localhost`-style host names, and the API refuses
 requests that don't come from the page itself, because any page open in the
 browser can reach a local server. To reach it from another machine, listen on that interface and name
 it: `--addr 0.0.0.0:8000 --allow-host my-laptop.local`.
 
-Under `tools/serve.py` the page has no API, so it shows how to start
-`spaceweave serve` instead of the drop zone.
+Under `tools/serve.py`, viewing and source comparison work without the API;
+import, approval and configuration actions are unavailable.
 
 ### Drawings
 
@@ -203,7 +212,7 @@ Each `generated/<id>/` folder holds these files:
 |---|---|
 | `source.<ext>` | The uploaded image, or the PNG rendered from a drawing |
 | `original.<ext>` | An uploaded drawing, as it was sent |
-| `drawing.svg` | A drawing rendered as SVG in its layer colours, linked from the plan's blurb |
+| `drawing.svg` | A drawing rendered as SVG in its layer colours, linked from Review's technical details |
 | `plan.json` | The plan in metres, in the same shape as a `js/plans/*.js` module |
 | `trace.json` | The trace, in source pixels |
 | `overlay.png` | The trace drawn over the image |
@@ -232,29 +241,34 @@ prices apply only to `claude`. The API key is never a setting: the Anthropic SDK
 `ant auth login` profile. Node must be on the `PATH`, because every submission
 runs `tools/validate.mjs`.
 
-## What you can do
+## Workspace controls
 
-- Morph between the **Isometric**, **Bird's-eye** and **Plan** presets, and rotate in 90° steps.
-- Drag the elevation and wall-height sliders. The default wall height is 1.5 m
-  because full-height walls hide most of the furniture from an isometric camera.
-- **Wall cutaways** follow the camera. Choose **Room focus** or click a room's
-  floor to lower walls blocking that room, including intervening interior walls.
-  Rear walls keep the main wall height. Set **Cutaway height** to **0 m** to hide
-  the cut walls and their doors completely. **Fit** returns to **Whole floor**,
-  which cuts near-facing exterior walls. Turn **Camera cutaways** off to restore
-  every wall.
-- Hover a room for its zone and area; click it to fly to it. Open-plan zones
-  (named areas with no walls of their own) are a lighter tint with a dashed
-  edge and an italic name. Scroll or drag to zoom and pan.
-- Toggle furniture, doors, glazing, room names and people.
-- Hover a desk to highlight its top and legs together. Click or tap to select;
-  click again, click the background or press Escape to clear. Tab between desks
-  and use Enter or Space to select. Selection follows the desk through camera,
-  style and build changes, and clears when you change floors.
+**View** keeps the model, selection and viewing controls together. **Review**
+contains source comparison, warnings, approval, processing, source files and
+layer roles. **Import plan** opens a separate dialog. Appearance and camera help
+are collapsed until needed.
+
+- Switch between **3D**, **Bird's-eye** and **Plan**, or rotate in 90° steps.
+- Hover a room or desk to highlight it; click to select it. The selection panel
+  shows its source name and area or dimensions. A room can also be selected
+  from the room picker. Selection alone does not move the camera or change cuts.
+- **Focus** zooms to the selected object and identifies its room for cutaways.
+  Enabled cutaways switch to **Reveal focused room**; **Off** stays off.
+  **Clear** and Escape clear selection, preserving the room focus.
+- **Fit** fits the whole model without changing the cutaway target. **Whole
+  floor** clears room focus and returns room cutaways to the exterior policy.
+- The **Walls** section groups wall height with **Off**, **Near exterior walls**
+  and **Reveal focused room**. At **0 m**, cut walls and their doors disappear.
+  Rear walls keep the main height. The banner names the focused room; an empty
+  room target explains how to select and focus one. Unused cut controls hide.
+- Toggle furniture, doors, glazing, names and people under **Visibility**.
+- **Replay animation** replays the full 2.8-second build. It does not retrace.
+- Use Tab and Enter/Space for room and desk selection, arrow keys for workspace
+  tabs, and Escape to close Import without clearing the model selection.
 
 ## Styles
 
-The Style picker reskins the same geometry. A skin is a block of CSS custom
+The **Appearance** picker reskins the same geometry. A skin is a block of CSS custom
 properties on `.stage-wrap[data-skin="…"]` in `styles.css`, plus a catalogue entry
 in `js/skins.js`. The properties cover colours, edge stroke, shading range, an
 SVG filter, pencil hatching, corner rounding and facet count. The renderer reads
@@ -283,7 +297,10 @@ when it settles; repainting them every frame would halve the frame rate.
 | `js/projection.js` | An orbiting parallel camera. Azimuth θ and elevation φ; φ = 90° is the source plan, θ = −45° with φ = 35.26° is true isometric |
 | `js/geometry.js` | Walls carved at openings into prisms, furniture built from prisms, visible faces, and draw ordering |
 | `js/render.js` | D3: data joins of faces to SVG paths, shading, labels, hover, `d3.zoom` |
-| `js/main.js` | State, controls and `d3.transition` tweens (the camera morph and the build-up animation) |
+| `js/main.js` | Viewer state, explicit focus, controls and camera/build transitions |
+| `js/workspace.js` | View/Review navigation, import dialog, selection details and source evidence |
+| `js/selection.js` | Source-based selection details and containing-room lookup |
+| `js/workbench.js` | Import, approval, processing, source packages and batched layer edits |
 
 **Tracing.** Each plan is traced in source-image pixels and converted to metres
 with its `SOURCE` calibration. On the Office plan, the bottom dimension chain

@@ -27,12 +27,13 @@ test('the detail line says what is happening and what it has cost', () => {
     'no cap known without the API',
   );
   assert.equal(describe({ status: 'queued' }).detail, 'Waiting for the tracer');
-  assert.match(describe({ status: 'queued', note: 'Add the kitchen' }).detail, /with your note: “Add the kitchen”/);
-  assert.equal(describe({ status: 'draft', confidence: 0.82, costUsd: 0.768 }).detail, 'Ready for review · confidence 82% · $0.77');
+  assert.match(describe({ status: 'queued', tracer: 'claude', note: 'Add the kitchen' }).detail, /with your note: “Add the kitchen”/);
+  assert.equal(describe({ status: 'queued', tracer: 'auto', note: 'Add the kitchen' }).detail, 'Waiting for the tracer');
+  assert.equal(describe({ status: 'draft', confidence: 0.82, costUsd: 0.768 }).detail, 'Ready for review · $0.77');
   assert.equal(describe({ status: 'draft' }).detail, 'Ready for review');
   assert.equal(describe({ status: 'failed', error: 'tracer stopped', costUsd: 1 }).detail, 'Failed: tracer stopped · $1.00');
   assert.equal(describe({ status: 'failed', error: 'no walls found', costUsd: 0 }).detail, 'Failed: no walls found', 'no cost without one');
-  assert.equal(describe({ status: 'draft', confidence: 0.6, costUsd: 0 }).detail, 'Ready for review · confidence 60%', 'traced automatically: free');
+  assert.equal(describe({ status: 'draft', confidence: 0.6, costUsd: 0 }).detail, 'Ready for review', 'confidence is kept in technical details');
   assert.equal(describe({ status: 'failed' }).detail, 'Failed: no reason given');
   assert.equal(describe({ status: 'uploading' }).detail, 'Uploading…');
   assert.equal(describe({ status: 'approved' }).detail, 'Approved');

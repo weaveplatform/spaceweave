@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Isometric Floor Plan</title>
-  <meta name="description" content="spaceweave trial: a 2D floor plan rebuilt as an interactive isometric model with D3.">
+  <title>Spaceweave · Floor plans</title>
+  <meta name="description" content="View and review your floor plans in 2D and 3D.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <!-- Handwriting face for the Sketch skin's labels; other skins use system fonts. -->
@@ -17,144 +17,128 @@
           crossorigin="anonymous"></script>
   <script type="module" src="js/main.js"></script>
 </head>
-<body>
+<body data-workspace="view">
   <header class="masthead">
-    <div class="brand">
-      <span class="mark" aria-hidden="true"></span>
-      <div>
-        <h1>Isometric floor plan</h1>
-        <p>spaceweave trial · <span id="plan-name">a flat floor plan</span> rebuilt in 3D with D3 and SVG</p>
-      </div>
+    <div class="brand"><span class="mark" aria-hidden="true"></span><div><h1>Spaceweave</h1><p>Floor plan workspace</p></div></div>
+    <div class="floor-navigation">
+      <label class="visually-hidden" for="floor-select">Your floors</label>
+      <select id="floor-select"><option value="">Your floors</option></select>
+      <span id="plan-status" class="status-badge">Example</span>
+      <label class="visually-hidden" for="example-select">Example plans</label>
+      <select id="example-select"><option value="">Examples…</option></select>
     </div>
-    <div class="views" role="group" aria-label="View">
-      <button type="button" data-preset="iso" aria-pressed="true">Isometric</button>
-      <button type="button" data-preset="bird" aria-pressed="false">Bird’s-eye</button>
-      <button type="button" data-preset="plan" aria-pressed="false">Plan</button>
+    <div class="workspace-tabs" role="tablist" aria-label="Workspace">
+      <button id="tab-view" type="button" role="tab" data-workspace="view" aria-selected="true" aria-controls="view-panel">View</button>
+      <button id="tab-review" type="button" role="tab" data-workspace="review" aria-selected="false" aria-controls="review-panel" tabindex="-1">Review</button>
     </div>
+    <button type="button" id="import-open" class="primary">Import plan</button>
   </header>
 
   <main class="layout">
     <section class="stage-wrap" data-skin="model" aria-label="Floor plan model">
-      <svg id="stage" role="group" aria-label="Isometric model of a floor plan" aria-describedby="model-help"></svg>
+      <svg id="stage" role="group" aria-label="Floor plan model" aria-describedby="model-help"></svg>
+      <div id="evidence-view" hidden><img id="evidence-image" alt=""><p id="evidence-error" hidden>Preview unavailable. Open the source file from Review.</p></div>
       <div id="tooltip" class="tooltip" hidden></div>
-      <div class="drop-overlay" aria-hidden="true"><span class="drop-ok">Drop to trace this plan</span><span class="drop-no">Can't trace this kind of file</span></div>
-
-      <div class="dock">
-        <button type="button" id="rotate-left" class="icon" title="Rotate left" aria-label="Rotate left">⟲</button>
-        <button type="button" id="rotate-right" class="icon" title="Rotate right" aria-label="Rotate right">⟳</button>
-        <button type="button" id="reset" title="Fit the model to the window">Fit</button>
-        <button type="button" id="rebuild" title="Replay the build animation">Rebuild</button>
+      <div class="drop-overlay" aria-hidden="true"><span class="drop-ok">Drop to import a floor plan</span><span class="drop-no">This file type is not supported</span></div>
+      <div class="canvas-tools" id="model-tools">
+        <div class="views" role="group" aria-label="Camera view">
+          <button type="button" data-preset="iso" aria-pressed="true">3D</button>
+          <button type="button" data-preset="bird" aria-pressed="false">Bird’s-eye</button>
+          <button type="button" data-preset="plan" aria-pressed="false">Plan</button>
+        </div>
+        <div class="dock">
+          <button type="button" id="rotate-left" class="icon" title="Rotate left" aria-label="Rotate left">⟲</button>
+          <button type="button" id="rotate-right" class="icon" title="Rotate right" aria-label="Rotate right">⟳</button>
+          <button type="button" id="reset" title="Fit the whole model to the window">Fit</button>
+          <button type="button" id="rebuild" title="Replay the build animation">Replay animation</button>
+        </div>
       </div>
-
-      <ul class="legend" aria-label="Zones">
-        <li><i style="background: var(--zone-meet)"></i>Meeting</li>
-        <li><i style="background: var(--zone-work)"></i>Work</li>
-        <li><i style="background: var(--zone-social)"></i>Social</li>
-        <li><i style="background: var(--zone-service)"></i>Service</li>
+      <div id="focus-banner" class="focus-banner" hidden><span>Room focus <strong id="focus-name"></strong></span><button type="button" id="whole-floor">Whole floor</button></div>
+      <div class="evidence-tools" id="evidence-tools" role="group" aria-label="Review image" hidden>
+        <button type="button" data-evidence="model" aria-pressed="true">Model</button>
+        <button type="button" data-evidence="overlay" aria-pressed="false">Trace overlay</button>
+        <button type="button" data-evidence="source" aria-pressed="false">Source</button>
+        <a id="evidence-open" href="#" target="_blank" rel="noopener" hidden>Open full size ↗</a>
+      </div>
+      <ul class="legend" id="model-legend" aria-label="Zones">
+        <li><i style="background: var(--zone-meet)"></i>Meeting</li><li><i style="background: var(--zone-work)"></i>Work</li>
+        <li><i style="background: var(--zone-social)"></i>Social</li><li><i style="background: var(--zone-service)"></i>Service</li>
       </ul>
+      <div class="floor-caption"><span id="plan-name">Loading floor…</span></div>
     </section>
 
     <aside class="panel">
-      <h2 id="plan-heading">Floor plan</h2>
-      <fieldset class="plans" id="plans" aria-labelledby="plan-heading"></fieldset>
-      <p class="skin-blurb" id="plan-blurb"></p>
-      <div class="review" id="review" hidden>
-        <div class="actions">
-          <button type="button" id="approve" class="primary">Approve</button>
-          <button type="button" id="send-back">Send back…</button>
-        </div>
-        <form id="reject-form" class="reject-form" hidden>
-          <label for="reject-note">What should the next pass fix?</label>
-          <textarea id="reject-note" rows="3" required
-                    placeholder="The kitchen is missing, and the east wall sits a metre too far left."></textarea>
-          <div class="actions">
-            <button type="submit" class="primary">Send back</button>
-            <button type="button" id="reject-cancel">Cancel</button>
+      <section id="view-panel" role="tabpanel" aria-labelledby="tab-view">
+        <section class="selection-card" aria-labelledby="selection-heading">
+          <h2 id="selection-heading">Selection</h2>
+          <p id="selection-empty">Click a room or desk to inspect it.</p>
+          <div id="selection-info" hidden><h3 id="selection-name"></h3><p id="selection-detail"></p>
+            <div class="actions"><button id="selection-focus" type="button">Focus</button><button id="selection-clear" type="button">Clear</button></div>
           </div>
-        </form>
-      </div>
-
-      <section class="layers" id="layers" aria-labelledby="layers-heading" hidden>
-        <h3 id="layers-heading">Layers</h3>
-        <p class="hint" id="layers-intro"></p>
-        <table class="layer-table">
-          <thead><tr><th scope="col">Layer</th><th scope="col" class="num">Items</th><th scope="col">Role</th></tr></thead>
-          <tbody id="layer-rows"></tbody>
-        </table>
+          <label class="select-field room-picker"><span>Select a room</span><select id="room-focus"><option value="">Choose a room…</option></select></label>
+        </section>
+        <section class="control-section" aria-labelledby="walls-heading">
+          <h2 id="walls-heading">Walls</h2>
+          <label class="range"><span>Wall height <output id="wall-height-out"></output></span><input id="wall-height" type="range" min="0.3" max="3" step="0.1"></label>
+          <label class="select-field"><span>Cutaways</span><select id="cutaway-mode">
+            <option value="off">Off</option><option value="exterior" selected>Near exterior walls</option><option value="room">Reveal focused room</option>
+          </select></label>
+          <div id="cutaway-settings">
+            <label class="range"><span>Cutaway height <output id="cut-height-out"></output></span><input id="cut-height" type="range" min="0" max="3" step="0.1" aria-describedby="cutaway-help"></label>
+            <p class="hint" id="cutaway-help">Near exterior walls are lowered. Interior walls remain.</p>
+          </div>
+        </section>
+        <details class="control-section" open><summary>Visibility</summary><div class="toggles">
+          <label><input type="checkbox" data-toggle="furniture">Furniture</label><label><input type="checkbox" data-toggle="doors">Doors</label>
+          <label><input type="checkbox" data-toggle="glass">Glazing</label><label><input type="checkbox" data-toggle="labels">Room names</label>
+          <label><input type="checkbox" data-toggle="people">People</label>
+        </div></details>
+        <details class="control-section"><summary>Appearance</summary><fieldset class="skins" id="skins" aria-label="Appearance"></fieldset><p class="skin-blurb" id="skin-blurb"></p></details>
+        <details class="control-section"><summary>Camera &amp; help</summary>
+          <label class="range"><span>Elevation <output id="elevation-out"></output></span><input id="elevation" type="range" min="12" max="90" step="1"></label>
+          <p class="hint" id="model-help">Hover to highlight; click to select. Focus moves the camera. Escape clears selection. Drag to pan and scroll to zoom. Fit shows the full model without changing cutaways.</p>
+        </details>
       </section>
 
-      <section class="package" id="package" aria-labelledby="package-heading" hidden>
-        <h3 id="package-heading">Floor package</h3>
-        <p class="hint" id="package-intro"></p>
-        <ul class="package-files" id="package-files"></ul>
-        <button type="button" id="space-add">Add space plan…</button>
-        <input type="file" id="space-file" class="visually-hidden" tabindex="-1" aria-hidden="true">
+      <section id="review-panel" role="tabpanel" aria-labelledby="tab-review" hidden>
+        <h2>Floor review</h2><p id="plan-blurb"></p>
+        <div class="review" id="review" hidden>
+          <div class="actions"><button type="button" id="approve" class="primary">Approve floor</button><button type="button" id="retrace">Retrace</button><button type="button" id="send-back" hidden>Request changes…</button></div>
+          <p id="review-guidance" class="hint"></p>
+          <form id="reject-form" class="reject-form" hidden>
+            <label for="reject-note">Changes for the next pass</label><textarea id="reject-note" rows="3" required placeholder="Describe the corrections needed."></textarea>
+            <div class="actions"><button type="submit" class="primary">Request changes</button><button type="button" id="reject-cancel">Cancel</button></div>
+          </form>
+        </div>
+        <section class="control-section"><h2>Checks &amp; warnings</h2><p id="checks-summary">Choose a floor to see its checks.</p><ul id="review-warnings"></ul></section>
+        <section class="control-section" id="processing-section"><h2>Processing</h2><p id="processing-empty" class="hint">No floors are waiting for processing or review.</p><ol class="pipeline" id="pipeline" aria-label="Floor processing" hidden></ol></section>
+        <details class="control-section package" id="package" hidden><summary>Source files</summary>
+          <p class="hint" id="package-intro"></p><ul class="package-files" id="package-files"></ul><button type="button" id="space-add">Add space plan…</button>
+          <input type="file" id="space-file" class="visually-hidden" tabindex="-1" aria-hidden="true">
+        </details>
+        <details class="control-section layers" id="layers" hidden><summary>Layer roles</summary>
+          <p class="hint" id="layers-intro"></p>
+          <label class="select-field"><span>Profile name</span><input id="profile-name" type="text" maxlength="64" autocomplete="off" spellcheck="false" aria-describedby="layers-intro"></label>
+          <table class="layer-table"><thead><tr><th scope="col">Layer</th><th scope="col" class="num">Items</th><th scope="col">Role</th></tr></thead><tbody id="layer-rows"></tbody></table>
+          <div class="layer-save"><p id="layer-changes" role="status">No staged changes.</p><div class="actions"><button type="button" id="layers-apply" class="primary" disabled>Apply and retrace</button><button type="button" id="layers-discard" disabled>Discard changes</button></div></div>
+        </details>
+        <details class="control-section"><summary>Technical details</summary><nav id="evidence-links" class="evidence-links" aria-label="Source downloads"></nav>
+          <p id="trace-method"></p><p id="report-confidence"></p><p id="stats" class="stats"></p>
+          <p>Source: <a id="source-link" href="#" target="_blank" rel="noopener">Original plan</a></p>
+        </details>
       </section>
-
-      <h2 id="add-heading">Add a plan</h2>
-      <label class="dropzone" id="dropzone" hidden>
-        <input type="file" id="upload-file" class="visually-hidden" multiple>
-        <span class="dropzone-icon" aria-hidden="true"></span>
-        <strong>Drop a floor plan</strong>
-        <span>or <u>choose a file</u>, or paste one</span>
-        <small id="upload-terms"></small>
-      </label>
-      <p class="hint" id="upload-offline" hidden>
-        To add plans from this page, run <code>go run ./cmd/spaceweave serve</code> from the
-        repository root and open the address it prints.
-      </p>
       <p class="upload-status" id="upload-status" role="status" aria-live="polite"></p>
-      <ol class="pipeline" id="pipeline" aria-labelledby="add-heading" hidden></ol>
-
-      <h2 id="style-heading">Style</h2>
-      <fieldset class="skins" id="skins" aria-labelledby="style-heading"></fieldset>
-      <p class="skin-blurb" id="skin-blurb"></p>
-
-      <h2>Camera</h2>
-      <label class="range">
-        <span>Elevation <output id="elevation-out"></output></span>
-        <input id="elevation" type="range" min="12" max="90" step="1">
-      </label>
-      <label class="range">
-        <span>Wall height <output id="wall-height-out"></output></span>
-        <input id="wall-height" type="range" min="0.3" max="3" step="0.1">
-      </label>
-
-      <h2 id="cutaway-heading">Wall cutaways</h2>
-      <label class="cutaway-toggle"><input type="checkbox" data-toggle="cutaway">Camera cutaways</label>
-      <label class="select-field">
-        <span>Room focus</span>
-        <select id="room-focus" aria-describedby="cutaway-help"><option value="">Whole floor</option></select>
-      </label>
-      <label class="range">
-        <span>Cutaway height <output id="cut-height-out"></output></span>
-        <input id="cut-height" type="range" min="0" max="3" step="0.1" aria-describedby="cutaway-help">
-      </label>
-      <p class="hint" id="cutaway-help">Choose a room here or click its floor to cut walls blocking the camera. Rear walls stay up. At 0 m, cut walls are hidden. Whole floor cuts near exterior walls.</p>
-
-      <h2>Show</h2>
-      <div class="toggles">
-        <label><input type="checkbox" data-toggle="furniture">Furniture</label>
-        <label><input type="checkbox" data-toggle="doors">Doors</label>
-        <label><input type="checkbox" data-toggle="glass">Glazing</label>
-        <label><input type="checkbox" data-toggle="labels">Room names</label>
-        <label><input type="checkbox" data-toggle="people">People</label>
-      </div>
-
-      <h2>How it's made</h2>
-      <p>
-        Each source plan (this one: <a id="source-link" href="#" target="_blank" rel="noopener">source</a>)
-        is a flat image. Its walls, doors, glazing and furniture <span id="trace-method">were traced by hand into metres,
-        calibrated against the plan's own dimension lines or scale bar</span>.
-      </p>
-      <p>
-        Every object is a footprint pushed up into a prism. Each frame, the prisms are projected
-        through an orbiting parallel camera and ordered by separating axis so near things paint over
-        far ones. D3 then joins the visible faces to SVG paths and handles zoom, transitions and colour.
-      </p>
-      <p class="hint" id="model-help">Hover a room for its area; click to focus its cutaway and fly to it. Hover a desk to highlight it; click to select. Esc clears desk selection. Scroll or drag to zoom and pan.</p>
-      <p id="stats" class="stats" aria-live="off"></p>
     </aside>
   </main>
+
+  <dialog id="import-dialog" aria-labelledby="add-heading">
+    <div class="dialog-heading"><div><h2 id="add-heading">Import a floor plan</h2><p>Add a drawing, then review the generated floor.</p></div><button type="button" id="import-close" aria-label="Close import">×</button></div>
+    <label class="dropzone" id="dropzone" hidden><input type="file" id="upload-file" class="visually-hidden" multiple>
+      <span class="dropzone-icon" aria-hidden="true"></span><strong>Drop drawings here</strong><span>or <u>choose files</u></span><small id="upload-terms"></small>
+    </label>
+    <p id="upload-offline" hidden>Import is unavailable in this preview. Open a connected workspace to add drawings.</p>
+    <p id="import-status" class="upload-status" role="status" aria-live="polite"></p>
+    <p class="hint">Processing progress and review actions appear in Review.</p>
+  </dialog>
 </body>
 </html>
