@@ -392,3 +392,38 @@ pass. See the furniture-phase table in the same performance report: slow
 render-JavaScript time falls 49–64% in the recorded pair, while actual frame
 gaps improve 17–42%. Heavy furniture frames still miss a reliable 30/60 fps
 budget. Keep the complete animation and all furniture detail.
+
+## Desk highlighting
+
+`feat/highlight-desks` adds hover highlighting and single-desk selection to every
+rendered `type: desk` furniture object. Top and legs share the original furniture
+index as their scene identity; regenerated prism IDs are unsuitable because they
+change with styles and builds. Click/tap toggles selection, background click or
+Escape clears it, and Tab plus Enter/Space supports keyboard use. Selection
+survives camera, style, build and furniture visibility changes; loading another
+floor resets it. Desk numbers are display labels, not persisted asset IDs.
+
+`js/desks.js` delegates events once per scene and repaints only affected desk
+faces. Keep hover/selection outside the geometry rendering loop. Opaque solid
+faces block picking obscured desks; glass and hatch overlays pass through.
+Each desk top supplies one keyboard button. Tooltips use text nodes for source
+labels. Scene disposal removes its document and pointer listeners.
+
+Chrome trials cover all 1,801 desks (105 / 433 / 451 / 454 / 358 across floors
+00–04), actual mouse/keyboard/touch events, drag suppression, room interaction,
+six styles, camera changes and rebuilds. All 152 Node tests pass. The complete
+2.8-second animation remains; 45 fixed-stage SVG comparisons preserve geometry
+and materials, plus 35 comparisons across styles, heights and toggles, excluding
+only added desk/accessibility metadata. Settled SVG
+writes and native furniture position queries remain zero. The timing pair has
+mixed small frame-pacing differences and does not establish a speed improvement.
+
+Repeat the interaction trial against an isolated Chrome debugging port (default
+9267), keeping its JSON output outside the repository:
+
+```sh
+node web/floorplan-iso/tools/desk-trial.mjs http://127.0.0.1:8011/ "$SCRATCH/desks.json"
+```
+
+This branch builds on the accepted animation work in PR #23; merge that first.
+Tracing and generated plan data are unchanged by desk highlighting.

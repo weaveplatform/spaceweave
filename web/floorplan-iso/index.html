@@ -35,7 +35,7 @@
 
   <main class="layout">
     <section class="stage-wrap" data-skin="model" aria-label="Floor plan model">
-      <svg id="stage" role="img" aria-label="Isometric model of a floor plan"></svg>
+      <svg id="stage" role="group" aria-label="Isometric model of a floor plan" aria-describedby="model-help"></svg>
       <div id="tooltip" class="tooltip" hidden></div>
       <div class="drop-overlay" aria-hidden="true"><span class="drop-ok">Drop to trace this plan</span><span class="drop-no">Can't trace this kind of file</span></div>
 
@@ -141,7 +141,7 @@
         through an orbiting parallel camera and ordered by separating axis so near things paint over
         far ones. D3 then joins the visible faces to SVG paths and handles zoom, transitions and colour.
       </p>
-      <p class="hint">Hover a room for its area. Click to fly to it. Scroll or drag to zoom and pan.</p>
+      <p class="hint" id="model-help">Hover a room for its area; click to fly to it. Hover a desk to highlight it; click to select. Esc clears selection. Scroll or drag to zoom and pan.</p>
       <p id="stats" class="stats" aria-live="off"></p>
     </aside>
   </main>
