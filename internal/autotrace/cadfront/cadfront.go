@@ -47,6 +47,9 @@ type Options struct {
 	// Profile says what each layer holds; nil reads the drawing by the
 	// built-in profiles alone.
 	Profile *profile.Set
+	// WallContinuations enables the partial-face recovery trial. It can
+	// improve wall coverage but also enclose facade cavities as spaces.
+	WallContinuations bool
 }
 
 // ErrView is returned for a view that doesn't map the drawing onto an
@@ -107,6 +110,7 @@ func AnalyseFile(path string, o Options) (floorgraph.Input, []profile.Layer, err
 			return floorgraph.Input{}, nil, err
 		}
 		framed.Title, framed.Profile = o.Title, o.Profile
+		framed.WallContinuations = o.WallContinuations
 		o = framed
 	}
 	if o.Title == "" {

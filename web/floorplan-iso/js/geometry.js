@@ -145,6 +145,36 @@ export function offsetPolygon(poly, d) {
   });
 }
 
+// A generated footprint is already offset to the wall faces. Older plans
+// retain their outline/bounding-box slab and explicit voids.
+export function floorFootprint(plan) {
+  const polygons = plan.FOOTPRINT?.length ? plan.FOOTPRINT : [[
+    offsetPolygon(plan.OUTLINE ?? [[0, 0], [plan.WIDTH, 0], [plan.WIDTH, plan.DEPTH], [0, plan.DEPTH]], plan.THICKNESS.exterior / 2),
+    ...(plan.VOIDS ?? []),
+  ]];
+  return polygons.map(([outer, ...holes]) => [ensurePositive(outer), ...holes.map((h) => [...ensurePositive(h)].reverse())]);
+}
+
+export function pointInFootprint(point, polygons) {
+  return polygons.some(([outer, ...holes]) => pointInPolygon(point, outer) && !holes.some((h) => pointInPolygon(point, h)));
+}
+
+// Outer and inner vertical faces have opposite winding. Compound top
+// rings let SVG cut holes without a zero-width bridge or a filled recess.
+export function projectFootprint(polygons, view, z0, z1) {
+  const out = [];
+  polygons.forEach((rings, i) => {
+    rings.forEach((ring, j) => {
+      const faces = projectPrism({ poly: ring }, view, z0, z1).faces;
+      for (const f of faces) {
+        if (f.side !== 'top') out.push({ ...f, id: `${i}/${j}/${f.side}` });
+      }
+    });
+    out.push({ id: `${i}/top`, side: 'top', rings: rings.map((r) => r.map(([x, y]) => view.project(x, y, z1))) });
+  });
+  return out;
+}
+
 export function centroid(poly) {
   let x = 0;
   let y = 0;
@@ -260,7 +290,12 @@ export function splitRun([s0, s1], maxPiece) {
 function doorLeaves(wall, frame, s0, s1, opening, H) {
   // In a cutaway the leaves would otherwise stand taller than the walls around them.
   const leafHeight = Math.min(LEAF_HEIGHT, H * 0.96);
-  const [sx, sy] = COMPASS[opening.swing];
+  const [cx, cy] = COMPASS[opening.swing];
+  // Compass identifies the side of the wall. The leaf itself follows the
+  // wall's normal; a global compass vector shears leaves on angled walls.
+  const normal = [-frame.uy, frame.ux];
+  const side = normal[0] * cx + normal[1] * cy < 0 ? -1 : 1;
+  const [sx, sy] = normal.map((v) => v * side);
   const half = frame.t / 2;
   const leaf = (hingeS, width, along) => {
     // The leaf stands open at 90°, its edge against the hinge jamb, on the swing side.
@@ -277,21 +312,26 @@ function doorLeaves(wall, frame, s0, s1, opening, H) {
   };
   const width = s1 - s0;
   if (opening.kind === 'double-door') return [leaf(s0, width / 2, 1), leaf(s1, width / 2, -1)];
-  return opening.hinge === 'b' ? [leaf(s1, width, -1)] : [leaf(s0, width, 1)];
+  // a/b refer to increasing absolute coordinates, whereas s0/s1 follow
+  // the wall's own direction, which may run backwards along that axis.
+  const forward = (Math.abs(frame.ux) > Math.abs(frame.uy) ? frame.ux : frame.uy) > 0;
+  return (opening.hinge !== 'b') === forward ? [leaf(s0, width, 1)] : [leaf(s1, width, -1)];
 }
 
 // Every wall, carved at its openings, as prisms up to wall height H.
 // Door leaves are returned separately so they can be toggled.
-export function wallPrisms(walls, H, { thickness, width, depth, outline = null, maxPiece = Infinity }) {
+export function wallPrisms(walls, H, { thickness, width, depth, outline = null, footprint = null, maxPiece = Infinity }) {
   const solids = [];
   const leaves = [];
   const centre = [width / 2, depth / 2];
   // Which side of an exterior wall is outside. For a rectangle the side away
   // from the centre; for an L-shape or slanted facade, probe just past the wall
   // and ask the outline.
-  const isOutside = (px, py, nx, ny) => (outline
-    ? !pointInPolygon([px + nx * 0.5, py + ny * 0.5], outline)
-    : nx * (px - centre[0]) + ny * (py - centre[1]) > 0);
+  const isOutside = (px, py, nx, ny) => {
+    const probe = [px + nx * 0.5, py + ny * 0.5];
+    if (footprint?.length) return !pointInFootprint(probe, footprint);
+    return outline ? !pointInPolygon(probe, outline) : nx * (px - centre[0]) + ny * (py - centre[1]) > 0;
+  };
 
   for (const wall of walls) {
     const f = wallFrame(wall, thickness);

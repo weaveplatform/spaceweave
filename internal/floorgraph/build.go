@@ -90,19 +90,20 @@ func Build(in Input) (*Result, error) {
 
 // builder carries the pipeline's state between steps.
 type builder struct {
-	in      Input
-	segs    []seg
-	ops     []opening
-	g       *graph
-	alive   []bool
-	fs      []face
-	outer   int // index into fs, or -1 when the walls enclose nothing
-	kinds   []string
-	chains  []chain
-	sc      scaleInfo
-	rs      []room
-	outline []Point
-	pl      placement
+	in        Input
+	segs      []seg
+	ops       []opening
+	g         *graph
+	alive     []bool
+	fs        []face
+	outer     int // index into fs, or -1 when the walls enclose nothing
+	kinds     []string
+	chains    []chain
+	sc        scaleInfo
+	rs        []room
+	outline   []Point
+	footprint [][][][2]float64
+	pl        placement
 
 	// What the caveats report.
 	badWalls, badOps, oddOps   int
@@ -564,6 +565,7 @@ func (b *builder) trace() *plan.Trace {
 		Walls:     make([]plan.Wall, 0, len(b.chains)),
 		Rooms:     make([]plan.Room, 0, len(b.rs)),
 		Furniture: slices.Clone(b.in.Furniture),
+		Footprint: b.footprint,
 	}
 	if t.Title == "" {
 		t.Title = "Floor plan"

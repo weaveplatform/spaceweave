@@ -3,7 +3,7 @@
 // submission), so the worker and the site's tests can't disagree about what a
 // valid plan is. Returns messages instead of throwing so a tracer gets every
 // problem from one submission, not just the first.
-import { furniturePrisms, wallPrisms, balustradePrisms, pointInPolygon, polygonArea, overlapArea, projectPrism, BLOCKY } from '../js/geometry.js';
+import { furniturePrisms, wallPrisms, balustradePrisms, pointInPolygon, polygonArea, overlapArea, projectPrism, floorFootprint, projectFootprint, BLOCKY } from '../js/geometry.js';
 import { makeView, PRESETS } from '../js/projection.js';
 
 export const ZONES = new Set(['meet', 'work', 'social', 'service']);
@@ -46,7 +46,7 @@ export function checkPlan(plan) {
   if (!(scale.length >= 1 && scale.length <= 2 && scale.every((v) => v > 0))) fail('SOURCE.pxPerMetre must be a positive number or [x, y]');
   if (SOURCE.originPx?.length !== 2 || SOURCE.sizePx?.length !== 2) fail('SOURCE needs originPx and sizePx');
   // JSON.stringify writes NaN and Infinity as null.
-  const json = JSON.stringify([plan.walls, plan.rooms, plan.furniture, plan.floorPatches, plan.OUTLINE ?? [], plan.VOIDS ?? []]);
+  const json = JSON.stringify([plan.walls, plan.rooms, plan.furniture, plan.floorPatches, plan.OUTLINE ?? [], plan.VOIDS ?? [], plan.FOOTPRINT ?? []]);
   if (json.includes('null')) fail('NaN, Infinity or null in the data');
   for (const v of [plan.WIDTH, plan.DEPTH, ...plan.ENTRANCE]) if (!Number.isFinite(v)) fail('WIDTH, DEPTH and ENTRANCE must be finite');
   if (plan.OUTLINE && !plan.OUTLINE.every(([x, y]) => x >= -0.01 && y >= -0.01 && x <= plan.WIDTH + 0.01 && y <= plan.DEPTH + 0.01)) {
@@ -132,6 +132,8 @@ export function checkPlan(plan) {
     }
   }
 
+  checkFootprint(plan.FOOTPRINT, spaces, holes, fail);
+
   // ---- furniture
   for (const item of plan.furniture) {
     guard(`${item.type} at ${at([item.x, item.y])}`, () => {
@@ -156,6 +158,14 @@ export function checkPlan(plan) {
     if (!solids.some((p) => p.outward)) throw new Error('no exterior walls');
   });
 
+  guard('slab', () => {
+    const faces = projectFootprint(floorFootprint(plan), makeView(PRESETS.iso), -.22, 0);
+    for (const f of faces) {
+      const points = f.rings?.flat() ?? f.pts;
+      if (!points.every((p) => p.every(Number.isFinite))) throw new Error('slab projects to a non-finite point');
+    }
+  });
+
   return errors;
 }
 
@@ -163,4 +173,46 @@ function spaceBox(poly) {
   const xs = poly.map((p) => p[0]);
   const ys = poly.map((p) => p[1]);
   return { x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys) };
+}
+
+function checkFootprint(footprint, spaces, voids, fail) {
+  if (footprint === undefined) return;
+  if (!Array.isArray(footprint) || !footprint.length) {
+    fail('FOOTPRINT needs at least one polygon');
+    return;
+  }
+  const polygons = [];
+  footprint.forEach((polygon, i) => {
+    if (!Array.isArray(polygon) || !polygon.length) {
+      fail(`footprint ${i} needs an outer ring`);
+      return;
+    }
+    if (!polygon.every((ring) => Array.isArray(ring) && ring.length >= 3 &&
+      ring.every((p) => Array.isArray(p) && p.length === 2 && p.every(Number.isFinite)) && polygonArea(ring) > 1e-8)) {
+      fail(`footprint ${i} needs finite rings with at least three points and positive area`);
+      return;
+    }
+    const [outer, ...holes] = polygon;
+    for (const hole of holes) {
+      if (polygonArea(hole) - overlapArea(hole, outer) > .001) fail(`footprint ${i} has a hole outside its outer ring`);
+    }
+    for (let a = 0; a < holes.length; a++) for (let b = a + 1; b < holes.length; b++) {
+      if (overlapArea(holes[a], holes[b]) > .001) fail(`footprint ${i} has overlapping holes`);
+    }
+    polygons.push(polygon);
+  });
+  const netOverlap = ([outer, ...holes], ring) => overlapArea(outer, ring) - holes.reduce((s, h) => s + overlapArea(h, ring), 0);
+  const coverage = (ring) => polygons.reduce((s, polygon) => s + netOverlap(polygon, ring), 0);
+  const slack = (area) => Math.max(OVERLAP_SLACK.area, OVERLAP_SLACK.share * area);
+  for (let i = 0; i < polygons.length; i++) for (let j = i + 1; j < polygons.length; j++) {
+    const [outer, ...holes] = polygons[j];
+    const overlap = netOverlap(polygons[i], outer) - holes.reduce((s, h) => s + netOverlap(polygons[i], h), 0);
+    if (overlap > .001) fail(`footprints ${i} and ${j} overlap`);
+  }
+  for (const s of spaces) {
+    if (s.area - coverage(s.poly) > slack(s.area)) fail(`${s.kind} ${s.id} leaves the slab footprint`);
+  }
+  for (const h of voids) {
+    if (coverage(h.poly) > slack(h.area)) fail(`slab footprint covers void ${h.i}`);
+  }
 }

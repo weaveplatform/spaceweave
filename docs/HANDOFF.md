@@ -115,8 +115,8 @@ state plainly what gap remains.
 
 ## Step 3b implementation and measured trials
 
-The first implementation merged in PR #19. Tracer-8 refinements are on
-`fix/registered-space-boundaries`. Read
+The first implementation merged in PR #19 and tracer-8 refinements in PR #20.
+Tracer-9 rendering work is on `fix/precise-floor-rendering`. Read
 [the research and results](research/tracing-quality.md) before further tuning.
 `make quality` runs report-only CAD and raster ablations. Private CAD inputs
 still need `SPACEWEAVE_DWG_DIR`; output artifacts use `SPACEWEAVE_EVAL_OUT`.
@@ -130,8 +130,17 @@ large enclosing zones. Source boundaries are preserved by default: both tested
 wall-snapping policies reduced strict polygon matches. Crossings and substantial
 clipping are reported for review. Partial packages with one or two outlines
 are accepted. Semantic name/number layers exclude generic metadata from names.
-Tracer version is 8; the five original golden hashes stay unchanged, and full
-and partial package hashes were refreshed.
+Tracer version is 9; the five original golden hashes stay unchanged, and full
+and partial package hashes were refreshed for the optional slab footprint.
+
+Door leaves now follow their host wall's perpendicular, with correct hinge
+selection when wall endpoints run backwards. Registered packages carry a
+separate slab footprint with polygons and holes, so a dropped validation outline
+does not force a rectangular slab. Footprints preserve declared voids and use
+the existing half-exterior-wall allowance in metres. Read the
+[rendering results](research/rendering-precision.md) before further tuning.
+The new wall-continuation trial improves wall recall but adds facade spaces;
+it stays off by default. Selected extraction scores remain those below.
 
 The 99% goal is still open. All-five-floor source-preserving outputs pass the
 site validator; room/zone recall is 98.0–98.4% against raw supplied polygons at
@@ -145,15 +154,16 @@ be compared directly with the room-only table above. No independent gold review
 or human correction-time trial has been completed. Raster face recovery remains
 opt-in for experiments because its precision regresses on several plans.
 
-Validation: tracer 8's 132 trial configurations pass the Node validator; all
-112 raster score rows and the five floors' wall/door scores remain unchanged.
-All 141 site tests and Chrome Plan/3D checks passed for the regenerated drafts.
-The complete local tracer-8 `make gate` passed on Go 1.27.4 (97.7% merged coverage,
+Validation: tracer 9's 137 trial configurations pass the Node validator; all
+112 raster score rows and the five floors' selected wall/door/space scores remain
+unchanged. All 148 site tests and Chrome Plan/3D/reverse-angle checks passed.
+The complete final tracer-9 `make gate` passed on Go 1.27.4 (97.7% merged coverage,
 every package ≥90%, all six cross-compilation targets, no vulnerabilities).
 Semantic diagnostics also pass. The Go toolchain
 selection fixes the pre-existing standard-library advisory GO-2026-6859.
-PR #19's cross-platform CI passed before merge. The follow-up refinement still
-needs its own cross-platform CI; local cross-compilation does not replace it.
+The tracer-9 follow-up needs its own cross-platform CI; local cross-compilation
+does not replace it. The review server uses port 8010 and the private scratch
+catalogue; keep it running when the user is reviewing.
 
 Next priorities: independently adjudicate overlapping source outlines and
 missing room identities; diagnose wall-recall losses and unplaced openings;

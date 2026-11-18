@@ -4,7 +4,7 @@
 
 import { makeView } from './projection.js';
 import {
-  wallPrisms, balustradePrisms, furniturePrisms, projectPrism, orderItems, centroid, polygonArea, prism, offsetPolygon,
+  wallPrisms, balustradePrisms, furniturePrisms, projectPrism, orderItems, centroid, polygonArea, floorFootprint, projectFootprint,
 } from './geometry.js';
 
 const d3 = globalThis.d3;
@@ -65,8 +65,8 @@ export function createScene({ svg: svgEl, tooltip: tooltipEl, styleRoot, plan, o
   const tooltip = d3.select(tooltipEl);
   const W = plan.WIDTH;
   const D = plan.DEPTH;
-  const outline = plan.OUTLINE ?? [[0, 0], [W, 0], [W, D], [0, D]];
-  const opts = { thickness: plan.THICKNESS, width: W, depth: D, outline: plan.OUTLINE ?? null };
+  const footprint = floorFootprint(plan);
+  const opts = { thickness: plan.THICKNESS, width: W, depth: D, outline: plan.OUTLINE ?? null, footprint: plan.FOOTPRINT ?? null };
   const voids = plan.VOIDS ?? [];
   const maxDist = Math.hypot(W, D);
   const distFromEntrance = (x, y) => Math.hypot(x - plan.ENTRANCE[0], y - plan.ENTRANCE[1]) / maxDist;
@@ -148,8 +148,7 @@ export function createScene({ svg: svgEl, tooltip: tooltipEl, styleRoot, plan, o
     return wallCache;
   }
 
-  // The slab follows the outer face of the exterior walls.
-  const plinth = prism(offsetPolygon(outline, plan.THICKNESS.exterior / 2), -PLINTH, 0, { mat: 'plinth' });
+  const holes = footprint.flatMap((polygon) => polygon.slice(1));
 
   const rooms = plan.rooms.map((r) => ({ ...r, area: polygonArea(r.polygon), c: r.label ?? centroid(r.polygon) }));
 
@@ -196,30 +195,27 @@ export function createScene({ svg: svgEl, tooltip: tooltipEl, styleRoot, plan, o
     const cosP = Math.cos((state.phi * Math.PI) / 180);
 
     // Ground shadow (skins with --shadow-opacity), base slab and floors
-    const shadowPts = plinth.poly.map(([x, y]) => {
+    const shadowPath = footprint.map(([ring]) => pathOf(ring.map(([x, y]) => {
       const [sx, sy] = view.project(x, y, -PLINTH);
       return [sx + 0.3, sy + 0.55];
-    });
-    gShadow.selectAll('path').data([0]).join('path').attr('d', pathOf(shadowPts));
+    }))).join('');
+    gShadow.selectAll('path').data([0]).join('path').attr('d', shadowPath);
 
     // A void is a hole through the slab's top. Under the hole, drawn first so
     // the slab hides all but what shows through it: the hole's sides at slab
     // level, then its floor a slab's depth down, darker, so it reads as depth.
-    const base = projectPrism(plinth, view);
-    const voidAt = (z) => voids.map((v) => pathOf(v.map(([x, y]) => view.project(x, y, z)))).join('');
+    const voidAt = (z) => holes.map((v) => pathOf(v.map(([x, y]) => view.project(x, y, z)))).join('');
     const baseFaces = [
-      ...(voids.length ? [
-        { side: 'void-side', d: voidAt(0), fill: shade('plinth', { nx: 0, ny: -1 }, view) },
-        { side: 'void-floor', d: voidAt(-PLINTH), fill: d3.color(palette.plinth).darker(1.2).formatHex() },
+      ...(holes.length ? [
+        { id: 'void-floor', d: voidAt(-PLINTH), fill: d3.color(palette.plinth).darker(1.2).formatHex() },
       ] : []),
-      ...base.faces.map((f) => ({
-        side: f.side,
-        // evenodd turns each void's ring into a hole in the top face.
-        d: pathOf(f.pts) + (f.side === 'top' ? voidAt(0) : ''),
+      ...projectFootprint(footprint, view, -PLINTH, 0).map((f) => ({
+        id: f.id,
+        d: f.rings ? f.rings.map(pathOf).join('') : pathOf(f.pts),
         fill: f.side === 'top' ? palette.plinth : shade('plinth', f, view),
       })),
     ];
-    gBase.selectAll('path').data(baseFaces, (f) => f.side).join('path')
+    gBase.selectAll('path').data(baseFaces, (f) => f.id).join('path')
       .attr('d', (f) => f.d)
       .attr('fill-rule', 'evenodd')
       .attr('fill', (f) => f.fill)
@@ -358,7 +354,7 @@ export function createScene({ svg: svgEl, tooltip: tooltipEl, styleRoot, plan, o
   function fit(state, duration = 0) {
     const view = makeView({ theta: state.theta, phi: state.phi, cx: W / 2, cy: D / 2 });
     const pts = [];
-    for (const [x, y] of outline) {
+    for (const [x, y] of [...footprint.flat(2), ...plan.walls.flatMap((w) => [w.from, w.to])]) {
       pts.push(view.project(x, y, -PLINTH), view.project(x, y, state.wallHeight));
     }
     const t = transformToFit(screenBounds(pts));

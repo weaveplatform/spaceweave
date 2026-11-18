@@ -2,7 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { makeView, PRESETS } from '../js/projection.js';
 import {
-  solidRuns, splitRun, wallPrisms, balustradePrisms, BALUSTRADE, prism, rectPoly, projectPrism, compareFootprints, orderItems, signedArea, overlapArea, DOOR_HEAD,
+  solidRuns, splitRun, wallPrisms, balustradePrisms, BALUSTRADE, prism, rectPoly, projectPrism, compareFootprints, orderItems, signedArea, overlapArea, DOOR_HEAD, LEAF_THICKNESS,
+  floorFootprint, pointInFootprint, projectFootprint,
 } from '../js/geometry.js';
 
 const near = (a, b, msg) => assert.ok(Math.abs(a - b) < 1e-9, `${msg}: ${a} vs ${b}`);
@@ -58,6 +59,60 @@ test('a wall with one door becomes two runs, a lintel and a leaf', () => {
   assert.equal(leaves.length, 1);
   // The leaf opens to the north, so it lies entirely above (smaller y than) the wall.
   assert.ok(leaves[0].poly.every(([, y]) => y < 5));
+});
+
+test('door leaves are rectangular and perpendicular to angled walls in either direction', () => {
+  const swingVector = { N: [0, -1], S: [0, 1], E: [1, 0], W: [-1, 0] };
+  for (const angle of [0, 23, 45, 67, 90, 113, 157, 203, 247, 293, 337]) {
+    const a = angle * Math.PI / 180;
+    const u = [Math.cos(a), Math.sin(a)];
+    const axis = Math.abs(u[0]) > Math.abs(u[1]) ? 0 : 1;
+    const ends = [1, 2].map((t) => 5 + t * u[axis]).sort((x, y) => x - y);
+    for (const swing of axis === 0 ? ['N', 'S'] : ['E', 'W']) {
+      for (const hinge of ['a', 'b']) {
+        const wall = { id: 'angled', kind: 'interior', from: [5, 5], to: [5 + 4 * u[0], 5 + 4 * u[1]],
+          openings: [{ a: ends[0], b: ends[1], kind: 'door', swing, hinge }] };
+        const { leaves } = wallPrisms([wall], 2.7, opts);
+        const p = leaves[0].poly;
+        const edges = p.map((v, i) => [p[(i + 1) % 4][0] - v[0], p[(i + 1) % 4][1] - v[1]]);
+        const long = edges.find((v) => Math.hypot(...v) > .5);
+        near(long[0] * u[0] + long[1] * u[1], 0, `angle ${angle}: leaf perpendicular to wall`);
+        near(Math.abs(signedArea(p)), LEAF_THICKNESS, `angle ${angle}: leaf area`);
+        const centre = p.reduce((s, v) => [s[0] + v[0] / 4, s[1] + v[1] / 4], [0, 0]);
+        const along = (centre[0] - 5) * u[0] + (centre[1] - 5) * u[1];
+        const hingeAt = (hinge === 'a' ? ends[0] : ends[1]) - 5;
+        near(along, hingeAt / u[axis] + (hinge === 'a' ? 1 : -1) * Math.sign(u[axis]) * .03,
+          `angle ${angle}: same physical hinge`);
+        const normal = [-u[1], u[0]];
+        const side = (centre[0] - 5) * normal[0] + (centre[1] - 5) * normal[1];
+        assert.ok(side * (normal[0] * swingVector[swing][0] + normal[1] * swingVector[swing][1]) > 0,
+          `angle ${angle}: requested swing side`);
+      }
+    }
+  }
+});
+
+test('a supplied slab retains recesses, holes and disconnected floor without a bounding rectangle', () => {
+  const shell = [[0, 0], [4, 0], [4, 1], [2, 1], [2, 4], [0, 4]];
+  const hole = sq(.5, 1, 1.5, 2);
+  const polygons = floorFootprint({ ...opts, FOOTPRINT: [[shell, hole], [sq(6, 0, 7, 1)]] });
+  assert.ok(pointInFootprint([3, .5], polygons), 'bay retained');
+  assert.ok(!pointInFootprint([3, 3], polygons), 'recess remains outside');
+  assert.ok(!pointInFootprint([1, 1.5], polygons), 'hole remains open');
+  assert.ok(pointInFootprint([6.5, .5], polygons), 'separate component retained');
+  assert.ok(signedArea(polygons[0][1]) < 0, 'hole sides face into the opening');
+  const faces = projectFootprint(polygons, makeView(PRESETS.iso), -.22, 0);
+  assert.equal(new Set(faces.map((f) => f.id)).size, faces.length);
+  assert.equal(faces.filter((f) => f.side === 'top').length, 2);
+  assert.equal(faces.find((f) => f.id === '0/top').rings.length, 2);
+  assert.ok(faces.some((f) => f.id.startsWith('0/1/')), 'inner vertical faces are present');
+  assert.ok(faces.flatMap((f) => f.rings?.flat() ?? f.pts).every((p) => p.every(Number.isFinite)));
+});
+
+test('legacy slab fallback keeps its wall allowance and voids', () => {
+  const polygons = floorFootprint({ WIDTH: 10, DEPTH: 8, THICKNESS: opts.thickness, VOIDS: [sq(2, 2, 3, 3)] });
+  near(signedArea(polygons[0][0]), 10.15 * 8.15, 'fallback area');
+  assert.ok(!pointInFootprint([2.5, 2.5], polygons));
 });
 
 test('low walls lose their lintels', () => {

@@ -430,22 +430,28 @@ func (r *reader) pair(c []piece, minG, maxG float64, glass bool, weight float64,
 	for i, f := range fs {
 		stretches := [][2]float64{{f.t0, f.t1}}
 		if f.paired {
-			if !r.areaPlan {
+			if !r.areaPlan && !r.o.WallContinuations {
 				continue
 			}
-			// An outline's edge paired with its neighbour's only where
-			// the neighbour runs; the rest of it still bounds a room.
+			// A partner may cover only part of a face. Its uncovered length
+			// remains wall-layer evidence, just like a wholly lone line.
 			stretches = uncovered(f.t0, f.t1, covered[i])
 		}
 		if shadowed(fs, i, minG, r.areaPlan) {
 			continue
 		}
 		from := -1
-		if len(f.leaves) == 1 && !f.paired {
+		// A recovered tail can still be a loose door leaf. Keep its source
+		// identity so emitWalls can discard it after swing recognition.
+		if len(f.leaves) == 1 {
 			from = f.leaves[0]
 		}
 		for _, st := range stretches {
 			if st[1]-st[0] < minLen {
+				continue
+			}
+			if f.paired && !r.areaPlan {
+				r.continueFace(f, c, u, n, st, wall{thick: thick, glass: glass, weight: w})
 				continue
 			}
 			r.walls = append(r.walls, wall{
@@ -454,6 +460,30 @@ func (r *reader) pair(c []piece, minG, maxG float64, glass bool, weight float64,
 			})
 			r.markUsed(f.leaves)
 		}
+	}
+}
+
+// Faces may merge collinear strokes from several entities. Retain each
+// contributor's span so recognising a door leaf removes only its part,
+// rather than keeping a phantom wall or dropping a real continuation.
+func (r *reader) continueFace(f face, pieces []piece, u, n point, span [2]float64, template wall) {
+	for _, p := range pieces {
+		if !slices.Contains(f.leaves, p.leaf) ||
+			math.Abs(dot(p.a.Add(p.b).Mul(.5), n)-f.rho) > r.metres(collinear) {
+			continue
+		}
+		lo, hi := dot(p.a, u), dot(p.b, u)
+		if lo > hi {
+			lo, hi = hi, lo
+		}
+		lo, hi = overlap(lo, hi, span[0], span[1])
+		if hi <= lo {
+			continue
+		}
+		w := template
+		w.a, w.b = u.Mul(lo).Add(n.Mul(f.rho)), u.Mul(hi).Add(n.Mul(f.rho))
+		w.from = p.leaf
+		r.walls = append(r.walls, w)
 	}
 }
 

@@ -21,6 +21,7 @@ type Plan struct {
 	Width        float64          `json:"WIDTH"`
 	Depth        float64          `json:"DEPTH"`
 	Outline      [][2]float64     `json:"OUTLINE,omitempty"`
+	Footprint    [][][][2]float64 `json:"FOOTPRINT,omitempty"`
 	Voids        [][][2]float64   `json:"VOIDS,omitempty"`
 	Entrance     [2]float64       `json:"ENTRANCE"`
 	Thickness    Thickness        `json:"THICKNESS"`
@@ -154,6 +155,13 @@ func Convert(t *Trace, meta Meta) (*Plan, error) {
 	}
 	if len(t.Outline) > 0 {
 		p.Outline = s.poly(t.Outline)
+	}
+	for _, polygon := range t.Footprint {
+		var rings [][][2]float64
+		for _, ring := range polygon {
+			rings = append(rings, s.poly(ring))
+		}
+		p.Footprint = append(p.Footprint, rings)
 	}
 	for _, v := range t.Voids {
 		p.Voids = append(p.Voids, s.poly(v))

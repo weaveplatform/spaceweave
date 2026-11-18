@@ -1,5 +1,11 @@
 # Deterministic CAD and raster tracing quality
 
+Tracer 9 adds wall-relative door leaves and an explicit package slab footprint.
+Its default extraction scores below remain unchanged; the new wall-continuation
+candidate stays experimental because it adds unmatched spaces. See the
+[rendering precision measurements](rendering-precision.md) for the 137-configuration
+trial, geometric renderer diagnostics and current validation.
+
 Research, baseline and implementation trials recorded 17 November 2026. The 99% per-floor target is not achieved. Tracer 8 raises selected-mode recall to 98.0–98.4% and precision to 84.9–90.0%; these measure preservation of supplied space plans, not independent discovery. Its complete local `make gate` passed on Go 1.27.4 with 97.7% merged coverage, every package ≥90%, no vulnerabilities and all six platform builds.
 
 ## Scope and evidence
