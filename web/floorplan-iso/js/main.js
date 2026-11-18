@@ -4,6 +4,8 @@ import { busy } from './pipeline.js';
 import { initWorkbench } from './workbench.js';
 import { createScene } from './render.js';
 import { SKINS, DEFAULT_SKIN } from './skins.js';
+import { initWorkspace } from './workspace.js';
+import { describeSelection } from './selection.js';
 
 const d3 = globalThis.d3;
 
@@ -13,6 +15,7 @@ const state = {
   // from an isometric camera. The slider goes back up to full height.
   wallHeight: 1.5,
   cutaway: true,
+  cutawayMode: 'exterior',
   cutHeight: 0.3,
   activeRoom: null,
   furniture: true,
@@ -52,7 +55,9 @@ stageWrap.dataset.skin = remembered('skin', (id) => SKINS.some((s) => s.id === i
 
 // The scene is rebuilt from scratch when the plan changes; everything else
 // (camera, skin, toggles) carries over.
-let scene = null;
+let scene = null, loadedPlan = null, selection = null, cameraFocus = null;
+let loadedRevision = null;
+const awaitingTrace = new Set();
 
 // Several tweens can run at once (camera, build, sliders); coalesce them into
 // one render per animation frame.
@@ -74,10 +79,60 @@ const cutHeight = document.querySelector('#cut-height');
 const cutHeightOut = document.querySelector('#cut-height-out');
 const roomFocus = document.querySelector('#room-focus');
 
+const workspace = initWorkspace({
+  onClear: () => selectObject(null), onFocus: focusSelection, onWholeFloor: wholeFloor,
+  onModelShown: () => frameView(state),
+});
+
+function selectObject(value, toggle = false) {
+  if (toggle && selection?.type === value?.type && selection?.id === value?.id) value = null;
+  selection = describeSelection(loadedPlan, value);
+  scene?.setSelection(selection);
+  workspace.setSelection(selection);
+}
+
 function setRoomFocus(id) {
-  state.activeRoom = id || null;
-  roomFocus.value = id || '';
+  const room = loadedPlan?.rooms.find(r => r.id === id) ?? null;
+  state.activeRoom = room?.id ?? null;
+  workspace.setRoomFocus(room);
+  syncCutaways();
   invalidate();
+}
+
+function syncCutaways() {
+  const mode = state.cutawayMode;
+  document.querySelector('#cutaway-mode').value = mode;
+  document.querySelector('#cutaway-settings').hidden = mode === 'off';
+  const room = loadedPlan?.rooms.find(r => r.id === state.activeRoom);
+  document.querySelector('#cutaway-help').textContent = mode === 'exterior'
+    ? 'Near exterior walls are lowered. Interior walls remain.'
+    : room ? `Walls blocking ${room.name} are lowered; rear walls stay up. At 0 m, cut walls and their doors are hidden.`
+      : 'Select a room, then choose Focus to reveal interior walls.';
+}
+
+function setCutawayMode(mode) {
+  state.cutawayMode = mode; state.cutaway = mode !== 'off';
+  if (mode === 'room' && !state.activeRoom && selection?.type === 'room') setRoomFocus(selection.id);
+  syncCutaways(); invalidate();
+}
+
+function frameView(target, duration = 0) {
+  if (cameraFocus) scene?.focusObject(cameraFocus, target, duration);
+  else scene?.fit(target, duration);
+}
+
+function focusSelection() {
+  if (!selection) return;
+  cameraFocus = { type: selection.type, id: selection.id };
+  setRoomFocus(selection.roomId);
+  if (selection.roomId && state.cutawayMode !== 'off') setCutawayMode('room');
+  frameView(state, 750);
+}
+
+function wholeFloor() {
+  cameraFocus = null; setRoomFocus(null);
+  if (state.cutawayMode === 'room') setCutawayMode('exterior');
+  scene?.fit(state, 600);
 }
 
 function syncOutputs() {
@@ -116,7 +171,7 @@ function animateView(target, duration = 1100) {
   const to = { ...from, ...target };
   const theta = d3.interpolateNumber(from.theta, to.theta);
   const phi = d3.interpolateNumber(from.phi, to.phi);
-  scene?.fit({ ...state, ...to }, duration);
+  frameView({ ...state, ...to }, duration);
   motion(d3.select(document.body).transition('view').duration(duration).ease(d3.easeCubicInOut))
     .tween('view', () => (t) => {
       state.theta = theta(t);
@@ -147,13 +202,14 @@ document.querySelectorAll('[data-preset]').forEach((b) => b.addEventListener('cl
 document.querySelector('#rotate-left').addEventListener('click', () => animateView({ theta: state.theta - 90 }, 900));
 document.querySelector('#rotate-right').addEventListener('click', () => animateView({ theta: state.theta + 90 }, 900));
 document.querySelector('#rebuild').addEventListener('click', () => build());
-document.querySelector('#reset').addEventListener('click', () => {
-  setRoomFocus(null);
-  scene?.fit(state, 600);
-});
+document.querySelector('#reset').addEventListener('click', () => { cameraFocus = null; scene?.fit(state, 600); });
 
 elevation.addEventListener('input', () => {
   state.phi = +elevation.value;
+  document.querySelectorAll('[data-preset]').forEach(button => {
+    button.setAttribute('aria-pressed', String(Math.abs(PRESETS[button.dataset.preset].phi - state.phi) < 0.5));
+  });
+  frameView(state);
   syncOutputs();
   invalidate();
 });
@@ -167,10 +223,10 @@ cutHeight.addEventListener('input', () => {
   syncOutputs();
   invalidate();
 });
-roomFocus.addEventListener('change', () => {
-  setRoomFocus(roomFocus.value);
-  if (state.activeRoom) scene?.focusRoom(state.activeRoom);
-  else scene?.fit(state, 600);
+roomFocus.addEventListener('change', () => selectObject(roomFocus.value ? { type: 'room', id: roomFocus.value } : null));
+document.querySelector('#cutaway-mode').addEventListener('change', event => setCutawayMode(event.target.value));
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && !event.defaultPrevented && !document.querySelector('dialog[open]')) selectObject(null);
 });
 document.querySelectorAll('[data-toggle]').forEach((input) => {
   input.checked = state[input.dataset.toggle];
@@ -209,13 +265,13 @@ dark.addEventListener('change', () => {
   scene?.refreshPalette();
   invalidate();
 });
-window.addEventListener('resize', () => scene?.fit(state));
+window.addEventListener('resize', () => frameView(state));
 
 // ---- plan picker
 const planBlurb = document.querySelector('#plan-blurb');
 const sourceLink = document.querySelector('#source-link');
 const traceMethod = document.querySelector('#trace-method');
-const HAND_TRACED = traceMethod.textContent;
+const HAND_TRACED = 'Example plan traced by hand from its published source.';
 const planName = document.querySelector('#plan-name');
 
 // Built-in plans plus the tracer's catalogue, which is re-read while the page
@@ -225,54 +281,21 @@ let current = null;
 let workbench = null;
 
 function renderPicker() {
-  d3.select('#plans').selectAll('label')
-    .data(plans.filter((p) => !p.generated || LISTED.has(p.status)), (p) => p.id)
-    .join((enter) => {
-      const label = enter.append('label');
-      label.append('input').attr('type', 'radio').attr('name', 'plan').attr('value', (p) => p.id)
-        .on('change', (e, p) => loadPlan(p.id));
-      label.append('span').attr('class', 'plan-name');
-      label.append('span').attr('class', 'badge');
-      return label;
-    })
-    .attr('title', (p) => p.blurb)
-    .classed('generated', (p) => p.generated)
-    .classed('pending', (p) => p.generated && !READY.has(p.status))
-    .call((label) => {
-      label.select('input')
-        .property('checked', (p) => p.id === current)
-        .property('disabled', (p) => p.generated && !READY.has(p.status));
-      label.select('.plan-name').text((p) => p.name);
-      label.select('.badge')
-        .text((p) => ({ draft: 'Draft', queued: 'Queued', converting: 'Converting…', tracing: 'Tracing…' })[p.status] ?? '')
-        .attr('hidden', (p) => (['draft', 'queued', 'converting', 'tracing'].includes(p.status) ? null : ''));
-    });
+  const generated = plans.filter(p => p.generated && LISTED.has(p.status));
+  const floors = document.querySelector('#floor-select');
+  d3.select(floors).selectAll('option.floor').data(generated, p => p.id).join('option')
+    .attr('class', 'floor').attr('value', p => p.id).property('disabled', p => !READY.has(p.status))
+    .text(p => `${p.name}${READY.has(p.status) ? '' : ` · ${p.status}`}`);
+  floors.value = generated.some(p => p.id === current) ? current : '';
+  floors.options[0].textContent = generated.length ? 'Your floors' : 'No imported floors';
+  d3.select('#example-select').selectAll('option.example').data(PLANS, p => p.id).join('option')
+    .attr('class', 'example').attr('value', p => p.id).text(p => p.name);
+  document.querySelector('#example-select').value = PLANS.some(p => p.id === current) ? current : '';
 }
+document.querySelector('#floor-select').addEventListener('change', event => { if (event.target.value) loadPlan(event.target.value); });
+document.querySelector('#example-select').addEventListener('change', event => { if (event.target.value) loadPlan(event.target.value); });
 
-// A generated plan's blurb carries its review status and links to the
-// tracer's evidence, so a draft can be judged without leaving the page.
-function renderBlurb(entry) {
-  const blurb = d3.select(planBlurb).text(entry.blurb);
-  if (!entry.generated) return;
-  const facts = [{
-    draft: 'Draft, not yet reviewed',
-    queued: 'Sent back; waiting to be traced again',
-    converting: 'Being converted',
-    tracing: 'Being traced again',
-  }[entry.status] ?? 'Auto-traced'];
-  if (Number.isFinite(entry.confidence)) facts.push(`confidence ${Math.round(entry.confidence * 100)}%`);
-  if (entry.scale?.pxPerMetre > 0 && !entry.scale.assumed) facts.push('scale from the drawing');
-  blurb.append('br');
-  blurb.append('span').text(`${facts.join(' · ')} · `);
-  const links = [['overlay', 'overlay.png'], ['report', 'report.json']];
-  // A drawing keeps its original, and its SVG rendering in colour.
-  if (entry.drawing) links.push(['drawing', entry.drawing]);
-  if (entry.upload && entry.upload !== entry.source) links.push([`original ${String(entry.format).toUpperCase()}`, entry.upload]);
-  links.forEach(([label, file], i) => {
-    if (i) blurb.append('span').text(' · ');
-    blurb.append('a').attr('href', `${entry.dir}${file}`).attr('target', '_blank').text(label);
-  });
-}
+function renderBlurb(entry) { workspace.setPlan(entry, loadedPlan); }
 
 // The tracer takes minutes per plan, so a 10 s poll is plenty while it's
 // idle; while it has work, poll faster so the pipeline's turn and cost
@@ -295,29 +318,39 @@ async function refreshCatalog() {
   const entry = plans.find((p) => p.id === current);
   if (entry) renderBlurb(entry);
   workbench?.update();
+  if (entry?.generated && ['queued', 'converting', 'tracing'].includes(entry.status)) awaitingTrace.add(entry.id);
+  if (!loadingPlan && entry && READY.has(entry.status) && awaitingTrace.has(entry.id) && loadedRevision !== entry.updatedAt) await loadPlan(entry.id);
   schedule();
 }
 
 let loading = 0;
+let loadingPlan = null;
 async function loadPlan(id) {
   const entry = plans.find((p) => p.id === id && (!p.generated || READY.has(p.status))) ?? PLANS[0];
   const ticket = ++loading;
-  current = entry.id;
-  renderPicker();
-  renderBlurb(entry);
-  workbench?.update();
+  loadingPlan = entry.id;
+  document.querySelector('#stage').setAttribute('aria-busy', 'true');
   let plan;
   try {
     plan = await entry.load();
   } catch (err) {
     console.error(err);
-    planBlurb.textContent = `${entry.name} couldn't be loaded.`;
+    if (ticket !== loading) return;
+    loadingPlan = null;
+    renderPicker();
+    document.querySelector('#stage').removeAttribute('aria-busy');
+    document.querySelector('#upload-status').textContent = `${entry.name} couldn't be loaded. Your previous floor is still open.`;
     return;
   }
   if (ticket !== loading) return; // a later click won
+  loadingPlan = null;
   scene?.destroy();
+  current = entry.id; loadedPlan = plan; selection = cameraFocus = null;
+  loadedRevision = entry.updatedAt; awaitingTrace.delete(entry.id);
+  workspace.setSelection(null);
   setRoomFocus(null);
-  const wholeFloor = new Option('Whole floor', '');
+  renderPicker(); renderBlurb(entry); workbench?.update();
+  const wholeFloor = new Option('Choose a room…', '');
   roomFocus.replaceChildren(wholeFloor, ...plan.rooms.map(room =>
     new Option(`${room.name}${room.number && room.number !== room.name ? ` · ${room.number}` : ''}`, room.id)));
   scene = createScene({
@@ -325,7 +358,7 @@ async function loadPlan(id) {
     svg: document.querySelector('#stage'),
     tooltip: document.querySelector('#tooltip'),
     plan,
-    onRoomActivate: setRoomFocus,
+    onSelect: value => selectObject(value, true),
     onStats: ({ prisms, faces, ms }) => {
       stats.textContent = `${prisms} prisms · ${faces} faces · ${ms.toFixed(1)} ms/frame`;
     },
@@ -334,29 +367,33 @@ async function loadPlan(id) {
   sourceLink.textContent = plan.SOURCE.credit;
   traceMethod.textContent = !entry.generated ? HAND_TRACED
     : entry.tracer === 'claude'
-      ? 'were traced into metres by a Claude agent (the spaceweave worker), which checked its work against an overlay and the site\'s own validator'
-      : 'were traced into metres automatically by the spaceweave worker, which reads the walls, openings and rooms from the image or drawing and checks the result against the site\'s own validator';
+      ? 'Traced with the Claude tracer.' : 'Traced locally with the automatic tracer.';
   planName.textContent = plan.SOURCE.title;
   document.querySelector('#stage').setAttribute('aria-label', `Isometric model of the ${plan.SOURCE.title} floor plan`);
   remember('plan', entry.id);
+  document.querySelector('#stage').removeAttribute('aria-busy');
   state.build = 0;
   scene.render(state);
   scene.fit(state);
   build();
 }
-syncOutputs();
+syncOutputs(); syncCutaways();
 workbench = initWorkbench({
   plans: () => plans,
   current: () => current,
   refresh: refreshCatalog,
-  open: (id) => loadPlan(id),
+  open: (id) => { workspace.setMode('review'); return loadPlan(id); },
+  onImportStarted: () => workspace.importStarted(),
+  onLayers: () => workspace.showLayers(),
+  onTraceQueued: id => awaitingTrace.add(id),
 });
 await refreshCatalog();
-loadPlan(remembered('plan', (id) => plans.some((p) => p.id === id), DEFAULT_PLAN));
+loadPlan(remembered('plan', id => plans.some(p => p.id === id && (!p.generated || READY.has(p.status))), plans.find(p => p.generated && READY.has(p.status))?.id ?? DEFAULT_PLAN));
 document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshCatalog(); });
 
 // Exposed for poking at the scene from the console.
 globalThis.floorplan = {
-  state, invalidate, animateView, build, loadPlan,
+  state, invalidate, animateView, build, loadPlan, refreshCatalog,
+  get selection() { return selection; },
   refreshPalette: () => { scene?.refreshPalette(); invalidate(); },
 };

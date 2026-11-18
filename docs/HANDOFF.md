@@ -489,3 +489,34 @@ writes/native ordering queries remain. Eight default SVG fingerprints change
 only because exterior door leaves now follow their host's cut; the other 37
 match the accepted desk build. Tracing and generated data are unchanged.
 This branch builds on PR #24 and its animation dependency #23; merge those first.
+
+## Workspace consolidation
+
+`feat/consolidate-workspace` supersedes the interaction and control descriptions
+above. The owner approved a View/Review workspace with a separate Import dialog.
+Imported floors and examples have separate header selectors; normal viewing no
+longer includes upload jobs, layers or raw reports. Review includes actual source
+and trace-overlay previews, caveats, approval, processing, source packages and
+layer roles. Confidence is kept in Technical details and labelled as unmeasured.
+
+Rooms and desks share selection details and explicit Focus/Clear actions. A room
+click only selects. Focus frames the object and identifies its room for cutaways;
+Off stays off. Fit changes the camera without clearing the cutaway target. Whole
+floor clears the room context. Wall modes state their scope explicitly; absent
+targets and irrelevant settings are handled. Keep selection, camera framing and
+cutaway room context separate when extending this. Replay animation retains the
+complete build; Retrace is a distinct processing action in Review.
+
+Layer edits are staged per floor, with an unload guard and one Apply and retrace
+action. Failed saves keep changes; a failed queue request after saving can retry
+without another profile write. Pending edits block approval/separate retrace.
+Request changes is restricted to the active Claude tracer; automatic tracing
+explains that unchanged inputs repeat deterministically. The active model reloads
+when a queued trace finishes, without rebuilding on an approval-only update.
+
+Read [the consolidation notes](research/workspace-consolidation.md). All 161 Node
+tests, 1,801-desk interactions, 25 cutaway poses and the workspace trial pass.
+All 45 default SVG comparisons match `91eeffb`; full animation and cached render
+checks remain. The workspace trial intercepts API writes and must never mutate
+the private evaluation catalogue or profiles. Screenshots remain private.
+This work follows merged PRs #23–#25.

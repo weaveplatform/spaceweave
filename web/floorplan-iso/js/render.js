@@ -73,7 +73,7 @@ function readPalette(el) {
   };
 }
 
-export function createScene({ svg: svgEl, tooltip: tooltipEl, styleRoot, plan, onStats, onRoomActivate }) {
+export function createScene({ svg: svgEl, tooltip: tooltipEl, styleRoot, plan, onStats, onSelect }) {
   const svg = d3.select(svgEl);
   const tooltip = d3.select(tooltipEl);
   const W = plan.WIDTH;
@@ -131,6 +131,7 @@ export function createScene({ svg: svgEl, tooltip: tooltipEl, styleRoot, plan, o
       showTooltip(event, desk.label, selected ? 'Selected · Click again or Esc to clear' : 'Click to select · Esc clears selection');
     },
     hide() { tooltip.attr('hidden', true); },
+    onSelect(desk) { onSelect?.(desk ? { type: 'desk', id: desk.id } : null); },
   });
 
   // Labels keep a constant on-screen size: CSS divides their font size by the
@@ -141,6 +142,9 @@ export function createScene({ svg: svgEl, tooltip: tooltipEl, styleRoot, plan, o
     gLabels.style('--zoom-k', e.transform.k);
   });
   svg.call(zoom).on('dblclick.zoom', null);
+  svg.on('click.selection', event => {
+    if (!event.defaultPrevented && !event.target.closest('.floors path,[data-desk-id]')) onSelect?.(null);
+  });
 
   // ---- static geometry, built once (walls rebuild when their height changes)
   let id = 0;
@@ -252,7 +256,11 @@ export function createScene({ svg: svgEl, tooltip: tooltipEl, styleRoot, plan, o
       .on('pointerenter', (e, r) => { hovered = r; drawHover(); showTip(e, r); })
       .on('pointermove', (e, r) => showTip(e, r))
       .on('pointerleave', () => { hovered = null; drawHover(); tooltip.attr('hidden', true); })
-      .on('click', (e, r) => { onRoomActivate?.(r.id); zoomToRoom(r); }))
+      .attr('role', 'button').attr('tabindex', '0').attr('aria-label', r => r.name).attr('aria-pressed', 'false')
+      .on('click', (e, r) => onSelect?.({ type: 'room', id: r.id }))
+      .on('keydown', (e, r) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (!e.repeat) onSelect?.({ type: 'room', id: r.id }); }
+      }))
       .attr('d', (r) => pathOf(floorPts(r.polygon)))
       .attr('class', spaceClass)
       .attr('fill', (r) => spaceFill(r, palette, (a, b, t) => d3.interpolateRgb(a, b)(t)));
@@ -271,7 +279,7 @@ export function createScene({ svg: svgEl, tooltip: tooltipEl, styleRoot, plan, o
   const growth = (build, delay) => d3.easeCubicOut(Math.max(0, Math.min(1, (build - delay) / 0.22)));
 
   // ---- frame
-  let hovered = null, activeRoom = null, lastWallHeight = 1.5;
+  let hovered = null, selectedRoom = null, activeRoom = null;
   let lastView = null;
   const orderItems = createItemOrderer();
   const painted = new WeakMap();
@@ -292,7 +300,6 @@ export function createScene({ svg: svgEl, tooltip: tooltipEl, styleRoot, plan, o
       projectedAt = { theta: state.theta, phi: state.phi };
     }
     lastView = view;
-    lastWallHeight = state.wallHeight;
     activeRoom = roomsById.get(state.activeRoom) ?? null;
     const sinP = Math.sin((state.phi * Math.PI) / 180);
     const cosP = Math.cos((state.phi * Math.PI) / 180);
@@ -305,9 +312,12 @@ export function createScene({ svg: svgEl, tooltip: tooltipEl, styleRoot, plan, o
     // Solids
     const { solids, leaves } = wallsFor(state.wallHeight);
     const cutHeight = Math.max(0, Math.min(state.wallHeight, state.cutHeight ?? 0.3));
-    const cutWalls = state.cutaway && cutHeight < state.wallHeight
-      ? activeRoom ? roomCutaways(activeRoom.polygon, view, state.wallHeight) : exteriorCutaways(solids, view)
-      : null;
+    let cutWalls = null;
+    if (state.cutaway && cutHeight < state.wallHeight) {
+      const mode = state.cutawayMode ?? (activeRoom ? 'room' : 'exterior');
+      if (mode === 'room' && activeRoom) cutWalls = roomCutaways(activeRoom.polygon, view, state.wallHeight);
+      else if (mode === 'exterior') cutWalls = exteriorCutaways(solids, view);
+    }
     let active = solids;
     if (state.doors) active = active.concat(leaves);
     if (state.furniture) active = active.concat(furniture);
@@ -418,7 +428,7 @@ export function createScene({ svg: svgEl, tooltip: tooltipEl, styleRoot, plan, o
 
   function drawHover() {
     const view = lastView;
-    const room = hovered ?? activeRoom;
+    const room = hovered ?? selectedRoom ?? activeRoom;
     if (hoverAt.room === room && hoverAt.theta === view?.theta && hoverAt.phi === view?.phi) return;
     hoverAt = { room, theta: view?.theta, phi: view?.phi };
     const data = room && view ? [room] : [];
@@ -475,10 +485,26 @@ export function createScene({ svg: svgEl, tooltip: tooltipEl, styleRoot, plan, o
     (duration ? svg.transition('camera').duration(duration).ease(d3.easeCubicInOut) : svg).call(zoom.transform, t);
   }
 
-  function zoomToRoom(r) {
-    const view = lastView;
-    const pts = r.polygon.flatMap(([x, y]) => [view.project(x, y, 0), view.project(x, y, lastWallHeight)]);
-    svg.transition('camera').duration(750).ease(d3.easeCubicInOut).call(zoom.transform, transformToFit(screenBounds(pts), 0.6));
+  function focusObject(selection, state, duration = 750) {
+    const view = makeView({ ...state, cx: W / 2, cy: D / 2 });
+    const room = selection?.type === 'room' ? roomsById.get(selection.id) : null;
+    const parts = selection?.type === 'desk' ? furniture.filter(p => p.deskId === selection.id) : [];
+    const pts = room ? room.polygon.flatMap(([x, y]) => [view.project(x, y, 0), view.project(x, y, state.wallHeight)])
+      : parts.flatMap(p => p.poly.flatMap(([x, y]) => [view.project(x, y, p.z0), view.project(x, y, p.z1)]));
+    if (!pts.length) return;
+    const transform = transformToFit(screenBounds(pts), room ? 0.6 : 0.25);
+    (duration ? svg.transition('camera').duration(duration).ease(d3.easeCubicInOut) : svg).call(zoom.transform, transform);
+  }
+
+  function setSelection(selection) {
+    const before = selectedRoom;
+    selectedRoom = selection?.type === 'room' ? roomsById.get(selection.id) : null;
+    desks.setSelected(selection?.type === 'desk' ? selection.id : null);
+    if (before !== selectedRoom) {
+      gFloors.selectAll('path').filter(r => r === before || r === selectedRoom)
+        .attr('aria-pressed', r => String(r === selectedRoom));
+      drawHover();
+    }
   }
 
   function refreshPalette() {
@@ -489,12 +515,10 @@ export function createScene({ svg: svgEl, tooltip: tooltipEl, styleRoot, plan, o
 
   function destroy() {
     desks.destroy();
-    svg.on('.zoom', null).interrupt('camera');
+    svg.on('.zoom', null).on('.selection', null).interrupt('camera');
     svg.selectAll('*').remove();
     tooltip.attr('hidden', true);
   }
 
-  return { render, fit, refreshPalette, destroy, svg,
-    focusRoom(id) { const room = roomsById.get(id); if (room) zoomToRoom(room); },
-  };
+  return { render, fit, refreshPalette, destroy, svg, focusObject, setSelection };
 }

@@ -2,6 +2,7 @@
 // Attach to an isolated Chrome debugging port; open and close only our own tab.
 // Outputs cut-wall counts and interaction results, never coordinates or drawings.
 import assert from 'node:assert/strict';
+import { connect } from './browser.mjs';
 import { writeFile } from 'node:fs/promises';
 
 const [site, output] = process.argv.slice(2);
@@ -15,33 +16,6 @@ const catalogue = await (await fetch(new URL('generated/catalog.json', base))).j
 const plans = catalogue.plans.filter(p => ['draft', 'approved'].includes(p.status));
 assert.ok(plans.length, 'need at least one generated floor');
 
-async function connect(url) {
-  const ws = new WebSocket(url), pending = new Map(), errors = [];
-  let serial = 0;
-  await new Promise((resolve, reject) => {
-    ws.addEventListener('open', resolve, { once: true });
-    ws.addEventListener('error', reject, { once: true });
-  });
-  ws.addEventListener('message', e => {
-    const message = JSON.parse(e.data);
-    if (message.id) {
-      const p = pending.get(message.id);
-      pending.delete(message.id);
-      if (message.error) p.reject(Error(JSON.stringify(message.error)));
-      else p.resolve(message.result);
-    } else if (message.method === 'Runtime.exceptionThrown') {
-      errors.push(message.params.exceptionDetails.text);
-    }
-  });
-  return {
-    call: (method, params = {}) => new Promise((resolve, reject) => {
-      const id = ++serial;
-      pending.set(id, { resolve, reject });
-      ws.send(JSON.stringify({ id, method, params }));
-    }),
-    close: () => ws.close(), errors,
-  };
-}
 
 // Execute the real renderer and UI. The geometric cases live in cutaway.test.js;
 // this trial checks that wall assemblies, controls and camera changes obey them.
@@ -61,8 +35,10 @@ async function exerciseFloor(id) {
   check(floorplan.state.activeRoom===null,'floor change clears room focus');
   const picker=document.querySelector('#room-focus');
   check(picker.options.length===plan.rooms.length+1,'every room is selectable');
-  await set({build:1,moving:false,wallHeight:2.7,cutHeight:.3,cutaway:true,furniture:true});
+  await set({build:1,moving:false,wallHeight:2.7,cutHeight:.3,cutaway:true,cutawayMode:'room',furniture:true});
   picker.value=room.id;picker.dispatchEvent(new Event('change'));
+  check(floorplan.state.activeRoom===null,'room selection alone does not change cutaways');
+  document.querySelector('#selection-focus').click();
   await new Promise(r=>setTimeout(r,850));await frames();
   check(floorplan.state.activeRoom===room.id,'picker activates its room');
   const changes=[];
@@ -114,15 +90,18 @@ async function exerciseFloor(id) {
   const slider=document.querySelector('#cut-height');
   slider.value='0';slider.dispatchEvent(new Event('input'));
   await frames();check(floorplan.state.cutHeight===0&&document.querySelector('#cut-height-out').textContent==='Hidden','cut slider supports hiding');
-  const toggle=document.querySelector('[data-toggle="cutaway"]');
-  toggle.checked=false;toggle.dispatchEvent(new Event('change'));
+  const toggle=document.querySelector('#cutaway-mode');
+  toggle.value='off';toggle.dispatchEvent(new Event('change'));
   await frames();check(floorplan.state.cutaway===false,'checkbox disables cutaways');
   const height=document.querySelector('#wall-height');
   height.value='1.2';height.dispatchEvent(new Event('input'));await frames();
   check(floorplan.state.wallHeight===1.2&&+slider.max===1.2,'main wall height remains independent and bounds the cut height');
-  toggle.checked=true;toggle.dispatchEvent(new Event('change'));
+  toggle.value='room';toggle.dispatchEvent(new Event('change'));
   document.querySelector('#reset').click();await new Promise(r=>setTimeout(r,650));
-  check(floorplan.state.activeRoom===null&&picker.value==='','Fit returns to whole-floor cutaways');
+  check(floorplan.state.activeRoom===room.id,'Fit preserves the cutaway target');
+  document.querySelector('#whole-floor').click();await new Promise(r=>setTimeout(r,650));
+  check(floorplan.state.activeRoom===null,'Whole floor clears room focus');
+  document.querySelector('#selection-clear').click();
   return {rooms:plan.rooms.length,views};
 }
 
@@ -165,7 +144,10 @@ try{
     await page.call('Input.dispatchMouseEvent',{type:'mouseMoved',x,y});
     await page.call('Input.dispatchMouseEvent',{type:'mousePressed',x,y,button:'left',clickCount:1});
     await page.call('Input.dispatchMouseEvent',{type:'mouseReleased',x,y,button:'left',clickCount:1});
-    assert.equal(await evaluate('floorplan.state.activeRoom'),point.id,'floor click activates room cutaway');
+    assert.equal(await evaluate('floorplan.selection.id'),point.id,'floor click selects the room');
+    assert.equal(await evaluate('floorplan.state.activeRoom'),null,'room selection does not activate a cutaway');
+    await evaluate(`document.querySelector('#selection-focus').click()`);
+    assert.equal(await evaluate('floorplan.state.activeRoom'),point.id,'Focus activates room cutaway');
     assert.equal(await evaluate('document.querySelector("#room-focus").value'),point.id);
     results.push(row);console.log(JSON.stringify(row));
   }

@@ -2,6 +2,7 @@
 // Attach to an isolated Chrome debugging port; open and close only our own tab.
 // Outputs timings and SVG hashes, never plan coordinates or source drawings.
 import assert from 'node:assert/strict';
+import { connect } from './browser.mjs';
 import { readFile, writeFile } from 'node:fs/promises';
 
 const [site, output, baseline] = process.argv.slice(2);
@@ -15,33 +16,6 @@ const catalogue = await (await fetch(new URL('generated/catalog.json', base))).j
 const plans = catalogue.plans.filter(p => ['draft', 'approved'].includes(p.status));
 assert.ok(plans.length, 'need at least one generated floor');
 
-async function connect(url) {
-  const ws = new WebSocket(url), pending = new Map(), errors = [];
-  let serial = 0;
-  await new Promise((resolve, reject) => {
-    ws.addEventListener('open', resolve, { once: true });
-    ws.addEventListener('error', reject, { once: true });
-  });
-  ws.addEventListener('message', e => {
-    const message = JSON.parse(e.data);
-    if (message.id) {
-      const p = pending.get(message.id);
-      pending.delete(message.id);
-      if (message.error) p.reject(Error(JSON.stringify(message.error)));
-      else p.resolve(message.result);
-    } else if (message.method === 'Runtime.exceptionThrown') {
-      errors.push(message.params.exceptionDetails.text);
-    }
-  });
-  return {
-    call: (method, params = {}) => new Promise((resolve, reject) => {
-      const id = ++serial;
-      pending.set(id, { resolve, reject });
-      ws.send(JSON.stringify({ id, method, params }));
-    }),
-    close: () => ws.close(), errors,
-  };
-}
 
 // This function runs inside the page, with its actual D3 renderer and timer.
 async function measureFloor(id) {
