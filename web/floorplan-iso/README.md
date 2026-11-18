@@ -242,6 +242,10 @@ runs `tools/validate.mjs`.
   (named areas with no walls of their own) are a lighter tint with a dashed
   edge and an italic name. Scroll or drag to zoom and pan.
 - Toggle furniture, doors, glazing, room names and people.
+- Hover a desk to highlight its top and legs together. Click or tap to select;
+  click again, click the background or press Escape to clear. Tab between desks
+  and use Enter or Space to select. Selection follows the desk through camera,
+  style and build changes, and clears when you change floors.
 
 ## Styles
 

@@ -277,10 +277,16 @@ h1 { margin: 0; font-size: 17px; letter-spacing: -0.01em; }
   stroke-width: calc(var(--edge-width) * 1px);
   stroke-linejoin: round;
   vector-effect: non-scaling-stroke;
-  pointer-events: none;
+  pointer-events: visiblePainted;
 }
-.solids path.hatch { stroke: none; }
-.solids path.glass { fill-opacity: var(--glass-opacity); stroke: var(--glass); stroke-opacity: 0.9; }
+.solids path.hatch { stroke: none; pointer-events: none; }
+.solids path.glass { fill-opacity: var(--glass-opacity); stroke: var(--glass); stroke-opacity: 0.9; pointer-events: none; }
+.solids path[data-desk-id] { cursor: pointer; }
+.solids path.desk-hovered, .solids path.desk-selected {
+  stroke: var(--accent); stroke-opacity: 1; stroke-width: 1.5px;
+}
+.solids path.desk-selected { stroke-width: 2px; }
+.solids path[data-desk-target]:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .base path { stroke: var(--edge); stroke-opacity: 0.2; stroke-width: 0.6; vector-effect: non-scaling-stroke; }
 .floors path { stroke: var(--floor-edge); stroke-opacity: 0.18; stroke-width: 0.6; vector-effect: non-scaling-stroke; cursor: pointer; }
 /* A zone: open plan with no walls of its own, a lighter tint with a dashed edge. */

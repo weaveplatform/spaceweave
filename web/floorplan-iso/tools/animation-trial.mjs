@@ -100,8 +100,10 @@ async function fingerprint(state) {
   floorplan.invalidate();
   await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
   const nodes = [...document.querySelectorAll('#stage path,#stage text,#stage .person line')];
+  // Interaction metadata does not change the rendered geometry or materials.
+  const metadata = new Set(['data-desk-id', 'data-desk-target', 'role', 'tabindex', 'aria-label', 'aria-pressed']);
   const serialised = JSON.stringify(nodes.map(e => [e.tagName,
-    [...e.attributes].map(a => [a.name, a.value]).sort((a, b) => a[0].localeCompare(b[0])), e.textContent]));
+    [...e.attributes].filter(a => !metadata.has(a.name)).map(a => [a.name, a.value]).sort((a, b) => a[0].localeCompare(b[0])), e.textContent]));
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(serialised));
   return { hash: [...new Uint8Array(digest)].map(x => x.toString(16).padStart(2, '0')).join(''), nodes: nodes.length };
 }

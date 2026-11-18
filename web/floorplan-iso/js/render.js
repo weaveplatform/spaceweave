@@ -3,6 +3,7 @@
 // on each frame, so animations only need to tween numbers in the state.
 
 import { makeView } from './projection.js';
+import { deskTargets, createDeskHighlight } from './desks.js';
 import {
   wallPrisms, balustradePrisms, furniturePrisms, projectPrism, createItemOrderer, centroid, polygonArea, floorFootprint, projectFootprint,
 } from './geometry.js';
@@ -118,6 +119,19 @@ export function createScene({ svg: svgEl, tooltip: tooltipEl, styleRoot, plan, o
   const gSolids = root.append('g').attr('class', 'solids');
   const gOverlay = root.append('g').attr('class', 'overlay');
   const gLabels = root.append('g').attr('class', 'labels');
+  tooltip.selectAll('*').remove();
+  const tipTitle = tooltip.append('strong'), tipDetail = tooltip.append('span');
+  let tipName, tipText;
+  const targets = deskTargets(plan.furniture);
+  const deskByIndex = new Map(targets.map(desk => [desk.index, desk]));
+  const desks = createDeskHighlight({
+    container: gSolids.node(), svg: svgEl, targets,
+    show(event, desk, selected) {
+      if (hovered) { hovered = null; drawHover(); }
+      showTooltip(event, desk.label, selected ? 'Selected · Click again or Esc to clear' : 'Click to select · Esc clears selection');
+    },
+    hide() { tooltip.attr('hidden', true); },
+  });
 
   // Labels keep a constant on-screen size: CSS divides their font size by the
   // zoom scale, so a 46 m clinic fitted to the window stays as readable as a
@@ -142,8 +156,9 @@ export function createScene({ svg: svgEl, tooltip: tooltipEl, styleRoot, plan, o
   function buildFurniture(shape) {
     if (furnitureShape && furnitureShape.corner === shape.corner && furnitureShape.facets === shape.facets) return;
     furnitureShape = shape;
-    furniture = plan.furniture.flatMap((item) => tag(furniturePrisms(item, shape), {
+    furniture = plan.furniture.flatMap((item, index) => tag(furniturePrisms(item, shape), {
       kind: 'furniture', delay: 0.42 + 0.38 * distFromEntrance(item.x, item.y),
+      deskId: deskByIndex.get(index)?.id,
     }));
   }
   buildFurniture(palette.shape);
@@ -313,7 +328,8 @@ export function createScene({ svg: svgEl, tooltip: tooltipEl, styleRoot, plan, o
         it.drawn = [];
         for (const f of it.faces) {
           const d = pathOf(f.pts);
-          it.drawn.push({ id: `${it.p.id}:${f.side}`, d, fill: shade(it.p.mat, f, view), mat: it.p.mat });
+          it.drawn.push({ id: `${it.p.id}:${f.side}`, d, fill: shade(it.p.mat, f, view), mat: it.p.mat,
+            deskId: it.p.deskId, deskTarget: Boolean(it.p.deskId && it.p.mat === 'wood' && f.side === 'top') });
           // Pencil hatching is a second, line-only path over the coloured face.
           if (hatch && f.side !== 'top' && HATCHED.has(it.p.mat)) {
             const dark = view.screenNormalX(f.nx, f.ny) < 0;
@@ -325,13 +341,17 @@ export function createScene({ svg: svgEl, tooltip: tooltipEl, styleRoot, plan, o
       faces.push(...it.drawn);
     }
     const bound = gSolids.selectAll('path').data(faces, (f) => f.id);
-    bound.exit().remove();
+    bound.exit().each(function () { desks.unbind(this); }).remove();
     const paths = bound.enter().append('path').merge(bound);
     paths.each(function (f) {
       const previous = painted.get(this);
       if (previous?.d !== f.d) this.setAttribute('d', f.d);
       if (previous?.fill !== f.fill) this.setAttribute('fill', f.fill);
       if (previous?.mat !== f.mat) this.setAttribute('class', f.mat);
+      if (f.deskId || previous?.deskId) {
+        if (previous?.deskId !== f.deskId || previous?.deskTarget !== f.deskTarget || previous?.mat !== f.mat) desks.bind(this, f);
+        else if (previous?.fill !== f.fill) desks.refresh(this, f);
+      }
       painted.set(this, f);
     });
     // D3's join orders the DOM, and an explicit order did it a second time.
@@ -388,10 +408,21 @@ export function createScene({ svg: svgEl, tooltip: tooltipEl, styleRoot, plan, o
   }
 
   function showTip(e, r) {
-    const [x, y] = d3.pointer(e, svgEl.parentElement);
+    showTooltip(e, r.name, spaceTip(r));
+  }
+
+  function showTooltip(e, title, detail) {
+    let x, y;
+    if (Number.isFinite(e.clientX) && Number.isFinite(e.clientY)) [x, y] = d3.pointer(e, svgEl.parentElement);
+    else {
+      const box = e.target.getBoundingClientRect(), parent = svgEl.parentElement.getBoundingClientRect();
+      x = box.left + box.width / 2 - parent.left;
+      y = box.top - parent.top;
+    }
+    if (tipName !== title) { tipTitle.text(title); tipName = title; }
+    if (tipText !== detail) { tipDetail.text(detail); tipText = detail; }
     tooltip.attr('hidden', null)
-      .style('left', `${x + 14}px`).style('top', `${y + 14}px`)
-      .html(`<strong>${r.name}</strong><span>${spaceTip(r)}</span>`);
+      .style('left', `${x + 14}px`).style('top', `${y + 14}px`);
   }
 
   // ---- camera
@@ -436,6 +467,7 @@ export function createScene({ svg: svgEl, tooltip: tooltipEl, styleRoot, plan, o
   }
 
   function destroy() {
+    desks.destroy();
     svg.on('.zoom', null).interrupt('camera');
     svg.selectAll('*').remove();
     tooltip.attr('hidden', true);
