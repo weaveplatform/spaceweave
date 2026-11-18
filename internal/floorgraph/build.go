@@ -583,7 +583,7 @@ func (b *builder) trace() *plan.Trace {
 		c := &b.chains[i]
 		w := plan.Wall{ID: fmt.Sprintf("w%d", i+1), Kind: c.kind, From: pt(c.from), To: pt(c.to)}
 		def := th[c.kind]
-		if m := mm(c.thicknessM(sx, sy)); c.t > 0 && m > 0 && math.Abs(m-def) > 0.2*def {
+		if m := mm(c.thicknessM(sx, sy)); c.t > 0 && m > 0 && m != def {
 			w.Thickness = m
 		}
 		for _, o := range c.ops {

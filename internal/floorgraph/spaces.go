@@ -190,7 +190,7 @@ func (b *builder) labelSpaces(labels []Label, voidFaces map[int]bool) bool {
 		}
 		kept = append(kept, sp)
 	}
-	strip := b.spaceStrips(kept, outline, func(sp space) bool {
+	strip := b.spaceStrips(kept, outline, g.cell/pxm, func(sp space) bool {
 		return g.facing(sp.comp, int(math.Ceil(facadeWidth*pxm/g.cell)))
 	})
 	for i, sp := range kept {
@@ -961,14 +961,27 @@ const minLadder = 3
 // several or one long one; and those outboard of them, a planter or a
 // louvre box under twice as wide, half their boundary on the outline or
 // the strips.
-func (b *builder) spaceStrips(sps []space, outline []Point, facing func(space) bool) map[int]bool {
+func (b *builder) spaceStrips(
+	sps []space,
+	outline []Point,
+	widthSlack float64,
+	facing func(space) bool,
+) map[int]bool {
 	f := stripFinder{
 		sps: sps, outline: outline, facing: facing,
-		reach: doorReach * math.Min(b.sc.sx, b.sc.sy),
-		bare:  make([]bool, len(sps)),
-		strip: map[int]bool{},
+		reach:      doorReach * math.Min(b.sc.sx, b.sc.sy),
+		bare:       make([]bool, len(sps)),
+		width:      make([]float64, len(sps)),
+		widthSlack: widthSlack,
+		strip:      map[int]bool{},
 	}
 	for i, sp := range sps {
+		f.width[i] = sp.width
+		if len(sp.rawOuter) >= 3 {
+			// The façade limit describes usable floor between wall faces,
+			// before snapping the outline to their centrelines.
+			_, f.width[i] = faceSize(sp.rawOuter, b.sc.sx, b.sc.sy)
+		}
 		f.bare[i] = len(sp.labels) == 0 && !slices.ContainsFunc(b.ops, func(o opening) bool {
 			return o.Kind != Window && math.Abs(boundaryDist(mid(o.A, o.B), sp.poly)) <= f.reach
 		})
@@ -982,12 +995,14 @@ func (b *builder) spaceStrips(sps []space, outline []Point, facing func(space) b
 // stripFinder is spaceStrips' state: the spaces, which are bare (no label,
 // no door), and which are strips so far.
 type stripFinder struct {
-	sps     []space
-	outline []Point
-	facing  func(space) bool
-	reach   float64
-	bare    []bool
-	strip   map[int]bool
+	sps        []space
+	outline    []Point
+	facing     func(space) bool
+	reach      float64
+	bare       []bool
+	width      []float64
+	widthSlack float64
+	strip      map[int]bool
 }
 
 func (f *stripFinder) near(p Point, poly []Point) bool {
@@ -1004,7 +1019,8 @@ func (f *stripFinder) touch(i, j int) bool {
 // ladders marks the groups of narrow bare spaces side by side that are
 // façade.
 func (f *stripFinder) ladders() {
-	narrow := func(i int) bool { return f.bare[i] && f.sps[i].width < facadeWidth }
+	// A grid outline's two faces each have half a cell of uncertainty.
+	narrow := func(i int) bool { return f.bare[i] && f.width[i] < facadeWidth+f.widthSlack }
 	seen := map[int]bool{}
 	for i := range f.sps {
 		if seen[i] || !narrow(i) {
@@ -1063,7 +1079,7 @@ func (f *stripFinder) outboard() bool {
 	changed := false
 	cand := map[int]bool{}
 	for i := range f.sps {
-		cand[i] = !f.strip[i] && f.bare[i] && f.sps[i].width < 2*facadeWidth &&
+		cand[i] = !f.strip[i] && f.bare[i] && f.width[i] < 2*facadeWidth &&
 			(f.outside(i) >= outboard || f.facing(f.sps[i]))
 	}
 	seen := map[int]bool{}

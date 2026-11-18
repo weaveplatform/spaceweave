@@ -116,7 +116,8 @@ state plainly what gap remains.
 ## Step 3b implementation and measured trials
 
 The first implementation merged in PR #19 and tracer-8 refinements in PR #20.
-Tracer-9 rendering work is on `fix/precise-floor-rendering`. Read
+Tracer-9 rendering work merged in PR #21. Tracer-10 wall-recall work is on
+`fix/wall-evidence-recall`. Read
 [the research and results](research/tracing-quality.md) before further tuning.
 `make quality` runs report-only CAD and raster ablations. Private CAD inputs
 still need `SPACEWEAVE_DWG_DIR`; output artifacts use `SPACEWEAVE_EVAL_OUT`.
@@ -130,8 +131,9 @@ large enclosing zones. Source boundaries are preserved by default: both tested
 wall-snapping policies reduced strict polygon matches. Crossings and substantial
 clipping are reported for review. Partial packages with one or two outlines
 are accepted. Semantic name/number layers exclude generic metadata from names.
-Tracer version is 9; the five original golden hashes stay unchanged, and full
-and partial package hashes were refreshed for the optional slab footprint.
+Tracer version is now 10. Tracer 9 refreshed the full and partial package
+hashes for the optional slab footprint; tracer 10 changes the two raster
+hashes and preserves all five CAD/package hashes.
 
 Door leaves now follow their host wall's perpendicular, with correct hinge
 selection when wall endpoints run backwards. Registered packages carry a
@@ -140,7 +142,7 @@ does not force a rectangular slab. Footprints preserve declared voids and use
 the existing half-exterior-wall allowance in metres. Read the
 [rendering results](research/rendering-precision.md) before further tuning.
 The new wall-continuation trial improves wall recall but adds facade spaces;
-it stays off by default. Selected extraction scores remain those below.
+it stays off by default. The later wall-recall measurements are below.
 
 The 99% goal is still open. All-five-floor source-preserving outputs pass the
 site validator; room/zone recall is 98.0–98.4% against raw supplied polygons at
@@ -165,8 +167,45 @@ The tracer-9 follow-up needs its own cross-platform CI; local cross-compilation
 does not replace it. The review server uses port 8010 and the private scratch
 catalogue; keep it running when the user is reviewing.
 
-Next priorities: independently adjudicate overlapping source outlines and
-missing room identities; diagnose wall-recall losses and unplaced openings;
+### Wall-recall follow-up: tracer 10
+
+The graph merged adjoining walls with different measured widths and averaged
+their thicknesses, losing source faces. It now retains thickness junctions
+using the existing 25% similarity rule, and emits every measured width that
+differs from its default at millimetre precision. The grid façade filter now
+uses clear width before centreline snapping, with one actual grid cell of
+uncertainty. See [the full results and limitations](research/wall-recall.md).
+
+| Floor | Wall recall, tracer 9 → 10 | Wall precision, tracer 9 → 10 |
+|---|---|---|
+| 00 | 93.53% → 93.45% | 96.83% → 96.90% |
+| 01 | 71.53% → 75.64% | 97.79% → 98.03% |
+| 02 | 70.19% → 74.77% | 97.53% → 97.73% |
+| 03 | 70.65% → 76.67% | 97.85% → 98.02% |
+| 04 | 98.56% → 98.68% | 93.96% → 94.23% |
+
+All 271/276 source-space matches remain; predictions change 307 → 306.
+Floor 01 loses four unmatched inferred spaces; floor 03 gains three façade
+spaces still needing review. Door recall improves by one match on each of
+floors 00 and 03, but loses one on floor 04 (about 156 mm displacement on a
+425 mm host wall, beyond the fixed 150 mm hinge tolerance). Do not hide that
+regression or widen the tolerance to remove it.
+
+All 137 configurations validate. Raster wall recall never decreases, but two
+assisted corporate face variants each lose two strict space matches. Much of
+the remaining CAD reference miss is a dense structural-layer façade band;
+its physical meaning needs independent review. The original all-ink reference
+and tolerances remain unchanged. The 99% target has not been reached.
+
+Tracer 10's full local `make gate` passed: 97.7% merged coverage, every package
+at least 90%, no vulnerabilities and all six platform builds. All 147 site
+tests, semantic diagnostics and five-floor Chrome Plan/3D checks pass. The
+candidate on port 8011 matches the scored plans; port 8010 retains tracer 9
+for comparison. Cross-platform runtime CI remains required.
+
+Next priorities: adjudicate physical walls versus façade detail while retaining
+the original score; review the floor-04 hinge and three floor-03 façade spaces;
+independently adjudicate overlapping source outlines and missing identities;
 implement persistent review edits. The original step 3b checklist follows for
 context; its snapping recommendation was superseded by the measured trials.
 
