@@ -244,16 +244,15 @@ func snap(segs []seg, dirs []float64) []seg {
 // mergeable says two parallel segments are one wall: their lines within half
 // the larger thickness and their spans overlapping or nearly touching.
 // Touching pieces of different kinds (a glazed screen running on from a solid
-// partition) stay apart; overlapping ones are one wall seen twice. When the
-// thicknesses differ a lot (a column set into a wall's face) the lines must
-// be within half the smaller one, or the column would drag the wall's line
-// off its centre.
+// partition) stay apart; overlapping ones are one wall seen twice. A measured
+// change of thickness stays a junction: averaging the two widths would erase
+// the thicker run's faces and extend its width over the thinner run.
 func mergeable(x, y seg) bool {
+	if !similarThickness(x.t, y.t) {
+		return false
+	}
 	tol := math.Max(x.tol(), y.tol())
 	near := tol / 2
-	if !similarThickness(x.t, y.t) {
-		near = math.Min(x.tol(), y.tol()) / 2
-	}
 	if math.Abs(x.off()-y.off()) >= near {
 		return false
 	}
