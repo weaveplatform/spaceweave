@@ -21,7 +21,8 @@ Route examples are proposed, and optional integrations are identified explicitly
 Purple identifies application surfaces, blue identifies contracts and integration
 definitions, and grey identifies consumers. Teal arrows show requests/calls;
 amber dashed arrows show generated adapters; grey dotted arrows show native or
-private contract bindings. Surface IDs correspond to the catalogue entries.
+private contract bindings. Descriptive surface names correspond to the catalogue
+entries.
 
 The SVG contains the editable diagram XML. Both the native source and the SVG
 can be opened in draw.io. The SVG was exported from the Docker-hosted editor
