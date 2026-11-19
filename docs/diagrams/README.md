@@ -18,6 +18,12 @@ worker contracts retain their own authentication, wire formats and lifecycle.
 The layout does not prescribe one listener, network host or domain-module split.
 Route examples are proposed, and optional integrations are identified explicitly.
 
+Each surface has two separate labels. The upper badge identifies its API audience
+and interface kind, such as **Public API · REST** or **Private API · Go / jobs**.
+The lower heading names its purpose, such as **Space booking and workplace
+administration**. Provider, source-restricted and outbound contracts retain their
+own audience labels and authentication rules.
+
 Purple identifies application surfaces, blue identifies contracts and integration
 definitions, and grey identifies consumers. Teal arrows show requests/calls;
 amber dashed arrows show generated adapters; grey dotted arrows show native or
