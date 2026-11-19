@@ -57,7 +57,7 @@ The component diagram shows the API adapters inside the proposed Go application
 release, the capability owners they call, private background execution and outbound
 provider adapters. Clients, provider services, managed PostgreSQL, private blob
 storage and the observability Collector appear outside the application boundary.
-Component symbols identify logical implementation responsibilities; the diagram
+Icons and component cards identify logical implementation responsibilities; the diagram
 does not choose process placement, Kubernetes Deployments or the final domain
 module split.
 
@@ -74,9 +74,11 @@ The diagram shows principal dependencies: other owners' scoped persistence,
 authorisation and instrumentation follow the same documented contracts without
 drawing every shared dependency.
 
-PostgreSQL stores owned state, retry receipts and durable jobs/outbox. The amber
-dashed connector shows leased job/fact delivery; teal connectors show requests,
-calls and dependency use. Workers resume accepted work through owning interfaces.
+PostgreSQL stores owned state, retry receipts and durable jobs/outbox. Blue arrows
+show HTTP/provider API interactions, purple shows identity/provisioning, dark grey
+shows owning Go calls, teal shows asset transfers, and grey shows health/telemetry.
+The gold dashed connector shows leased job/fact delivery. Workers resume accepted
+work through owning interfaces.
 Outbound provider effects follow local commit, and incoming Exchange observations
 return through the owning booking workflow. Optional occupancy push is shown;
 private pull is an alternative connector profile, not another staff API.
@@ -95,6 +97,17 @@ sections of their own connections, with vertical text on vertical sections.
 Each label clears unrelated arrows, other labels and component boxes. Open the SVG
 or native diagram at 100% and pan to inspect the wording; fit-to-window provides
 an overview of the full architecture.
+
+The visual style follows the
+[Microsoft Azure Architecture Center reference](https://learn.microsoft.com/en-us/azure/architecture/landing-zones/azure-virtual-desktop/media/virtual-desktop-accelerator-enterprise-landing-zone.svg):
+a white canvas, pale blue application grouping, white cards, thin borders, dark
+text and blue pictograms. The diagram uses Segoe UI with Arial/sans-serif fallbacks.
+Its topology and capability descriptions remain those of SpaceWeave.
+
+The embedded pictograms come from
+[Microsoft Fluent System Icons](https://github.com/microsoft/fluentui-system-icons/tree/6c2c9075cf8952ef48369b2475233b6e9761efed),
+recoloured blue for this diagram. Their [MIT licence](FLUENT-ICONS-LICENSE.txt)
+is included alongside the diagram.
 
 Component-view sources:
 
