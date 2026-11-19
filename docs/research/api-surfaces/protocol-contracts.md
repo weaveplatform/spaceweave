@@ -228,10 +228,10 @@ service principals as well as users. [Microsoft token validation][entra-tokens],
 Access-token privileges should be restricted to the minimum required for the use
 case. [RFC 9700 §2.3][oauth-security].
 
-**Proposed boundary rule:** retain current staff/visitor session authorisation
-for browser operations. If a future authenticated integration API is approved,
-define its consumers, Entra resource audience and operation scopes/app roles
-explicitly; map those permissions to current domain authority. OAuth consent
+**Application boundary:** browser operations use staff/visitor session
+authorisation on the shared public REST contract. Token clients use the API's
+explicit Entra resource audience and delegated scopes/application roles, mapped
+to current domain authority. OAuth consent
 alone does not specify SpaceWeave office scope or booking delegation policy.
 Do not add generic app-only booking authority merely because a background Graph
 integration uses application credentials. SCIM authentication also needs its selected

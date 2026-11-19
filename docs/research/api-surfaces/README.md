@@ -575,10 +575,9 @@ version. Their use is a proposed implementation of the agreed version policy.
 [Deprecation](https://www.rfc-editor.org/rfc/rfc9745.html),
 [Sunset](https://www.rfc-editor.org/rfc/rfc8594.html).
 
-The earlier layout trees' generated-client paths are refined by this decision:
 Go/TypeScript clients target the shared supported REST contract. Private Go
-module/worker contracts are not SDK contracts. First-party MCP/Terraform
-implementations are agreed follow-on deliverables, with their exact packaging
+module/worker contracts are separate from SDK contracts. First-party MCP/Terraform
+implementations follow the core platform and SDKs, with their exact packaging
 and release ownership still to be designed.
 
 Each operation has one business owner, a wire-contract owner, authorised caller
