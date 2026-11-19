@@ -25,7 +25,7 @@ require (
 	github.com/alexflint/go-scalar v1.2.0 // indirect
 	github.com/aws/aws-sdk-go-v2 v1.48.0 // indirect
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.27 // indirect
-	github.com/aws/aws-sdk-go-v2/credentials v1.21.1 // indirect
+	github.com/aws/aws-sdk-go-v2/credentials v1.21.2 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.5.12 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.8.12 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/v4a v1.5.12 // indirect
@@ -33,7 +33,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/internal/checksum v1.11.13 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.14.12 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.20.12 // indirect
-	github.com/aws/aws-sdk-go-v2/service/s3 v1.115.0 // indirect
+	github.com/aws/aws-sdk-go-v2/service/s3 v1.116.0 // indirect
 	github.com/aws/smithy-go v1.28.9 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/buger/jsonparser v1.6.1 // indirect
@@ -49,7 +49,7 @@ require (
 	github.com/mattn/go-colorable v0.1.16 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
 	github.com/narqo/go-badge v0.0.0-20230821190521-c9a75c019a59 // indirect
-	github.com/pb33f/go-yaml v0.1.1 // indirect
+	github.com/pb33f/go-yaml v0.2.0 // indirect
 	github.com/pb33f/ordered-map/v2 v2.3.2 // indirect
 	github.com/rs/zerolog v1.35.1 // indirect
 	github.com/spf13/pflag v1.1.0 // indirect
@@ -67,7 +67,7 @@ require (
 	golang.org/x/mod v0.43.0 // indirect
 	golang.org/x/sync v0.25.0 // indirect
 	golang.org/x/sys v0.50.0 // indirect
-	golang.org/x/telemetry v0.0.0-20261116191925-e77a43154acb // indirect
+	golang.org/x/telemetry v0.0.0-20261118162831-00acfd773c25 // indirect
 	golang.org/x/tools v0.53.0 // indirect
 	golang.org/x/vuln v1.10.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
