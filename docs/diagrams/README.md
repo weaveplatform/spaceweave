@@ -101,13 +101,16 @@ an overview of the full architecture.
 The visual style follows the
 [Microsoft Azure Architecture Center reference](https://learn.microsoft.com/en-us/azure/architecture/landing-zones/azure-virtual-desktop/media/virtual-desktop-accelerator-enterprise-landing-zone.svg):
 a white canvas, pale blue application grouping, white cards, thin borders, dark
-text and blue pictograms. The diagram uses Segoe UI with Arial/sans-serif fallbacks.
+text and service illustrations. The diagram uses Segoe UI with Arial/sans-serif fallbacks.
 Its topology and capability descriptions remain those of SpaceWeave.
 
-The embedded pictograms come from
-[Microsoft Fluent System Icons](https://github.com/microsoft/fluentui-system-icons/tree/6c2c9075cf8952ef48369b2475233b6e9761efed),
-recoloured blue for this diagram. Their [MIT licence](FLUENT-ICONS-LICENSE.txt)
-is included alongside the diagram.
+The icon treatment combines larger, full-colour Microsoft Fluent illustrations,
+recognisable technology marks and contextual badges for protocols and capabilities.
+The booking component includes desk, room, parking, event and neighbourhood
+illustrations. Paired storage icons express the Azure Blob/GCS alternatives;
+technology badges show the documented clients, runtimes and integrations.
+All 95 vector icon instances are embedded, so the SVG has no external image
+dependencies. [Icon sources and notices](ICONS.md) document their provenance.
 
 Component-view sources:
 
