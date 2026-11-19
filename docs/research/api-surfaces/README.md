@@ -6,9 +6,11 @@ It combines advance desk allocation, direct space booking, meeting-room calendar
 synchronisation, parking, hosted visits, event registration and attendance reporting.
 Staff use desktop/mobile web applications; administrators use a separate portal.
 
-The [API surface diagram](../../diagrams/README.md) provides a visual map of the
-consumers, application surfaces and contract boundaries described here. It is
-available as native draw.io source and an SVG with editable diagram data.
+The [API surface map](../../diagrams/README.md#proposed-api-surfaces) shows consumers,
+application surfaces and contract boundaries. The complementary
+[component diagram](../../diagrams/README.md#api-component-architecture) shows API
+adapters, owning application capabilities, workers and provider dependencies.
+Both are available as native draw.io source and SVGs with editable diagram data.
 
 This document defines the external and internal API boundaries for technical
 architects and engineers. It explains consumers, identity and authority, data
