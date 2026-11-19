@@ -89,6 +89,13 @@ REST.
 Both the native file and SVG remain editable in draw.io. The SVG is exported and
 visually checked using the Docker-hosted editor.
 
+The component view uses a large canvas with 21 px body text, 18 px arrow labels
+and wide routing corridors between component columns. Labels follow clear straight
+sections of their own connections, with vertical text on vertical sections.
+Each label clears unrelated arrows, other labels and component boxes. Open the SVG
+or native diagram at 100% and pan to inspect the wording; fit-to-window provides
+an overview of the full architecture.
+
 Component-view sources:
 
 - [API surface catalogue](../research/api-surfaces/README.md#surface-catalogue).
