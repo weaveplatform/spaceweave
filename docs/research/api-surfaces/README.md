@@ -6,6 +6,12 @@ It combines advance desk allocation, direct space booking, meeting-room calendar
 synchronisation, parking, hosted visits, event registration and attendance reporting.
 Staff use desktop/mobile web applications; administrators use a separate portal.
 
+The [API surface map](../../diagrams/README.md#proposed-api-surfaces) shows consumers,
+application surfaces and contract boundaries. The complementary
+[component diagram](../../diagrams/README.md#api-component-architecture) shows API
+adapters, owning application capabilities, workers and provider dependencies.
+Both are available as native draw.io source and SVGs with editable diagram data.
+
 This document defines the external and internal API boundaries for technical
 architects and engineers. It explains consumers, identity and authority, data
 exposure, consistency, long-running operations and compatibility. It requires no
@@ -105,33 +111,33 @@ personal check-in, delegation or administrative authority.
 
 ## Surface catalogue
 
-IDs are review labels, not version numbers or architectural modules. Suggested
+Surfaces are named for the capability or protocol they provide. Suggested
 paths are deliberately separate from both Go package paths and final hostnames.
 User-facing APIs are Internet accessible under Conditional Access for their
 REST; private workers/operations and provider-specific identity rules remain
 distinct. Individual hostnames, listeners and connectivity profiles are detailed
 deployment choices.
 
-| ID | Surface and intended consumers | Kind and proposed base | Public/private contract | Exposure/authentication proposal |
+| Surface | Intended consumers | Kind and proposed base | Public/private contract | Exposure/authentication proposal |
 | --- | --- | --- | --- | --- |
-| S01 | Browser authentication/session: staff/admin/visitor browser and Entra. | OIDC redirects/callbacks; session HTTP under `/auth/`. | First-party plus standards-specific identity exchange. | Browser-reachable origins; Go handles provider exchange; secure cookies, redirect-state/nonce/PKCE as applicable and CSRF controls. |
-| S02 | Staff/mobile-web, PA and permitted programmatic consumers. | Public REST/JSON `/api/v1/` business capabilities. | Supported public consumer contract. | Internet-accessible; Conditional Access for applicable identities, approved session/token profile and current owner/action checks. |
-| S03 | Office admin, reception, event administration and reporting clients. | Public REST operations, illustratively `/api/v1/admin/`. | Supported public contract with restricted capabilities. | Internet-accessible under Conditional Access; capability/office/event checks still apply, regardless of UI or automation client. |
-| S04 | Global policy, identity and integration administration clients. | Public REST organisation capabilities, illustratively `/api/v1/organisation/`. | Supported public contract, highly restricted authority. | Internet-accessible with applicable Conditional Access and explicit global capabilities. |
-| S05 | Verified visitor invitation, registration and ticket clients. | Scoped REST under `/api/v1/visitor/`. | Supported public visitor contract with restricted data/actions. | Internet edge; existing verified-email visitor identity and event/visit scope, not an invented staff Entra identity. |
-| S06 | Entry/verification for visitors attending internal events, including speakers. | Invitation landing and verification protocol, illustratively `/invitations/{opaqueReference}`. | Limited external entry surface; no general event-discovery catalogue established. | Minimal safe landing before proof; personal event/visit/ticket detail follows the agreed verified visitor flow. |
-| S07 | MCP servers, SDKs, scripts, tests, Terraform and other enrolled applications. | Consumer views of the same public REST family. | Supported public contract, not a second parallel business API. | Human/session or OAuth/application profile as approved; token audience and application grants remain explicit. |
-| S08 | Entra user/group provisioning. | SCIM 2.0 `/scim/v2/Users`, `/Groups` and supported discovery. | Published provider/provisioning protocol. | Provisioning-only authentication; direct Entra connectivity or a supported private-agent route. |
-| S09 | Exchange change/lifecycle delivery from Microsoft Graph. | Provider callback `/integrations/graph/notifications` and lifecycle route. | Provider-specific ingress, not a general booking API. | Public HTTPS edge with Graph challenge/notification validation; enqueue or persist promptly. |
-| S10 | Teams installation/conversation/activity handling. | Teams activity protocol `/integrations/teams/activities`. | Provider-specific ingress supporting optional personal delivery. | Provider-authenticated messaging edge; registration/SDK choice remains open. Installation never grants booking authority or message opt-in. |
-| S11 | Optional occupancy connectors. | Source-specific push HTTP/batch or outbound pull adapter. | Published source-restricted ingestion where push is selected; private connector execution. | Restricted Internet edge for configured push sources, or outbound pull; source identity and office/device/evidence scope, never staff check-in authority. |
-| S12 | Floor-plan manifests, source uploads, approved renders, ticket/export bytes. | Authorised metadata/capability HTTP plus bounded binary transfer. | Access-controlled asset contract; public frontend bundles are separate. | App authorises before stream/signing; storage capability limits object, method and lifetime. |
-| S13 | Administrative workflow status and permitted repairs. | Public REST status/command operations with restricted operator capabilities. | Supported public contract for authorised operators/clients. | Internet-facing access follows applicable Conditional Access; private execution stays behind owning interfaces. No generic SQL/event injection/state setter. |
-| S14 | Liveness/readiness, metrics, telemetry export and diagnostics. | Private probe HTTP, optional metrics scrape, OTLP and structured logs. | Private operational contracts. | Dedicated listener/routing and platform identity controls; no general portal access to raw metrics/debug endpoints. |
-| S15 | Module/application calls by handlers, CLI and workers. | Synchronous Go interfaces with explicit context/actor/outcome. | Project-private in-process interfaces. | No URL, CORS, HTTP token, OpenAPI resource or independent service deployment implied. |
-| S16 | Durable work and committed-fact consumers. | Versioned PostgreSQL jobs/outbox envelopes and owning handler contracts. | Private asynchronous application contracts. | Leased workers with registered payload versions; at-least-once processing and retry/reconciliation semantics. |
-| S17 | SpaceWeave as a client of providers. | Graph REST/OAuth, Workday selected HR protocol, Azure/GCS SDK/API, email/personal Teams delivery, telemetry export. | Provider-owned outbound contracts. | Scoped workload/provider credentials. There is no matching inbound SpaceWeave HTTP endpoint for every provider method. |
-| S18 | Existing local tracing CLI/workbench during migration. | Current Cobra commands, handwritten HTTP and generated-directory file reads. | Existing local/developer contracts. | Preserve explicitly during adoption; current host/custom-header protections are not production staff authentication. |
+| Browser authentication and sessions | Staff/admin/visitor browsers and Entra. | OIDC redirects/callbacks; session HTTP under `/auth/`. | First-party plus standards-specific identity exchange. | Browser-reachable origins; Go handles provider exchange; secure cookies, redirect-state/nonce/PKCE as applicable and CSRF controls. |
+| Staff and delegate booking | Staff/mobile-web, PA and permitted programmatic consumers. | Public REST/JSON `/api/v1/` business capabilities. | Supported public consumer contract. | Internet-accessible; Conditional Access for applicable identities, approved session/token profile and current owner/action checks. |
+| Office administration and reporting | Office admin, reception, event administration and reporting clients. | Public REST operations, illustratively `/api/v1/admin/`. | Supported public contract with restricted capabilities. | Internet-accessible under Conditional Access; capability/office/event checks still apply, regardless of UI or automation client. |
+| Organisation administration | Global policy, identity and integration administration clients. | Public REST organisation capabilities, illustratively `/api/v1/organisation/`. | Supported public contract, highly restricted authority. | Internet-accessible with applicable Conditional Access and explicit global capabilities. |
+| Visitor event and ticket access | Verified visitor invitation, registration and ticket clients. | Scoped REST under `/api/v1/visitor/`. | Supported public visitor contract with restricted data/actions. | Internet edge; existing verified-email visitor identity and event/visit scope, not an invented staff Entra identity. |
+| Visitor invitations and verification | Entry/verification for visitors attending internal events, including speakers. | Invitation landing and verification protocol, illustratively `/invitations/{opaqueReference}`. | Limited external entry surface; no general event-discovery catalogue established. | Minimal safe landing before proof; personal event/visit/ticket detail follows the agreed verified visitor flow. |
+| Programmatic REST access | MCP servers, SDKs, scripts, tests, Terraform and other enrolled applications. | Consumer views of the same public REST family. | Supported public contract, not a second parallel business API. | Human/session or OAuth/application profile as approved; token audience and application grants remain explicit. |
+| User and group provisioning | Entra user/group provisioning. | SCIM 2.0 `/scim/v2/Users`, `/Groups` and supported discovery. | Published provider/provisioning protocol. | Provisioning-only authentication; direct Entra connectivity or a supported private-agent route. |
+| Exchange change notifications | Exchange change/lifecycle delivery from Microsoft Graph. | Provider callback `/integrations/graph/notifications` and lifecycle route. | Provider-specific ingress, not a general booking API. | Public HTTPS edge with Graph challenge/notification validation; enqueue or persist promptly. |
+| Teams activities | Teams installation/conversation/activity handling. | Teams activity protocol `/integrations/teams/activities`. | Provider-specific ingress supporting optional personal delivery. | Provider-authenticated messaging edge; registration/SDK choice remains open. Installation never grants booking authority or message opt-in. |
+| Occupancy evidence ingestion | Optional occupancy connectors. | Source-specific push HTTP/batch or outbound pull adapter. | Published source-restricted ingestion where push is selected; private connector execution. | Restricted Internet edge for configured push sources, or outbound pull; source identity and office/device/evidence scope, never staff check-in authority. |
+| Protected asset transfer | Floor-plan manifests, source uploads, approved renders, ticket/export bytes. | Authorised metadata/capability HTTP plus bounded binary transfer. | Access-controlled asset contract; public frontend bundles are separate. | App authorises before stream/signing; storage capability limits object, method and lifetime. |
+| Workflow status and recovery | Administrative workflow status and permitted repairs. | Public REST status/command operations with restricted operator capabilities. | Supported public contract for authorised operators/clients. | Internet-facing access follows applicable Conditional Access; private execution stays behind owning interfaces. No generic SQL/event injection/state setter. |
+| Application health and observability | Liveness/readiness, metrics, telemetry export and diagnostics. | Private probe HTTP, optional metrics scrape, OTLP and structured logs. | Private operational contracts. | Dedicated listener/routing and platform identity controls; no general portal access to raw metrics/debug endpoints. |
+| Internal application interfaces | Module/application calls by handlers, CLI and workers. | Synchronous Go interfaces with explicit context/actor/outcome. | Project-private in-process interfaces. | No URL, CORS, HTTP token, OpenAPI resource or independent service deployment implied. |
+| Background jobs and committed events | Durable work and committed-fact consumers. | Versioned PostgreSQL jobs/outbox envelopes and owning handler contracts. | Private asynchronous application contracts. | Leased workers with registered payload versions; at-least-once processing and retry/reconciliation semantics. |
+| Outbound provider integrations | SpaceWeave as a client of providers. | Graph REST/OAuth, Workday selected HR protocol, Azure/GCS SDK/API, email/personal Teams delivery, telemetry export. | Provider-owned outbound contracts. | Scoped workload/provider credentials. There is no matching inbound SpaceWeave HTTP endpoint for every provider method. |
+| Local tracing workbench | Existing local tracing CLI/workbench during migration. | Current Cobra commands, handwritten HTTP and generated-directory file reads. | Existing local/developer contracts. | Preserve explicitly during adoption; current host/custom-header protections are not production staff authentication. |
 
 See [provider contracts](provider-contracts.md) for the exact native media types,
 challenge responses, authentication alternatives and lifecycle requirements.
@@ -146,7 +152,7 @@ Paths below are relative to the shared public REST family, with capability-based
 grouping where helpful. The UI and approved programmatic clients call the same
 business operations under their actual authority and permitted projections.
 
-### Staff and delegate operations: S02
+### Staff and delegate operations
 
 | Example operation | Consumer purpose | Important contract particulars |
 | --- | --- | --- |
@@ -169,7 +175,7 @@ GET reads never perform check-in, consume an offer, issue a ticket or cancel a
 booking. Do not expose a general `PATCH booking.state = taken/confirmed` escape
 hatch. The application validates transitions regardless of which surface calls.
 
-### Administrator and operator operations: S03, S04 and S13
+### Administrator and operator operations
 
 | Family | Consumer/action | Required distinction |
 | --- | --- | --- |
@@ -188,7 +194,7 @@ An admin portal remains a separate user experience. Its route prefix alone is
 not an authorisation mechanism, and broad Kubernetes access is not automatically
 application reporting or booking-repair authority.
 
-### Internal-event visitors: S05 and S06
+### Internal-event visitors
 
 External visitors attend internal events, for example as invited guest speakers.
 An externally reachable invitation/verification flow grants access to the relevant
@@ -212,7 +218,7 @@ reception/organiser operation, not an anonymous GET performed by scanning a URL.
 Rate limits and verification responses account for email enumeration and bulk
 registration without exposing internal staff or capacity administration.
 
-### Public REST consumers: S02–S07
+### Public REST consumers
 
 The UI, MCP servers, SDKs, scripts, tests and Terraform use the public business
 contract. Each consumer authenticates with the appropriate identity profile;

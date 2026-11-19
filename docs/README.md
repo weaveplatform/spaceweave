@@ -29,6 +29,10 @@ here. Decision records live in `docs/adr/`.
   public/private contracts, network exposure, protocols, operations, access,
   compatibility and placement across the five layouts, with verified appendices.
 
+- [API diagrams](diagrams/README.md): the proposed consumer/interface map and
+  component architecture, supplied as editable draw.io sources and SVGs with
+  embedded diagram data.
+
 - [REST retries, concurrency and cost](research/api-surfaces/request-behaviour.md):
   application request requirements, retention tradeoffs and primary-source
   research on HTTP/PostgreSQL idempotency, admission and API contract tooling.
