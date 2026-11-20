@@ -300,6 +300,10 @@ An optional list of eligible attendees waiting for tickets to a full event.
 A time-limited exclusive hold on an event seat for one waitlisted attendee,
 which becomes a ticket only after acceptance and eligibility checks.
 
+**Event offer withdrawal**:
+Removal of an unaccepted event offer after its office or time changes,
+preserving the attendee's waitlist request and position for a replacement offer.
+
 **Reconfirmation deadline**:
 The published latest time for accepting an event's changed office or time,
 after which an unconfirmed ticket releases its seat.

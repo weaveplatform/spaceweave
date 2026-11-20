@@ -203,8 +203,12 @@ event. The [event workflow contract](event-workflows.md) defines
 exclusive FIFO offers, decline/expiry/rejoin, the registration cutoff and
 published reconfirmation deadlines releasing unconfirmed tickets. Unused-ticket
 cancellation also cancels an associated future visit with no other valid purpose,
-preserving other-purpose visits and reception history. Numeric offer/notice
-defaults and recovery/eligibility exceptions remain open.
+preserving other-purpose visits and reception history. Confirmed outages pause
+affected reconfirmation deadlines; venue recovery preserves offers and pauses
+expiry within registration limits. Temporary queue ineligibility preserves
+position without capacity; office/time changes withdraw old offers without
+ending requests, preserving position for updated offers. Initial numeric
+offer/notice/recovery-grace defaults remain unselected.
 When registration creates a visit solely for a ticket, Events and Visitors
 commit both or neither; an existing valid reused visit survives failed issuance.
 

@@ -109,7 +109,10 @@ blueprint's detailed module split remains proposed.
   hold seats exclusively in eligible join order, end their request on
   decline/expiry and cannot be accepted after registration closes without an
   explicit organiser extension. Reconfirmation deadlines release unconfirmed
-  tickets. Initial numeric durations and recovery/eligibility exceptions remain open.
+  tickets. Outages protect reconfirmation; venue recovery pauses held offers
+  within registration limits. Temporary queue ineligibility preserves position
+  without capacity, while material changes withdraw old offers without ending
+  requests. Initial numeric policy defaults remain unselected.
 - Configurable SpaceWeave RBAC; MCP uses user context, while machine-identity
   scripts use a separate channel. No universal login journey follows from the
   consumer label. Authorised UI edits can create Terraform drift; initial public

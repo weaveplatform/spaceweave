@@ -57,7 +57,16 @@ The organiser publishes a reconfirmation deadline and notifies affected attendee
 At that deadline, unconfirmed tickets release their seats under the event's
 enabled waitlist policy; without a waitlist, normal registration rules apply.
 Public resource views show both the deadline and the outcome. The initial notice
-period and reconfirmation protection during an application outage remain open.
+period remains unselected. A confirmed application outage pauses affected
+reconfirmation deadlines and preserves those tickets/seats while response is
+impossible. Publish a recovery grace period within the event's usable attendance
+window; event times and organiser-controlled registration cutoffs remain in force.
+
+Existing offers remain held during venue recovery, with their expiry clocks
+paused while acceptance cannot produce a valid ticket. Resume acceptance only
+when the venue is secured and registration is open. Publish revised deadlines
+bounded by the registration cutoff; an organiser extension is required for later
+acceptance.
 
 ## Visitor eligibility after issuance
 
@@ -87,7 +96,8 @@ organisation's existing visitor and historical-data rules.
 An event may enable a waitlist for eligible attendees. Released seats are offered
 to eligible waitlisted attendees in join order before fresh registrations.
 An offer holds one seat exclusively for its recipient until acceptance, decline
-or expiry, counting against available capacity. Acceptance rechecks current
+or expiry, subject to the administrative withdrawal rule below, and counts
+against available capacity. Acceptance rechecks current
 audience, registration and visit eligibility before issuing the ticket and
 consuming the hold in the same owning capacity transition. An offer itself is
 not a ticket or admission entitlement.
@@ -96,6 +106,18 @@ Decline or expiry ends the waitlist request and releases the offered seat to the
 next eligible person. An attendee can explicitly rejoin as a new request under
 the event's ordering policy; the previous request's position is not restored.
 
+Temporarily ineligible queued attendees retain their original position but are
+skipped while ineligible; eligible people behind them can receive offers. A
+queued request holds no capacity. This differs from a previously issued ticket
+or an outstanding exclusive offer.
+
+When an event's office or time changes, withdraw unaccepted offers made under
+the old details and preserve each waitlist request and its position. Issue a
+new offer under the updated details when ready. Administrative withdrawal is
+distinct from attendee decline or expiry and does not end the waitlist request.
+If acceptance committed before the change, the issued ticket follows the normal
+material-change reconfirmation workflow instead.
+
 Offer acceptance ends no later than the published registration closing time;
 clip each offer's deadline to that cutoff. An organiser can explicitly extend
 registration to permit later acceptance. Outage grace alone does not extend the
@@ -103,8 +125,8 @@ registration window. Expired offers and cancelled tickets cannot grant admission
 
 Event waitlists have their own policies. Desk allocation priorities and the
 same-day desk offer duration do not define event ordering or expiry. Initial
-numeric offer durations, temporarily ineligible queued requests and existing
-offers during venue recovery or material event changes remain open decisions.
+numeric offer/notice/recovery-grace defaults remain unselected and require
+explicit policy configuration; the organiser supplies the reconfirmation deadline.
 Retry and capacity protection must cover simultaneous offer
 acceptance, fresh registration, cancellation and venue changes.
 
@@ -117,6 +139,9 @@ registration, exclusive hold accounting, FIFO selection, decline/expiry/rejoin,
 acceptance at the registration cutoff, reconfirmation deadline/release, purpose-based
 future-visit cleanup racing a new valid purpose, duplicate retries and venue
 recovery with existing tickets.
+Include reconfirmation during outage, paused offer clocks versus registration
+cutoff, temporary queue ineligibility/restoration, administrative offer withdrawal
+and acceptance racing a material event change.
 Check all actions through their supported public contracts and
 the real owning transaction boundaries. The
 [request contract](request-behaviour.md) supplies recovery, authority and retry

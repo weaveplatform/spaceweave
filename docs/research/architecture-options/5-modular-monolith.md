@@ -871,9 +871,12 @@ Events selects eligible requests in join order and holds offered seats exclusive
 Decline/expiry ends that request; explicit rejoin creates a new one. Acceptance
 ends at registration closing time unless the organiser explicitly extends it.
 Published reconfirmation deadlines release unconfirmed tickets. Unused-ticket
-cancellation also cancels a future visit with no other valid purpose. Initial
-numeric durations and recovery/eligibility exceptions remain open; the desk
-waitlist policy is separate.
+cancellation also cancels a future visit with no other valid purpose. Confirmed
+outages pause reconfirmation; venue recovery preserves offers and pauses expiry
+within registration limits. Temporary queue ineligibility preserves position
+without capacity, while office/time changes withdraw old offers without ending
+requests. Initial numeric policy defaults remain unselected; the desk waitlist
+policy is separate.
 
 ### Desk use, waitlists, outage protection and reporting
 

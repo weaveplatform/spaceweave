@@ -152,6 +152,12 @@ technical guidance and design tradeoffs.
   - Established: published reconfirmation deadlines release unconfirmed tickets
     under the enabled waitlist policy. Unused-ticket cancellation also cancels
     an associated future visit with no other valid purpose, preserving reception history.
+  - Established: confirmed outages pause affected event reconfirmation deadlines;
+    preserve seats and publish usable recovery grace. Venue recovery preserves
+    offers and pauses expiry clocks, with acceptance bounded by registration close.
+  - Established: temporary queue ineligibility preserves position without holding
+    capacity. Office/time changes administratively withdraw old offers without
+    ending their requests, preserving positions for offers under updated details.
   - Then: receipt duration/retained expiry evidence, exact wire details and
     load-validated numeric limits.
   - Then: shared review of the detailed module map and interface contracts in

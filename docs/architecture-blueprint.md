@@ -199,6 +199,14 @@ unused ticket also cancels an associated future visit with no other valid purpos
 Event cancellation also cancels visits whose only remaining valid purpose was that
 event, preserving shared-purpose visits and historical records.
 
+Confirmed outages pause affected reconfirmation deadlines, preserving seats and
+publishing a recovery grace period within the event's usable attendance window.
+Venue recovery preserves exclusive offers and pauses their expiry clocks, with
+resumed acceptance bounded by registration closing time. Material office/time
+changes instead withdraw old offers without ending their waitlist requests;
+reoffer under the new details while preserving positions. Temporarily ineligible
+queued requests are skipped without holding capacity and retain their position.
+
 The [visitor-ticket decision](adr/0024-create-event-visitor-visits-with-tickets-atomically.md)
 adds a second narrow transaction across Events and Visitors for registration-created
 visits. It does not roll back an existing independently valid visit when ticket

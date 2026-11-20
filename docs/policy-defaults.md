@@ -67,7 +67,16 @@ Office/time changes require attendee reconfirmation and linked visitor host/wind
 validation. The organiser publishes a reconfirmation deadline and notifies affected
 attendees; unconfirmed tickets release seats at that deadline, following the
 enabled event waitlist policy. Initial notice periods and reconfirmation
-protection during an outage remain open.
+recovery-grace defaults remain unselected. A confirmed application outage pauses
+affected reconfirmation deadlines and preserves seats; publish a recovery grace
+period within the event's usable attendance window.
+
+Venue recovery preserves existing exclusive offers and pauses their expiry
+clocks. Resume acceptance when the venue is secured and registration remains
+open, with revised deadlines bounded by its cutoff. Office/time changes instead
+withdraw old unaccepted offers, preserving requests/queue positions for new
+offers under the updated details. Temporary queue ineligibility preserves the
+request's original position without holding capacity while it is skipped.
 The [event workflow contract](research/api-surfaces/event-workflows.md) records
 ticket cancellation, visitor eligibility and linked-visit lifecycle behaviour.
 
