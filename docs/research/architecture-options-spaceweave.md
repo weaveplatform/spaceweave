@@ -22,7 +22,7 @@ explains the industry principles and primary sources behind each style.
 | Group placement and required parking commit atomically | Planning may be expensive and asynchronous, but acceptance needs a bounded shared consistency protocol. |
 | Confirmed bookings survive replanning | A proposal and a committed claim must be different states with explicit authority. |
 | Check-in races no-show release | The booking owner decides the transition against current state; anonymous occupancy is not staff identity. |
-| Event capacity and ticket issue remain consistent | Venue changes and issuance must share a consistency boundary or an explicit coordination protocol. |
+| Event capacity and ticket issue remain consistent | Events owns registration/tickets/admission; its venue coordinator joins Booking's venue claims through owning interfaces in one local transaction where required. |
 | Exchange Online changes both ways | Local desired state and observed provider state need durable correlation, progress and reconciliation. |
 | Entra and Workday own different identity facts | Source authority, stable correlation and observed effective deactivation must be explicit. |
 | UI and automation share supported REST | Wire DTOs, domain interfaces, identity profiles and compatibility have separate owners. |
@@ -54,20 +54,44 @@ They can be combined; the candidate layouts make different combinations concrete
 | DDD | Explicit language, context boundaries and aggregate behaviour. | Aggregate/context splits may conflict with atomic group, parking and venue/ticket requirements unless coordination is designed. |
 | Modular monolith | Business ownership and local consistency align with package navigation and migration custody. | A large Booking module and permitted cross-module transactions create coupling that needs active control. |
 
-The preferred direction is a domain-oriented modular monolith with ports and
-adapters inside substantial modules. The reason is the ownership of local booking
-invariants and integration state. The final module split remains open: placing
-events inside Booking reduces shared transaction boundaries but increases that
-module's breadth. Separating Events requires a precise venue/ticket protocol.
-[Architecture decision](../adr/0009-use-a-domain-first-modular-monolith.md),
-[modular-monolith candidate](architecture-options/5-modular-monolith.md).
+The repository-architecture decision remains pending. A domain-oriented modular
+monolith with inner ports/adapters is the preferred candidate, not a selected
+implementation. All five layouts now use the same agreed logical ownership:
+combined Identity; attendance planning and capacity commitment inside Booking;
+separate Exchange; Booking-owned operational occupancy evidence with Attendance
+reporting projections; Plans asset approval distinct from Workplace mapping
+activation; and Events-owned registration/tickets/admission. Events and
+Booking coordinate venue/ticket consistency through owning interfaces in one
+local transaction where required. Architecture style changes the package,
+dependency and composition mechanisms rather than these business owners.
+Published retirement schedules exclude new bookings for use on/after their
+office-local effective point; validated reactivation retains identity/history.
+Unconfirmed holds/offers revalidate at confirmation and cannot confirm excluded
+use. Shared operational facilities retain outage declarations; Booking and Events
+apply the declared scope to their own deadlines, with rules owned by Policy.
+[Proposed architecture decision](../adr/0009-use-a-domain-first-modular-monolith.md),
+[five candidate layouts](architecture-options/README.md).
+
+Native Exchange room policy/check-in/autorelease governs both entry channels;
+Booking owns local intentions/outcome references and Exchange owns provider
+integration. No independent app room timer, actual-author-only admission rule or
+unverified consecutive-miss series canceller is selected. Confirmed effective
+leavers still cancel organiser-owned room meetings through supported operations;
+a departing PA's other-owner meetings remain.
+[Room-use/leaver contract](api-surfaces/recurring-rooms-and-leavers.md),
+[native policy research](api-surfaces/outlook-room-policy-enforcement.md).
 
 ## Transaction and workflow ownership
 
 One owner arbitrates dated capacity. Allocation calculates against a versioned
 snapshot outside long transactions; the owner revalidates and commits each group,
 including required parking. Direct requests, waitlist promotion, check-in and
-release use the same claim protocol. PostgreSQL constraints and locking protect
+release use the same claim protocol. Before either linked booking starts,
+explicit cancellation of a both-required pair ends both atomically; optional
+links permit independent cancellation. Once either starts, cancel the selected
+booking unless both are explicitly chosen. Automatic desk no-show/vacancy release
+retains parking until its own end or explicit release, so only actually released
+capacity enters promotion. PostgreSQL constraints and locking protect
 competing writers; transaction isolation choices require retry handling and
 concurrency evidence. [PostgreSQL transaction isolation](https://www.postgresql.org/docs/current/transaction-iso.html),
 [constraints](https://www.postgresql.org/docs/current/ddl-constraints.html).
@@ -84,6 +108,10 @@ room accepts; duplicate/out-of-order observations are reconciled against desired
 and observed revisions. Provider identifiers and tokens use documented semantics,
 not assumptions that every version field is a portable compare-and-swap mechanism.
 [Provider contract research](api-surfaces/provider-contracts.md).
+Failed replacement after old-room loss preserves the meeting/attendees with no
+secured room; notify the organiser and offer available replacements or explicit
+cancellation. Current room acceptance/capacity validation precede recovery
+confirmation; see the [room recovery contract](api-surfaces/room-recovery.md).
 
 Allocation results distinguish unfulfilled capacity demand from technical
 interruption. Cancellation stops additional work at safe boundaries and preserves
@@ -122,7 +150,7 @@ to preserve. The booking authority, staff identity model, durable distributed wo
 and enterprise integrations are new capabilities. The [current inventory](api-surfaces/current-surfaces.md)
 distinguishes implemented surfaces from proposed ones.
 
-Validate the preferred architecture with four focused bodies of evidence:
+Validate every candidate against the same four bodies of evidence before selecting a repository architecture:
 
 1. **Consistency:** concurrent allocation, direct booking, check-in/release,
    parking and venue/ticket transitions against real PostgreSQL transactions.

@@ -20,8 +20,9 @@ and relevant technology principles without requiring prior design discussions.
 3. [Five detailed candidates](architecture-options/README.md): repository layouts,
    dependency rules, state ownership, transactions, migration and common workflows.
 
-The preferred direction is a modular monolith. Exact module boundaries remain
-subject to comparison and validation; a candidate tree illustrates an option,
+The repository-architecture choice is pending. A modular monolith remains the
+preferred candidate; agreed logical owners apply across all five layouts, while
+concrete package placement remains subject to validation; a candidate tree illustrates an option,
 rather than proving its correctness or performance.
 
 ## API reading path
@@ -34,6 +35,22 @@ rather than proving its correctness or performance.
    HTTP/PostgreSQL foundations, atomic acceptance, replay, privacy and retention.
 4. [API contract engineering](api-surfaces/api-contract-engineering.md): OpenAPI,
    generation, enforcement, rate admission, backpressure and consumer validation.
+5. [Event workflows](api-surfaces/event-workflows.md): registration, venue recovery,
+   reconfirmation, visitor eligibility, cancellation and optional event waitlists.
+6. [Workplace lifecycle](api-surfaces/workplace-lifecycle.md): scheduled retirement,
+   identity-preserving reactivation, protected confirmations and guarded deletion.
+7. [Plan publication](api-surfaces/plan-publication.md): asset approval, Workplace
+   mapping activation and Booking dated-inventory validation across all layouts.
+8. [Operational incidents](api-surfaces/operational-incidents.md): confirmed outage
+   declarations, guarded expiry and business-owned deadline protection.
+9. [Linked bookings](api-surfaces/linked-bookings.md): pre-start paired cancellation,
+   explicit post-start scope and automatic desk release retaining parking.
+10. [Room recovery](api-surfaces/room-recovery.md): retained meeting/attendees,
+    no-secured-room outcomes and organiser-directed recovery.
+11. [Room use and leavers](api-surfaces/recurring-rooms-and-leavers.md): native
+    policy/check-in/autorelease, local consistency and organiser-owned cleanup.
+12. [Exchange room-policy research](api-surfaces/outlook-room-policy-enforcement.md):
+    supported controls/APIs, native behaviour and unverified requirement gaps.
 
 The catalogue links specialised research on authentication, role-based access,
 Entra groups, Conditional Access, MCP/Terraform and provider protocols. The

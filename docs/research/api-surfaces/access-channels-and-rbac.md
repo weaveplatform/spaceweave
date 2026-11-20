@@ -80,11 +80,26 @@ not with floor definitions or a new public copy of worker internals:
 
 | Candidate | Proposed RBAC configuration owner |
 | --- | --- |
-| Layered | Access application behaviour, shared model values and owner-labelled access persistence. |
-| Hexagonal | Core Access service/contracts with its restricted persistence facets. |
-| Clean | Authorisation/role-management use cases and access-owned repositories; pure evaluation remains inward. |
-| DDD | Access context owns roles/assignments; Directory supplies approved source membership facts. |
-| Modular monolith | Identity module owns roles/assignments and source correlations in the nine-module candidate. |
+| Layered | Identity application service, distinct People/Access/Delegation facets and owner-labelled Identity persistence. |
+| Hexagonal | Identity core service with distinct driving/storage facets; pure access rules remain in the core. |
+| Clean | Identity operation family and owned repositories; pure authority/staff models remain inward. |
+| DDD | Identity context owns source membership, current eligibility, sessions and roles/assignments under one owner. |
+| Modular monolith | Identity module owns roles/assignments, source correlations, sessions and delegation through distinct published interfaces. |
+
+Application capabilities control access to series and room operations; supported
+Exchange policies govern native resource admission across Outlook and SpaceWeave.
+Keep actual application actor, organiser and provider-recognised requester
+provenance distinct. Do not replace native principal/delegate semantics with an
+actual-author-only recurring rule or claim that app RBAC configures Outlook.
+
+Room check-in uses the supported native flow and eligibility with the required
+user context. Native panel/chat/device outcomes remain valid even when they do
+not match an app-specific attendee set. A platform workload cannot substitute
+app-only credentials for a delegated-only native operation. Private offboarding
+workers use supported cancellation authority rather than impersonating a leaver.
+The [room contract](recurring-rooms-and-leavers.md) and
+[native policy research](outlook-room-policy-enforcement.md) record exact
+boundaries and unverified requested capabilities.
 
 These placements show how each architecture candidate can own the same access
 model. Library selection and final module boundaries remain separate decisions.

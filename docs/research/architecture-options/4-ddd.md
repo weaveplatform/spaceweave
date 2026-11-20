@@ -1,5 +1,14 @@
 # Option 4: Domain-driven design
 
+The repository-architecture decision is pending. This candidate expresses the
+same agreed logical owners as the other four: combined Identity; attendance
+planning and claim commitment inside Booking; separate Exchange and Events.
+Its package organisation and dependency rules remain specific to this style.
+[Identity](../../adr/0026-combine-workforce-identity-and-access-ownership.md),
+[Booking planning](../../adr/0027-keep-attendance-planning-inside-booking.md) and
+[Exchange](../../adr/0028-separate-exchange-synchronisation-from-booking.md)
+record those ownership decisions independently of repository style.
+
 SpaceWeave's booking, workforce identity, workplace configuration, visitor and
 event capabilities use different models and consistency rules. This candidate
 uses domain-driven design (DDD) to make those boundaries explicit inside one Go
@@ -52,10 +61,12 @@ modelling sources; the placements here are SpaceWeave design inferences.
    provider. A shared `Staff` or `Booking` entity is deliberately excluded.
 6. Only composition imports context root factories and assembles more than one
    context's concrete adapters. HTTP adapters do not write repositories directly.
-7. Each context owns tables/migrations. Booking is the sole capacity writer,
+7. Each context owns its business tables/migrations; shared operational facilities
+   separately own incident declarations and shared execution tables. Booking is the sole physical-space claim writer,
    including calls from allocation, Exchange observations and timers.
 8. Default transactions change one aggregate and its outbox records. The named
-   booking consistency operations and event-venue coordinator are documented
+   booking consistency operations, event-venue coordination and registration-created
+   visit/ticket coordination are documented
    exceptions; a generic transaction handle does not authorise foreign writes.
 9. Published context facts and wire contracts are versioned separately. Generated
    HTTP/SCIM/provider types stay outside domain models.
@@ -68,30 +79,30 @@ query/migration review enforces SQL ownership. [Go import rules][go-imports].
 
 ```text
 spaceweave/
-  cmd/spaceweave/                  retained executable; Cobra drives app composition
-  internal/                       eleven contexts, kernel, shared, composition
-  pkg/                            reserved for deliberate public clients/helpers
-  api/
-    src/app/                      OpenAPI fragments organised by owning context
-    src/provisioning/             SCIM wire schemas/compatibility documentation
-    generated/                    reproducible bundled contracts, not domain models
-  web/
-    staff/                        staff/mobile-web React entrypoint
-    admin/                        separate React administrative entrypoint
-    shared/                       UI, generated clients and renderer integration
-    floorplan-iso/                retained renderer during incremental adoption
-  test/
-    acceptance/                   retained harness; add booking/provider scenarios
-    integration/                  proposed context assembly/transaction suites
-    fixtures/                     synthetic offices, staff, events and provider data
-  deploy/
-    kubernetes/                   proposed HTTP/worker role definitions, same image
-    operations/                   proposed migration, fencing and recovery procedures
-  docs/research/architecture-options/
-  Makefile                        generation, existing gates and acceptance entrypoints
-  .golangci.yml                   existing linter plus context import restrictions
-  .testcoverage.yml               existing coverage requirements retained
-  go.mod                         one module; builds retain GOWORK=off
+├── cmd/spaceweave/                      retained executable; Cobra drives app composition
+├── internal/                            ten contexts, kernel, shared, composition
+├── pkg/                                 reserved for deliberate public clients/helpers
+├── api/
+│   ├── src/app/                         OpenAPI fragments organised by owning context
+│   ├── src/provisioning/                SCIM wire schemas/compatibility documentation
+│   └── generated/                       reproducible bundled contracts, not domain models
+├── web/
+│   ├── staff/                           staff/mobile-web React entrypoint
+│   ├── admin/                           separate React administrative entrypoint
+│   ├── shared/                          UI, generated clients and renderer integration
+│   └── floorplan-iso/                   retained renderer during incremental adoption
+├── test/
+│   ├── acceptance/                      retained harness; add booking/provider scenarios
+│   ├── integration/                     proposed context assembly/transaction suites
+│   └── fixtures/                        synthetic offices, staff, events and provider data
+├── deploy/
+│   ├── kubernetes/                      proposed HTTP/worker role definitions, same image
+│   └── operations/                      proposed migration, fencing and recovery procedures
+├── docs/research/architecture-options/
+├── Makefile                             generation, existing gates and acceptance entrypoints
+├── .golangci.yml                        existing linter plus context import restrictions
+├── .testcoverage.yml                    existing coverage requirements retained
+└── go.mod                               one module; builds retain GOWORK=off
 ```
 
 Existing Go/Chi/Cobra/configuration and quality conventions remain from
@@ -107,354 +118,376 @@ tests are omitted here and described in the verification section.
 
 ```text
 internal/
-  app/
-    app.go                        lifecycle and shutdown
-    contexts.go                   constructors and published interfaces
-    routes.go                     Chi assembly and generated-handler dispatch
-    roles.go                      HTTP/allocation/Exchange/tracing/maintenance roles
-    subscriptions.go              published-fact consumers and version routing
-    migrations.go                 controlled context migration manifest
-  kernel/
-    ids/
-      ids.go                      StaffID, SpaceID, OfficeID, BookingID, EventID
-    principal/
-      principal.go                actor identity envelope, not entitlement evaluation
-    timewindow/
-      window.go                   interval value semantics, not an office calendar
-    clock/
-      clock.go                    clock abstraction for time-dependent decisions
-  shared/
-    postgres/
-      database.go                 pool, health and scoped transaction execution
-      retry.go                    bounded whole-transaction retry support
-      migrations.go               ordered migration runner, owner records
-    outbox/
-      append.go                   append within owning transaction
-      dispatch.go                 leased delivery and consumer progress
-    jobs/
-      queue.go                    durable job records and versioned payload envelope
-      lease.go                    claim, renew, fence, retry and park
-    httpkit/
-      router.go                   Chi middleware and transport error mapping
-      csrf.go                     browser session request protection
-    telemetry/
-      telemetry.go                traces, metrics and structured logs
-    config/
-      config.go                   strict deployment YAML, flag > env > file
-    generated/
-      app/
-        app.gen.go                generated HTTP wire types/handler contracts
-      provisioning/
-        scim.gen.go               generated wire shapes where tooling supports them
-  directory/
-    directory.go                  composition factory
-    api/
-      directory.go                verified identity/eligibility and dated snapshots
-      events.go                   StaffEligibilityChanged, WorkforceFactsChanged
-    domain/
-      staff/
-        staff.go                  internal identity and verified source links
-        eligibility.go            separate account/provisioning/workforce inputs
-      workforce/
-        assignment.go             effective office/structure/team facts
-      team/
-        team.go                   external team/membership model
-      repository.go               staff/team/source-progress repositories
-      events.go                   internal domain facts
-    application/
-      provision.go                SCIM lifecycle commands
-      import_workday.go           apply source-owned effective workforce facts
-      correlate.go                approved identifier matching, ambiguity review
-      reconcile.go                complete-source reconciliation without outage deletion
-      queries.go                  eligibility and dated snapshot views
-    adapters/
-      http/
-        scim.go                   authenticated Users/Groups resources
-        directory.go              administrative correlation queries/actions
-      workday/
-        client.go                 provider queries and paging
-        translate.go              anti-corruption mapping to workforce facts
-      postgres/
-        staff.go                  staff/source IDs and effective facts
-        teams.go                  team memberships and mapping records
-        migrations/
-          0001_directory.sql
-  access/
-    access.go
-    api/
-      access.go                   authorise actor/owner/action/office
-      events.go                   delegation/global-grant changes
-    domain/
-      scope/
-        scope.go                  office scope and global capability semantics
-      delegation/
-        grant.go                  source, owner, actions and verification age
-      session/
-        session.go                staff/visitor session lifecycle
-      repository.go
-    application/
-      login.go                    SSO and verified visitor link sessions
-      decide.go                   current eligibility, action and scope checks
-      delegation.go               local grants and native-derived refresh/revocation
-      revoke.go                   invalidate sessions on known effective ineligibility
-    adapters/
-      entra/
-        oidc.go                   confidential server sign-in, provider tokens server-side
-      http/
-        login.go
-        middleware.go
-        delegation.go
-      postgres/
-        access.go
-        migrations/
-          0001_access.sql
-  workplace/
-    workplace.go
-    api/
-      workplace.go                versioned definitions and impact-aware changes
-    domain/
-      office/
-        office.go                 location/building/floor hierarchy and calendar
-      space/
-        space.go                  kind, features, active definition and capacity
-      neighbourhood/
-        bundle.go                 one-building baseline desks/optional rooms
-      repository.go
-    application/
-      configure.go                validation and committed-booking impact checks
-      queries.go                  versioned workplace snapshots
-    adapters/
-      http/
-        workplace.go
-      postgres/
-        workplace.go
-        migrations/
-          0001_workplace.sql
-  policy/
-    policy.go
-    api/
-      policy.go                   resolve and publish policy versions
-    domain/
-      policy/
-        version.go                immutable published values/effective scope
-        validate.go               individual and cross-field validation
-      repository.go
-    application/
-      publish.go                  global/office authority, publication and migration requests
-      resolve.go                  pinned booking/cycle rules and permitted overrides
-    adapters/
-      http/
-        policy.go
-      postgres/
-        policy.go
-        migrations/
-          0001_policy.sql
-  booking/
-    booking.go
-    api/
-      booking.go                  request/transfer/cancel/check-in/capacity interface
-      allocation.go               snapshot, proposal and group commit interface
-      venue.go                    restricted event-managed venue operations
-      events.go                   committed booking/check-in/release facts
-    domain/
-      intent/
-        intent.go                 chosen office/date, requirements and collaboration
-      allocation/
-        cycle.go                  date cohort, cutoff and processing version
-        group.go                  date-specific allocation group, distinct from team
-        proposal.go               candidate placements and dependency versions
-        planner.go                pure grouping/packing objective, no persistence
-      claim/
-        claim.go                  booking lifecycle and owned resource claims
-        requestset.go             linked desk/parking intent and both-required rule
-        transition.go             room holds, check-in, no-show, vacancy and cancellation
-      waitlist/
-        request.go                eligible unmet demand and priority
-        offer.go                  timed capacity offer and acceptance state
-      inventory/
-        dated.go                  dated capacity and unallocated-desk bundle movements
-      repository.go               Booking-owned repository interfaces
-      events.go
-    application/
-      submit_intent.go            app-owned preferences and dated travel choices
-      plan_cycle.go               assemble immutable snapshot and run planner
-      commit_group.go             named multi-aggregate local transaction
-      direct.go                   post-run direct request and waitlist priority
-      transfer.go                 named acquire-replacement/release-old transaction
-      checkin.go                  owner-only personal transition
-      release.go                  no-show/vacancy timers and outage protection
-      promote.go                  reserve/accept/expire eligible waitlist offers
-      room.go                     reconcile acceptance and external room intentions
-      venue.go                    event-governed capacity participant
-    adapters/
-      http/
-        booking.go
-        intents.go
-        checkin.go
-      postgres/
-        claims.go                 overlap protection and consistent resource lock protocol
-        allocation.go             snapshot versions, runs and group commit progress
-        waitlist.go               competing offers and acceptance
-        inventory.go              dated neighbourhood/capacity rows
-        migrations/
-          0001_booking.sql
-  exchange/
-    exchange.go
-    api/
-      exchange.go                 desired/observed state and source-authority refresh
-    domain/
-      conversation/
-        reconciliation.go         durable desired/base/observed event intentions
-      subscription/
-        cursor.go                 per-mailbox/window progress, not all-history delta
-      repository.go
-    application/
-      on_room_intent.go           committed app intention to provider work
-      reconcile.go                compatible edits, stale work and irreconcilable cases
-      observe.go                  retain provider facts and call Booking
-      delegation.go               publish verified native authority to Access
-    adapters/
-      graph/
-        calendar.go               create/edit/cancel with supported provider semantics
-        delta.go                  subscriptions plus durable window reconciliation
-        permissions.go            explicit native calendar-delegate evidence
-      http/
-        notifications.go          provider callback validation and enqueue
-      postgres/
-        exchange.go
-        migrations/
-          0001_exchange.sql
-  plans/
-    plans.go
-    api/
-      plans.go                    upload, process, review and read revision
-    domain/
-      revision/
-        revision.go               immutable drawing/render revision and current pointer
-      publication/
-        publication.go            staged/recovery-verified/durable/publication states
-      blob.go                     provider-neutral opaque object token contract
-      repository.go
-    application/
-      upload.go                   accept staged source data
-      trace.go                    retained pipeline behind a context-owned interface
-      review.go                   approve/reject and bind stable space identities
-      publish.go                  verify recovery copies before durability acknowledgement
-      cleanup.go                  referenced history and abandoned staging reconciliation
-    adapters/
-      tracing/
-        pipeline.go               autotrace/convert/floorgraph wrapper, not a rewrite
-      blob/
-        azure/
-          blob.go                 Azure conditional operations and private access
-        gcs/
-          blob.go                 GCS generation preconditions and private access
-      http/
-        plans.go                  existing upload/review transport adapted incrementally
-      postgres/
-        plans.go                  metadata/revision ownership, not object bytes
-        migrations/
-          0001_plans.sql
-  visitors/
-    visitors.go
-    api/
-      visitors.go                 hosted visit and restricted visitor identity views
-    domain/
-      visit/
-        visit.go                  host/window/reception arrival/departure
-      repository.go
-    application/
-      invite.go
-      reception.go
-      retention.go                remove aged visits and identifying copies
-    adapters/
-      http/
-        visitors.go
-      postgres/
-        visitors.go
-        migrations/
-          0001_visitors.sql
-  events/
-    events.go
-    api/
-      events.go                   audience, registration, venue and admission operations
-    domain/
-      event/
-        event.go                  audience/access, capacity and secured-venue reference
-      ticket/
-        ticket.go                 named entitlement and single-use admission
-      repository.go
-    application/
-      venue_coordinator.go        named local Events/Booking transaction exception
-      register.go                 ticket capacity plus required visitor visit link
-      admit.go                    duplicate-scan-safe admission
-      handover.go                 leaver event/room ownership review
-    adapters/
-      http/
-        events.go
-        tickets.go
-      postgres/
-        events.go
-        tickets.go
-        migrations/
-          0001_events.sql
-  attendance/
-    attendance.go
-    api/
-      attendance.go               typed evidence, vacancy observation and scoped reports
-    domain/
-      evidence/
-        evidence.go               person/desk/office evidence with distinct meaning
-      report/
-        report.go                 booking/check-in/occupancy dimensions and freshness
-      repository.go
-    application/
-      ingest.go                   optional occupancy integration and evidence deduplication
-      project.go                  committed-fact attendance projections
-      report.go                   own history or authorised office reporting
-      retention.go                attendance and raw evidence have separate policies
-    adapters/
-      occupancy/
-        input.go                  concrete sensor translation seam
-      http/
-        attendance.go
-      postgres/
-        attendance.go
-        migrations/
-          0001_attendance.sql
-  notifications/
-    notifications.go
-    api/
-      notifications.go            recipient preferences and delivery outcome queries
-    domain/
-      message/
-        message.go                committed outcome and private intended recipient
-      delivery/
-        delivery.go               channel attempt, retry state and message-specific opt-in
-      repository.go
-    application/
-      on_booking_raised.go        individual opted-in Teams message, not a broadcast
-      on_outcome.go               in-app/email booking/visit/ticket/handover messages
-      deliver.go                  consent recheck, retry classification and outcomes
-    adapters/
-      email/
-        sender.go                 organisation-approved email transport
-      teams/
-        personal.go               proactive personal bot message and conversation reference
-      http/
-        preferences.go
-      postgres/
-        notifications.go
-        migrations/
-          0001_notifications.sql
-  autotrace/ cad/ convert/ dwg/ dxf/ floorgraph/ raster/ svgdraw/ vector/
-                                   retained geometry packages; accessed through Plans
-  plan/ trace/                     retained trace value/pipeline packages during migration
-  buildinfo/                       retained build metadata
+├── app/
+│   ├── app.go                                lifecycle and shutdown
+│   ├── contexts.go                           constructors and published interfaces
+│   ├── routes.go                             Chi assembly and generated-handler dispatch
+│   ├── incidents.go                          wire authorised commands to the operational facility
+│   ├── roles.go                              HTTP/allocation/Exchange/tracing/maintenance roles
+│   ├── subscriptions.go                      published-fact consumers and version routing
+│   └── migrations.go                         controlled context migration manifest
+├── kernel/
+│   ├── ids/
+│   │   └── ids.go                            StaffID, SpaceID, OfficeID, BookingID, EventID
+│   ├── principal/
+│   │   └── principal.go                      actor identity envelope, not entitlement evaluation
+│   ├── timewindow/
+│   │   └── window.go                         interval value semantics, not an office calendar
+│   └── clock/
+│       └── clock.go                          clock abstraction for time-dependent decisions
+├── shared/
+│   ├── postgres/
+│   │   ├── database.go                       pool, health and scoped transaction execution
+│   │   ├── retry.go                          bounded whole-transaction retry support
+│   │   └── migrations.go                     ordered migration runner, owner records
+│   ├── incident/
+│   │   ├── incident.go                       confirmed scope/times/revision; no business expiry policy
+│   │   ├── store.go                          operational declaration writer and guarded reads
+│   │   └── migrations/
+│   │       └── 0001_incidents.sql
+│   ├── outbox/
+│   │   ├── append.go                         append within owning transaction
+│   │   └── dispatch.go                       leased delivery and consumer progress
+│   ├── jobs/
+│   │   ├── queue.go                          durable job records and versioned payload envelope
+│   │   └── lease.go                          claim, renew, fence, retry and park
+│   ├── httpkit/
+│   │   ├── router.go                         Chi middleware and transport error mapping
+│   │   └── csrf.go                           browser session request protection
+│   ├── telemetry/
+│   │   └── telemetry.go                      traces, metrics and structured logs
+│   ├── config/
+│   │   └── config.go                         strict deployment YAML, flag > env > file
+│   └── generated/
+│       ├── app/
+│       │   └── app.gen.go                    generated HTTP wire types/handler contracts
+│       └── provisioning/
+│           └── scim.gen.go                   generated wire shapes where tooling supports them
+├── identity/
+│   ├── identity.go                           one context factory; distinct People/Access/Delegation
+│   ├── api/
+│   │   ├── people.go                         verified source/eligibility and dated workforce views
+│   │   ├── access.go                         actor/owner/action/office and session authority
+│   │   ├── delegation.go                     local grants and fresh native delegation checks
+│   │   └── events.go                         source, eligibility, access and grant facts
+│   ├── domain/
+│   │   ├── staff/
+│   │   │   ├── staff.go                      internal identity and verified source links
+│   │   │   └── eligibility.go                independent account/provisioning/workforce inputs
+│   │   ├── workforce/
+│   │   │   └── assignment.go                 effective office/structure/team facts
+│   │   ├── team/
+│   │   │   └── team.go                       external membership model
+│   │   ├── scope/
+│   │   │   └── scope.go                      office/global authority semantics
+│   │   ├── delegation/
+│   │   │   └── grant.go                      provenance, owner, actions and verification age
+│   │   ├── session/
+│   │   │   └── session.go                    staff/visitor session lifecycle
+│   │   ├── repository.go                     Identity-owned people/session/grant repositories
+│   │   └── events.go                         internal domain facts
+│   ├── application/
+│   │   ├── provision.go                      SCIM lifecycle and mapped groups
+│   │   ├── import_workday.go                 source-owned effective workforce facts
+│   │   ├── correlate.go                      verified matching and ambiguity review
+│   │   ├── reconcile.go                      complete-source reconciliation
+│   │   ├── queries.go                        current eligibility and dated facts
+│   │   ├── login.go                          SSO and restricted visitor sessions
+│   │   ├── decide.go                         current own eligibility/action/scope checks
+│   │   ├── delegation.go                     app-managed grants and native evidence evaluation
+│   │   ├── native_delegation.go              freshness refresh through authority adapter
+│   │   └── revoke.go                         observed disablement plus session/access invalidation
+│   └── adapters/
+│       ├── http/
+│       │   ├── scim.go                       provisioning resources
+│       │   ├── people.go                     correlation queries/actions
+│       │   ├── login.go
+│       │   ├── middleware.go
+│       │   └── delegation.go
+│       ├── workday/
+│       │   ├── client.go
+│       │   └── translate.go
+│       ├── entra/
+│       │   └── oidc.go
+│       ├── exchangeauthority/
+│       │   └── permissions.go                fresh explicit native delegation evidence
+│       └── postgres/
+│           ├── staff.go
+│           ├── teams.go
+│           ├── access.go
+│           └── migrations/
+│               ├── 0001_identity_people.sql
+│               └── 0002_identity_access.sql
+├── workplace/
+│   ├── workplace.go
+│   ├── api/
+│   │   └── workplace.go                      versioned definitions and impact-aware changes
+│   ├── domain/
+│   │   ├── office/
+│   │   │   └── office.go                     location/building/floor hierarchy and calendar
+│   │   ├── space/
+│   │   │   └── space.go                      kind, features, active definition and capacity
+│   │   ├── neighbourhood/
+│   │   │   └── bundle.go                     one-building baseline desks/optional rooms
+│   │   ├── mapping/
+│   │   │   └── mapping.go                    versioned geometry-to-stable-space associations
+│   │   └── repository.go
+│   ├── application/
+│   │   ├── publish_mapping.go                activate approved mapping after Booking impact validation
+│   │   ├── configure.go                      validation and committed-booking impact checks
+│   │   ├── queries.go                        versioned workplace snapshots
+│   │   └── retirement.go                     scheduled retirement/reactivation and deletion dependencies
+│   └── adapters/
+│       ├── http/
+│       │   └── workplace.go
+│       └── postgres/
+│           ├── workplace.go
+│           └── migrations/
+│               └── 0001_workplace.sql
+├── policy/
+│   ├── policy.go
+│   ├── api/
+│   │   └── policy.go                         resolve and publish policy versions
+│   ├── domain/
+│   │   ├── policy/
+│   │   │   ├── version.go                    immutable published values/effective scope
+│   │   │   └── validate.go                   individual and cross-field validation
+│   │   └── repository.go
+│   ├── application/
+│   │   ├── publish.go                        global/office authority, publication and migration requests
+│   │   └── resolve.go                        pinned booking/cycle rules and permitted overrides
+│   └── adapters/
+│       ├── http/
+│       │   └── policy.go
+│       └── postgres/
+│           ├── policy.go
+│           └── migrations/
+│               └── 0001_policy.sql
+├── booking/
+│   ├── booking.go
+│   ├── api/
+│   │   ├── booking.go                        claim commands, scoped cancellation and room recovery
+│   │   ├── allocation.go                     snapshot, proposal and group commit interface
+│   │   ├── venue.go                          restricted event-managed venue operations
+│   │   ├── evidence.go                       validate/store operational observations and publish facts
+│   │   └── events.go                         committed booking/check-in/release facts
+│   ├── domain/
+│   │   ├── intent/
+│   │   │   └── intent.go                     chosen office/date, requirements and collaboration
+│   │   ├── allocation/
+│   │   │   ├── cycle.go                      date cohort, cutoff and processing version
+│   │   │   ├── group.go                      date-specific allocation group, distinct from team
+│   │   │   ├── proposal.go                   candidate placements and dependency versions
+│   │   │   └── planner.go                    pure grouping/packing objective, no persistence
+│   │   ├── claim/
+│   │   │   ├── claim.go                      booking lifecycle and owned resource claims
+│   │   │   ├── requestset.go                 pair identity, required kind and cancellation scope
+│   │   │   ├── transition.go                 desk use/expiry; native room outcomes and cancellation
+│   │   │   ├── series.go                     native recurrence/intent and cancellation fence
+│   │   │   └── occurrence.go                 one-off/series instance and native outcome references
+│   │   ├── waitlist/
+│   │   │   ├── request.go                    eligible unmet demand and priority
+│   │   │   └── offer.go                      timed capacity offer and acceptance state
+│   │   ├── inventory/
+│   │   │   └── dated.go                      dated capacity and unallocated-desk bundle movements
+│   │   ├── evidence/
+│   │   │   └── evidence.go                   typed operational observations, provenance and freshness
+│   │   ├── repository.go                     Booking-owned repository interfaces
+│   │   └── events.go
+│   ├── application/
+│   │   ├── submit_intent.go                  app-owned preferences and dated travel choices
+│   │   ├── plan_cycle.go                     assemble immutable snapshot and run planner
+│   │   ├── solver.go                         consumed solver interface; calculation outside tx
+│   │   ├── commit_group.go                   named multi-aggregate local transaction
+│   │   ├── direct.go                         post-run direct request and waitlist priority
+│   │   ├── transfer.go                       named acquire-replacement/release-old transaction
+│   │   ├── checkin.go                        owner-only personal transition
+│   │   ├── protection.go                     apply shared incidents to Booking-owned deadlines
+│   │   ├── ingest.go                         validate scope/provenance, deduplicate and commit evidence
+│   │   ├── release.go                        explicit selected/pair cancellation; timed desk-only release
+│   │   ├── promote.go                        reserve/accept/expire eligible waitlist offers
+│   │   ├── room.go                           room intentions, acceptance and retained-meeting recovery
+│   │   ├── room_series.go                    native-policy series requests and cancellation
+│   │   ├── room_use.go                       native check-in orchestration and observed room release
+│   │   ├── lifecycle.go                      owner-based desk/parking/room leaver cancellation
+│   │   └── venue.go                          event-governed capacity participant
+│   └── adapters/
+│       ├── occupancy/
+│       │   └── input.go                      concrete source translation into Booking commands
+│       ├── solver/
+│       │   └── solver.go                     replaceable search using domain constraints/objective
+│       ├── http/
+│       │   ├── booking.go
+│       │   ├── intents.go
+│       │   └── checkin.go
+│       └── postgres/
+│           ├── claims.go                     overlap protection and consistent resource lock protocol
+│           ├── allocation.go                 snapshot versions, runs and group commit progress
+│           ├── waitlist.go                   competing offers and acceptance
+│           ├── inventory.go                  dated neighbourhood/capacity rows
+│           ├── evidence.go                   Booking-owned desk evidence; native room outcome refs
+│           ├── rooms.go                      series/occurrence state and cancellation fences
+│           └── migrations/
+│               └── 0001_booking.sql
+├── exchange/
+│   ├── exchange.go
+│   ├── api/
+│   │   └── exchange.go                       provider desired/observed state and reconciliation
+│   ├── domain/
+│   │   ├── conversation/
+│   │   │   └── reconciliation.go             durable desired/base/observed event intentions
+│   │   ├── subscription/
+│   │   │   └── cursor.go                     per-mailbox/window progress, not all-history delta
+│   │   └── repository.go
+│   ├── application/
+│   │   ├── on_room_intent.go                 committed app intention to provider work
+│   │   ├── reconcile.go                      compatible edits, stale work and irreconcilable cases
+│   │   └── observe.go                        retain provider facts and call Booking
+│   └── adapters/
+│       ├── graph/
+│       │   ├── calendar.go                   create/edit/cancel with supported provider semantics
+│       │   └── delta.go                      subscriptions plus durable window reconciliation
+│       ├── http/
+│       │   └── notifications.go              provider callback validation and enqueue
+│       └── postgres/
+│           ├── exchange.go
+│           └── migrations/
+│               └── 0001_exchange.sql
+├── plans/
+│   ├── plans.go
+│   ├── api/
+│   │   └── plans.go                          upload, process, review and read revision
+│   ├── domain/
+│   │   ├── revision/
+│   │   │   └── revision.go                   immutable drawing/render revision and current pointer
+│   │   ├── publication/
+│   │   │   └── publication.go                staged/recovery-verified/durable/publication states
+│   │   ├── blob.go                           provider-neutral opaque object token contract
+│   │   └── repository.go
+│   ├── application/
+│   │   ├── upload.go                         accept staged source data
+│   │   ├── trace.go                          retained pipeline behind a context-owned interface
+│   │   ├── review.go                         approve/reject immutable assets; no inventory activation
+│   │   ├── publish.go                        verify recovery copies before durability acknowledgement
+│   │   └── cleanup.go                        referenced history and abandoned staging reconciliation
+│   └── adapters/
+│       ├── tracing/
+│       │   └── pipeline.go                   autotrace/convert/floorgraph wrapper, not a rewrite
+│       ├── blob/
+│       │   ├── azure/
+│       │   │   └── blob.go                   Azure conditional operations and private access
+│       │   └── gcs/
+│       │       └── blob.go                   GCS generation preconditions and private access
+│       ├── http/
+│       │   └── plans.go                      existing upload/review transport adapted incrementally
+│       └── postgres/
+│           ├── plans.go                      metadata/revision ownership, not object bytes
+│           └── migrations/
+│               └── 0001_plans.sql
+├── visitors/
+│   ├── visitors.go
+│   ├── api/
+│   │   └── visitors.go                       hosted visit and restricted visitor identity views
+│   ├── domain/
+│   │   ├── visit/
+│   │   │   └── visit.go                      host/window/reception arrival/departure
+│   │   └── repository.go
+│   ├── application/
+│   │   ├── invite.go
+│   │   ├── reception.go
+│   │   └── retention.go                      remove aged visits and identifying copies
+│   └── adapters/
+│       ├── http/
+│       │   └── visitors.go
+│       └── postgres/
+│           ├── visitors.go
+│           └── migrations/
+│               └── 0001_visitors.sql
+├── events/
+│   ├── events.go
+│   ├── api/
+│   │   └── events.go                         audience, registration, venue and admission operations
+│   ├── domain/
+│   │   ├── event/
+│   │   │   └── event.go                      audience/access, capacity and secured-venue reference
+│   │   ├── ticket/
+│   │   │   └── ticket.go                     named entitlement and single-use admission
+│   │   └── repository.go
+│   ├── application/
+│   │   ├── venue_coordinator.go              named local Events/Booking transaction exception
+│   │   ├── register.go                       ticket capacity plus required visitor visit link
+│   │   ├── protection.go                     apply shared incidents to Events-owned deadlines
+│   │   ├── admit.go                          duplicate-scan-safe admission
+│   │   └── handover.go                       leaver Event ownership review
+│   └── adapters/
+│       ├── http/
+│       │   ├── events.go
+│       │   └── tickets.go
+│       └── postgres/
+│           ├── events.go
+│           ├── tickets.go
+│           └── migrations/
+│               └── 0001_events.sql
+├── attendance/
+│   ├── attendance.go
+│   ├── api/
+│   │   └── attendance.go                     derived attendance projections and scoped reports
+│   ├── domain/
+│   │   ├── report/
+│   │   │   └── report.go                     booking/check-in/occupancy dimensions and freshness
+│   │   └── repository.go
+│   ├── application/
+│   │   ├── project.go                        committed-fact attendance projections
+│   │   ├── report.go                         own history or authorised office reporting
+│   │   └── retention.go                      configured reporting projection/copy retention
+│   └── adapters/
+│       ├── http/
+│       │   └── attendance.go
+│       └── postgres/
+│           ├── attendance.go
+│           └── migrations/
+│               └── 0001_attendance.sql
+├── notifications/
+│   ├── notifications.go
+│   ├── api/
+│   │   └── notifications.go                  recipient preferences and delivery outcome queries
+│   ├── domain/
+│   │   ├── message/
+│   │   │   └── message.go                    committed outcome and private intended recipient
+│   │   ├── delivery/
+│   │   │   └── delivery.go                   channel attempt, retry state and message-specific opt-in
+│   │   └── repository.go
+│   ├── application/
+│   │   ├── on_booking_raised.go              individual opted-in Teams message, not a broadcast
+│   │   ├── on_outcome.go                     in-app/email booking/visit/ticket/handover messages
+│   │   └── deliver.go                        consent recheck, retry classification and outcomes
+│   └── adapters/
+│       ├── email/
+│       │   └── sender.go                     organisation-approved email transport
+│       ├── teams/
+│       │   └── personal.go                   proactive personal bot message and conversation reference
+│       ├── http/
+│       │   └── preferences.go
+│       └── postgres/
+│           ├── notifications.go
+│           └── migrations/
+│               └── 0001_notifications.sql
+├── autotrace/                                retained geometry packages; accessed through Plans
+├── cad/
+├── convert/
+├── dwg/
+├── dxf/
+├── floorgraph/
+├── raster/
+├── svgdraw/
+├── vector/
+├── plan/                                     retained trace value/pipeline packages during migration
+├── trace/
+└── buildinfo/                                retained build metadata
 ```
 
-The eleven context roots are Go factories rather than global registries. The
-tree does not multiply the current CAD package inventory into eleven contexts.
+The ten context roots are Go factories rather than global registries. The
+tree does not multiply the current CAD package inventory into ten contexts.
 Source import/package claims above are checked against the current
 [server][server], [catalogue][catalogue], [worker][worker] and [drawing pipeline][autotrace].
 
@@ -468,9 +501,9 @@ two meanings of publication are deliberately distinct.
 | Consumer/surface | Kind and authority | Context/wire binding |
 | --- | --- | --- |
 | UI, MCP, SDK, scripts, contract tests and Terraform | Shared supported public REST with capability-specific fields/actions. | Owning contexts' HTTP adapters and app routing call application handlers; no aggregate or complete context API is serialized wholesale. |
-| Human users and enrolled applications | Internet-accessible public REST with applicable Conditional Access plus current application grants. | Credential/profile checks at the edge; Access and the command owner preserve real actor/client/owner identity. Machine grants are separate from human delegation. |
+| Human users and enrolled applications | Internet-accessible public REST with applicable Conditional Access plus current application grants. | Credential/profile checks at the edge; Identity and the command owner preserve real actor/client/owner identity. Machine grants are separate from human delegation. |
 | Internal-event visitors, such as guest speakers | External invitation/verification and limited visitor event/visit/ticket operations. | Visitors/Events projections preserve the verified-email visitor scope; no general public event catalogue is established. |
-| Entra, Graph, Teams and source clients | Native authenticated provisioning/callback/ingestion contracts. | Directory, Exchange, Notifications and Attendance adapters retain protocol-specific semantics and caller validation. |
+| Entra, Graph, Teams and source clients | Native authenticated provisioning/callback/ingestion contracts. | Identity, Exchange, Notifications and Booking adapters retain protocol-specific semantics and caller validation. |
 | Platform workers and application contexts | Private Go interfaces and versioned committed facts/jobs. | Workers call context application handlers directly; context API and repository/provider ports do not become remote endpoints. |
 | Operators and platform dependencies | Private probes/telemetry; authorised public repair commands where supported. | Restricted operational routing plus owning commands; public repair capability does not expose SQL, repositories or transaction participation. |
 
@@ -485,7 +518,7 @@ domain event. Private context/fact contracts can evolve with the application,
 subject to persisted-version/replay compatibility. Human/application authority is
 distinct; Terraform initially manages long-lived configuration; first-party
 MCP/provider delivery follows the core platform/SDKs. Public versions evolve
-independently of the UI. Access owns configurable RBAC; MCP uses user context
+independently of the UI. Identity owns configurable RBAC; MCP uses user context
 and machine-identity scripts use a different channel. UI drift is permitted and
 initial retirement notice is 180 days. Global administration, SCIM-backed role
 mappings, grant-only scoped composition and self-permission discovery are agreed.
@@ -500,9 +533,9 @@ to the printed context tree rather than these explanatory surface bindings.
 
 ### Domain model and context map
 
-Directory's `Staff` is a correlated identity with effective source facts.
-Access uses an eligibility/authority view; Booking uses a staff identifier and
-dated team/office snapshot. An allocation group is created for an attendance
+Identity's `Staff` is a correlated identity with effective source facts.
+Its distinct Access/People/Delegation interfaces use the same owned security
+state; Booking consumes a staff identifier and dated team/office snapshot. An allocation group is created for an attendance
 date, not imported from Workday and not synonymous with a team. None of these
 models owns Entra tokens. Exchange's observed organiser, booking owner and actual
 booker have separate fields and meanings.
@@ -514,10 +547,11 @@ geometry revisions, not desk claims or authoritative space identity. An amended
 drawing can be reviewed before becoming the current plan without moving an
 existing booking to a different inferred polygon.
 
-Proposed context relationships are Directory → eligibility/workforce consumers;
-Workplace/Policy → Booking planning; Booking → Exchange, reporting and
-notifications through committed facts; Events → Booking/Visitors through
-published commands. Access depends on Directory, not the reverse. Composition
+Context relationships are Identity → eligibility/authority/workforce consumers;
+Workplace/Policy → Booking's internal planning; Booking → Exchange, reporting
+and notifications through committed facts; Events → Booking/Visitors through
+published commands. Source status and session/access invalidation share Identity's
+transaction; separate Directory and Access contexts are not retained. Composition
 supplies a narrow impact-check interface where Workplace configuration must
 consult committed Booking state, avoiding a cycle between concrete packages.
 
@@ -534,8 +568,10 @@ just to change one desk.
 | --- | --- | --- |
 | Every placement in one allocation group commits together | Independent claims/resource capacity belong to several roots. | Booking's `commit_group.go` validates the affected roots and commits all affected claims/capacity guards/outbox records in one bounded transaction. |
 | Required desk plus parking both confirm or neither does | A request-set root alone cannot prevent another request-set claiming the same desk/pool capacity. | Shared Booking transaction coordinates request-set and competing resource/staff guards. |
+| Before either starts, both-required pair cancellation ends both bookings or neither | The pair contains separate Booking claim roots. | Booking's release handler resolves the pair from either ID and revalidates link/start state, authority and resource/pool guards; both claims, retry outcome and facts commit together. |
 | A person has no overlapping desks across offices | Independent office/date aggregates cannot alone enforce the global interval invariant. | A canonical Booking claim protocol and PostgreSQL staff-overlap protection apply to every writer. |
 | Venue capacity remains at least active issued tickets | Venue claim is Booking-owned; registration/tickets are Events-owned. | Events' named venue coordinator uses both published interfaces in one local transaction and serialises ticket issuance against venue changes. |
+| A visit created for registration commits with its ticket or neither does | Events and Visitors own separate records. | Events' registration coordinator joins Visitors' published participant in one local transaction; failed issuance preserves any reused existing valid visit. |
 
 A strict alternative could use a huge aggregate containing office/date capacity,
 all affected people and related tickets. Cross-office transfers and staff overlap
@@ -558,6 +594,21 @@ loads policy/definition versions and relevant current state, validates the
 domain command, acquires capacity/staff guards in a consistent order, rechecks
 affected versions, saves Booking-owned records and appends committed facts.
 No context saves a `BookingClaim` by calling a shared generic repository.
+
+Before either linked booking starts, explicit cancellation of either component
+of a both-required desk/parking pair cancels both in one Booking transaction.
+Optional links allow independent cancellation. The command resolves and
+revalidates the persisted pair, start times, current authority and claim state
+under the normal guards; its receipt, affected claims and follow-up facts commit
+together. Automatic desk no-show or vacancy release instead ends the desk claim
+only. Parking remains booked until its own end or explicit release, including
+in bay/pool capacity calculations. Desk-use evidence cannot establish that a car
+has left. The [linked-booking contract](../api-surfaces/linked-bookings.md)
+defines the public outcomes and concurrency validation. Once either booking
+starts, explicit cancellation affects only the selected booking unless the caller
+explicitly chooses both. Retain the other until its own end or explicit
+cancellation. Preserve the requested scope in the command/retry identity;
+revalidation at the first-start boundary cannot silently change affected claims.
 
 PostgreSQL range exclusion can protect overlapping intervals for a specific
 resource/person. Capacity pools need additional coordinated count/guard logic;
@@ -601,7 +652,11 @@ of use of a particular desk.
 as HTTP commands. A valid allocation is atomically checked against no-show
 expiry. A released desk returns to the pool even if a sensor says occupied;
 after valid check-in, missing hardware evidence does not establish vacancy.
-Confirmed incidents protect affected check-in/offer deadlines, with configured
+`shared/incident` owns neutral incident declarations and its migration, importing
+kernel/standard-library values without any context model. Composition wires
+authorised declaration commands; Booking and Events consume private incident
+reads and apply protection through their own application handlers. Confirmed
+incidents protect relevant check-in/offer/reconfirmation deadlines with configured
 recovery grace. An old timer cannot reclaim a desk from its newly confirmed owner.
 
 ### Exchange and delegated booking
@@ -623,7 +678,17 @@ window-scoped delta reconcile at the agreed five-minute healthy cadence.
 [Event semantics][graph-event], [delta scope][graph-delta],
 [room acceptance][room-policy].
 
-Access records source-labelled native grants and app-managed grants independently.
+
+If an ordinary meeting's replacement request fails after the previous room is
+lost, retain the meeting and attendees and expose no secured room. Booking owns
+the room intention/claim outcome; Exchange retains provider observations and
+reconciliation progress. Notify the organiser and offer available replacements
+or explicit cancellation. A selected replacement remains pending until current
+room acceptance and Booking capacity validation succeed. The
+[room recovery contract](../api-surfaces/room-recovery.md) distinguishes this
+outcome from uncertain provider state and preserves Events-managed venue rules.
+
+Identity records source-labelled native grants and app-managed grants independently.
 New native-derived actions need fresh verification within the configurable
 fifteen-minute limit. Revocation of one source does not remove an independent
 grant. App-managed authority permits app-mediated outcomes but does not write
@@ -632,7 +697,7 @@ remain separate checks. [Application permission scope][exchange-rbac].
 
 ### SCIM, Workday and staff lifecycle
 
-The Directory context's provider adapters form an anti-corruption layer: SCIM
+The Identity context's provider adapters form an anti-corruption layer: SCIM
 `active`, Entra account status and Workday workforce status remain distinct inputs
 with explicit authority. Workday owns effective workforce structure/usual office;
 the app owns preferences and dated travel. Only mapped groups become allocation
@@ -644,8 +709,11 @@ staff access, including existing sessions. An asynchronous session-cleanup event
 cannot be the only guard against known ineligibility. During feed failure, retain
 last verified state; absence from a partial response is not a delete. Effective
 office/team changes update unconfirmed derived defaults, preserving explicit
-travel and confirmed bookings. Release leavers' future personal desk/parking
-claims; rooms/events enter assisted handover review.
+travel and confirmed bookings. A confirmed effective workforce departure
+separately triggers personal desk/parking cleanup and cancellation of all
+organiser-owned room meetings/series through Booking and Exchange. A disable is
+not a departure; other-owner meetings created by the departing PA remain.
+Events retains its own handover.
 
 SCIM resource deletion hides it from that provisioning interface; it does not
 imply erasing internal booking/audit history outside retention policy. Workday
@@ -661,13 +729,18 @@ and named entitlements. A venue is a Booking-owned claim referenced by stable ID
 Generic booking edits reject an uncoordinated change to an event-governed claim.
 The venue coordinator revalidates secured venue/time/capacity and serialises with
 ticket issuance before either context commits. An observed external invalidation
-is retained, stops new issuance against an invalid venue and creates recovery
-work; the model does not invent capacity to keep old tickets looking valid.
+is retained. Existing tickets keep their entitlements pending venue recovery;
+admission and further issuance pause. The organiser explicitly secures a suitable
+replacement or cancels, with confirmed changes communicated to attendees. The
+model does not invent capacity to keep old tickets looking valid.
 
-A visitor ticket requires a valid visit link before a usable ticket is published.
-Create/reuse that visit idempotently, then issue the ticket with its link. A
-failed later step may leave a staged visit for cleanup, not an unlinked usable
-ticket. Reception arrival/departure and single-use event admission are separate
+A visitor ticket requires a valid visit link before publication. Events'
+registration handler coordinates Visitors' published participant in one named
+local transaction: a visit created specifically for registration and its ticket
+commit together or neither does. A reused existing valid visit survives failed
+issuance. This agreed exception rejects staged orphan-visit cleanup; each context
+still writes only its own state. Admission also rechecks the venue-recovery pause.
+Reception arrival/departure and single-use event admission are separate
 transitions. Retention removes aged visit data and identifying projection copies;
 the retained event view cannot quietly restore deleted visitor details.
 
@@ -681,7 +754,11 @@ packages until a justified change; this option does not require a geometry rewri
 Blob adapters use provider-specific conditional operations behind an opaque
 token contract. PostgreSQL metadata and object bytes do not share a transaction.
 Stage an upload, verify recovery copies, record durability/publication, then
-update a current-version pointer with concurrency control. Orphan staging and
+update a Plans-owned asset pointer with concurrency control. Workplace owns
+geometry-to-stable-space mappings through its mapping domain and publication
+command; Booking validates dated-inventory and commitment impact before
+activation. One admin workflow may approve then activate, exposing each actual
+outcome. Asset approval alone cannot change operational definitions. Orphan staging and
 missing publication work are reconciled. Keep referenced historical revisions.
 Default blob geo-replication alone does not establish the five-minute RPO.
 [Azure concurrency][azure-blob], [GCS preconditions][gcs-blob].
@@ -695,8 +772,11 @@ a new no-show duration does not silently reinterpret existing confirmations.
 The accepted numerical starting values remain configurable in
 [policy defaults][defaults].
 
-Attendance owns projection/evidence semantics and reporting queries. Consumer
-progress/freshness is visible; a lagging projection cannot authorise a claim.
+Booking owns validation, deduplication and custody of operational occupancy
+evidence through its evidence domain, ingestion command, source adapter and
+PostgreSQL evidence repository. Committed facts feed Attendance, which owns
+reporting projections, queries and separately configured reporting retention.
+Consumer progress/freshness is visible; a lagging projection cannot authorise a claim.
 Staff see their own history; reporting-capable administrators see assigned
 offices. Raw occupancy, attendance and visitor retention are separate and apply
 to identifying copies. Neither attendance reports nor app policies enforce a
@@ -740,11 +820,12 @@ alert and require explicit operator choice for failover outside that budget.
 
 ### Composition root
 
-`app/contexts.go` builds Directory, then Access with a Directory eligibility
-interface, then Workplace/Policy/Plans and Booking with their published views.
-Events receives Booking's event-venue participant and Visitors' visit interface.
-Exchange receives Booking room commands and an Access authority-observation
-interface. Notifications/reporting subscribe to committed outcomes.
+`app/contexts.go` constructs Identity once with distinct People/Access/Delegation
+interfaces, then Workplace/Policy/Plans and Booking with its private solver.
+Events receives Booking's venue participant and Visitors' visit interface.
+Exchange receives Booking's room interface and owns provider reconciliation;
+Identity's native-authority adapter independently verifies delegation evidence.
+Notifications/reporting subscribe to committed outcomes.
 
 Potential runtime cycles are addressed by consumer-owned impact-check contracts
 or composition-owned coordinators, not pervasive late setters. Wiring exposes
@@ -755,15 +836,18 @@ unrestricted database handle inside every command.
 ### Generated code and API specifications
 
 ```text
-api/src/app/
-  directory/ access/ workplace/ policy/ booking/ plans/
-  visitors/ events/ attendance/ notifications/
-api/src/provisioning/              SCIM Users/Groups wire contract and Entra profile
-api/generated/app.openapi.yaml    bundled application transport contract
-internal/shared/generated/app/    generated Go transport contracts
-internal/shared/generated/provisioning/
-web/shared/generated/             generated TypeScript transport types/clients
-web/shared/renderer/              lifecycle adapter around current D3/SVG renderer
+spaceweave/
+├── api/src/app/
+│   ├── identity/                            workplace/ policy/ booking/ exchange/ plans/
+│   └── visitors/                            events/ attendance/ notifications/
+├── api/src/provisioning/                    SCIM Users/Groups wire contract and Entra profile
+├── api/
+│   └── generated/
+│       └── app.openapi.yaml                 bundled application transport contract
+├── internal/shared/generated/app/           generated Go transport contracts
+├── internal/shared/generated/provisioning/
+├── web/shared/generated/                    generated TypeScript transport types/clients
+└── web/shared/renderer/                     lifecycle adapter around current D3/SVG renderer
 ```
 
 Each context's HTTP adapter implements its operations. Composition dispatches
@@ -795,12 +879,104 @@ queries. Generation is reproducible. Rolling releases use one controlled
 migration step, expand/contract schemas and compatible job/fact versions; older
 workers must drain before compatibility is removed.
 
+### Workplace retirement, reactivation and deletion
+
+`internal/workplace/application/retirement.go` handles explicit retirement and dependency-checked removal
+through the existing owning interfaces. Retirement is immediate or scheduled at an
+office-local date/time. Publishing the schedule immediately excludes new bookings
+for use on/after that point, including descendant spaces; confirmed commitments
+remain readable and manageable. Booking compares requested use with the published
+lifecycle revision at claim commit. A stale snapshot cannot bypass the schedule.
+Authorised reactivation revalidates definitions, calendars and dated inventory,
+preserving the same identity, commitments and history. Pre-existing unconfirmed
+holds/offers revalidate at confirmation and cannot confirm excluded use. Return
+a clear unavailable outcome and reconcile late Exchange side effects; existing
+confirmations remain protected. Deletion reports blocking bookings,
+children or other dependencies and never silently retires, cancels or cascades.
+Retired resources remain present for authorised read/refresh/import, including
+Terraform. The [workplace lifecycle contract](../api-surfaces/workplace-lifecycle.md)
+applies independently of this candidate's technical organisation.
+
+### Evidence custody and operational plan activation
+
+Booking owns validated operational occupancy evidence used for desk-release
+commands. Source adapters authenticate and translate observations; Booking checks
+scope, provenance, granularity and freshness, deduplicates and commits evidence
+facts. Attendance/Reporting consumes committed facts into projections with
+separately configured reporting retention. A report or delayed projection never
+authorises release. Personal check-in remains the only transition to taken;
+anonymous occupancy cannot prevent a no-show returning to the pool.
+
+Plans approval identifies an immutable, durable asset. Workplace owns publication
+of geometry-to-stable-space mappings; Booking validates dated inventory and
+confirmed-claim impact before operational activation. A combined administrator
+workflow may complete both steps, but reports approval separately when activation
+cannot succeed. The [mapping publication contract](../api-surfaces/plan-publication.md)
+and [operational evidence decision](../../adr/0029-keep-operational-occupancy-evidence-in-booking.md)
+apply in this candidate's directory style. Version guards, atomic visibility and
+retry outcomes need transaction-level validation; this owner agreement does not
+choose a repository architecture.
+
+Shared operational facilities retain confirmed outage declarations, including
+affected offices/actions/times and revisions. Booking and Events consume narrow
+private incident reads and own their respective protected deadline state; Policy
+owns configurable rules. Declaration publication is ordered against expiry
+through the guarded read/transition protocol, rather than relying on delayed
+notifications. Job execution supplies mechanics without choosing business expiry.
+The [incident contract](../api-surfaces/operational-incidents.md) also preserves
+incident-scoped request-recovery extensions. These owners apply independently of
+repository style.
+
+### Exchange-led room policy, check-in and leavers
+
+Booking claim series/occurrence values and application room handlers retain local intention/consistency. The Exchange context owns native policy/check-in integration and correspondence through its published interfaces; domain models consume neutral outcomes, not provider SDK objects.
+
+Exchange's supported resource policies govern room acceptance, recurrence,
+principal/delegate admission, native check-in and autorelease for both Outlook
+and SpaceWeave requests. App RBAC protects application operations; it does not
+replace native resource admission with a stricter actual-author-only or
+recurring-only rule. Unsupported requested granularity remains a capability gap.
+Native recurrence/conflict outcomes must remain representable; a local conflict
+is not a native decline. Any room-specific neighbourhood priority must also be
+expressible through supported native policy rather than an app-only gate.
+
+Room occurrences include one-off bookings and series instances/exceptions.
+SpaceWeave can adapt its check-in surface to the documented native create/read
+contracts using the required delegated user context and native eligibility.
+An app-only worker cannot impersonate that context. Keep request acceptance,
+native result and local observation progress distinct; a missing claim read is
+not proof of non-use, and native claims do not identify a named person.
+
+The effective native grace governs autorelease. Apply observed resource outcomes
+through Booking and promise availability only from current native/local state;
+do not add a second expiry timer or pause Exchange using an app-local incident.
+Exact invitation/future-series effects must match validated native behaviour.
+The previously proposed consecutive-miss series cancellation is unverified as a
+native feature; no independent application counter/canceller is selected.
+
+A confirmed effective leaver still triggers supported Exchange cancellation of
+organiser-owned room meetings/series, alongside personal desk/parking cleanup.
+Other-owner meetings created by a departing PA remain. Disable, SCIM deletion
+and incomplete imports do not establish departure; Events retains handover.
+Cancellation fences and bounded progress prevent recurrence expansion or stale
+provider observations from recreating cancelled local commitments.
+
+HTTP roles accept requests; Exchange roles reconcile supported provider work and
+Booking handlers apply committed outcomes. Native check-in reads require the
+supported user context rather than an assumed app-only polling permission.
+Observe native-policy freshness, pending outcomes and cleanup completion.
+
+The [native-policy research](../api-surfaces/outlook-room-policy-enforcement.md)
+and [room-use/leaver contract](../api-surfaces/recurring-rooms-and-leavers.md)
+record source facts, permission boundaries and delivery gaps. Physical
+unavailability inputs/declarations remain unselected.
+
 ## Walkthroughs
 
 ### Commit one allocation group while capacity changes
 
 1. A durable cycle job calls `booking/application/plan_cycle.go` with a cycle ID.
-2. Published Directory/Workplace/Policy views and Booking-owned inventory/claims
+2. Published Identity/Workplace/Policy views and Booking-owned inventory/claims
    produce a versioned planning snapshot. No database transaction spans packing.
 3. `domain/allocation/planner.go` forms the per-date group and suitable desk/parking
    proposal, preserving attendance choices and required features.
@@ -814,19 +990,20 @@ workers must drain before compatibility is removed.
 
 ### Race check-in, release and waitlist promotion
 
-1. The owner's QR or portal request reaches Access and Booking's check-in handler.
+1. The owner's QR or portal request reaches Identity and Booking's check-in handler.
 2. A no-show timer concurrently calls `release.go` for that allocation/version.
 3. Both use the current Booking transition and protected-incident policy. The
    committed state decides whether the check-in is valid or the desk was released.
 4. An anonymous occupancy observation never marks the allocation taken or blocks
    return to the pool. A confirmed service incident pauses affected expiry.
-5. Release appends capacity-available work; waitlist promotion claims it through
-   Booking before exposing it to fresh direct requests.
+5. Automatic desk release leaves linked parking booked until its own end or
+   explicit release. Append desk-capacity work; waitlist promotion uses only
+   actually released capacity before exposing it to fresh direct requests.
 6. A stale timer or late check-in cannot take a desk from its new confirmed owner.
 
 ### A PA books a room and Outlook changes it
 
-1. `access/application/decide.go` authorises actor, owner, action and office using
+1. `identity/application/decide.go` authorises actor, owner, action and office using
    a sufficiently fresh source-labelled grant or current app grant.
 2. Booking commits a pending room hold and desired intention with owner/actor.
 3. Exchange's worker performs the provider action in the owner's calendar; the
@@ -835,6 +1012,9 @@ workers must drain before compatibility is removed.
    observations and compare with durable base/desired state.
 5. Merge compatible edits; revalidate capacity/time changes through Booking.
    Late/stale updates cannot resurrect a cancelled or expired local claim.
+   Failed replacement after old-room loss retains meeting/attendees with no
+   secured room; notify the organiser and offer replacements or cancellation.
+   A selected replacement still requires current acceptance/capacity validation.
 6. A later native-grant revocation removes only that source; a separate app grant
    can still authorise future app actions. Irreconcilable intent becomes visible
    resolution work, not a blanket error on every edit.
@@ -855,16 +1035,18 @@ workers must drain before compatibility is removed.
 
 ### Apply lifecycle updates during a source outage
 
-1. Authenticated SCIM disable reaches Directory; retain its source meaning and
-   make effective ineligibility visible to Access immediately when observed.
+1. Authenticated SCIM disable reaches Identity; retain its source meaning and
+   commit effective ineligibility and session/access invalidation together in Identity.
 2. An existing staff session fails the next eligibility check; asynchronous
    cleanup handles retained sessions without being the sole enforcement.
 3. Workday supplies an effective office/team change. Apply only its owned fields
    at the relevant date, preserving explicit travel and confirmed bookings.
 4. A failing/partial source response does not delete known staff or reactivate
    another source's disabled eligibility input.
-5. If the effective event is a leaver, Booking releases future personal desk/
-   parking; Events/room handover work preserves context for assisted review.
+5. If the effective event is a confirmed leaver, Booking releases future personal
+   desk/parking and cancels organiser-owned room meetings/series through Exchange.
+   A departing PA's other-owner meetings remain. Events gets its own handover.
+   Cancellation fences block later occurrence expansion or stale acceptance.
 
 ### Add a private booking-raised Teams message
 
@@ -913,13 +1095,13 @@ staffing or runtime. Counts describe the representative tree in this document.
 
 | Measure | Candidate value |
 | --- | --- |
-| Business contexts | 11, named in the full tree. |
-| Uniform context layer directories | 44: `api`, `domain`, `application`, `adapters` for each context, before their internal subdivisions. |
-| Explicit Go-bearing package paths | 114: one per parent directory with a named `.go` file in the full tree. |
-| Explicit representative Go filenames | 189, including generated examples; co-located tests and unprinted retained engine files are excluded. |
+| Business contexts | 10, named in the full tree. |
+| Uniform context layer directories | 40: `api`, `domain`, `application`, `adapters` for each context, before their internal subdivisions. |
+| Explicit Go-bearing package paths | 112: one per parent directory with a named `.go` file in the full tree. |
+| Explicit representative Go filenames | 205, including generated examples; co-located tests and unprinted retained engine files are excluded. |
 | Shared-kernel packages shown | 4: IDs, principal envelope, interval values and clock. |
-| Explicit booking multi-aggregate operations | Group placement, required linked claim and office transfer. |
-| Explicit cross-context transaction family | Event venue/capacity coordination through Events and Booking. |
+| Explicit booking multi-aggregate operations | Group placement, required linked claim, pre-start both-required pair cancellation, explicitly scoped post-start cancellation and office transfer. |
+| Explicit cross-context transaction families | Event venue/capacity through Events and Booking; registration-created visit/ticket through Events and Visitors. |
 | Runtime role families | 5: HTTP, allocation, Exchange, tracing and maintenance. |
 | Blob provider implementations | 2: Azure and GCS, selected per deployment. |
 | Notification purposes allowed in Teams | 1: private booking-raised message with individual opt-in for that message. |

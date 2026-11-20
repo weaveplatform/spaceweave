@@ -10,9 +10,9 @@ This comparison is for technical architects and engineers evaluating how to
 organise and evolve the application. It explains five concrete repository
 layouts, their dependency rules, state ownership, transaction boundaries,
 operating model and change costs. The documents assume no prior design discussion.
-Candidate paths illustrate possible implementations; the detailed module/package
-map remains undecided. The preferred direction is a modular monolith, supported
-by the [architecture decision](../../adr/0009-use-a-domain-first-modular-monolith.md)
+Candidate paths illustrate possible implementations. The repository-architecture
+choice remains pending; agreed logical owners apply across all five layouts.
+A modular monolith is the preferred candidate, described by the [proposed architecture decision](../../adr/0009-use-a-domain-first-modular-monolith.md)
 and subject to validation of its actual boundaries.
 
 Start with [architecture foundations](architecture-foundations.md), which explains
@@ -44,15 +44,23 @@ resource-level authority remain separate from directory layout.
 Use the [product scope](../../../README.md#product-scope),
 [glossary](../../../GLOSSARY.md), [architecture decisions](../../README.md) and
 [policy defaults](../../policy-defaults.md) as the authoritative requirements.
-The blueprint's detailed module split is a proposal, not a requirement for the
-other four options to reproduce.
+The [Events–Booking boundary](../../adr/0023-separate-events-from-venue-booking.md)
+is agreed: Events owns registration/tickets/admission and Booking owns venue
+claims, coordinated through owning interfaces in one local transaction where
+required. [Registration-created visits and tickets](../../adr/0024-create-event-visitor-visits-with-tickets-atomically.md)
+also commit together through Events and Visitors; reusing an existing valid
+visit does not make it subject to rollback on failed issuance. The agreed logical
+owners also include Booking operational evidence, Attendance reporting projections,
+Plans asset approval and Workplace mapping activation; these constrain all five
+layouts without selecting a repository style.
 
 - One organisation, many offices, 100,000 staff and 60,000 desks. Offices contain
   buildings/floors/plans. Neighbourhoods belong to one building, can span its
   floors, and bundle desks plus optional meeting rooms; unallocated desks may
   move between dated bundles without disrupting confirmed claims. Assigned
-  groups receive priority access to bundled rooms, with remaining availability
-  governed by configurable policy.
+  groups' desired priority for bundled rooms requires native Exchange
+  expressibility; an app-only neighbourhood gate is not equivalent native
+  admission. Remaining room availability follows the effective native policy.
 - Desks, meeting rooms, specific-bay/pooled parking, event venues, hosted visits
   and free named event tickets. Separate staff/mobile-web and admin portals.
 - Staff choose attendance dates and explicit travel exceptions. No attendance
@@ -67,20 +75,45 @@ other four options to reproduce.
   confirmed bookings; ordinary direct desk booking opens after the main run.
 - Enforce one overlapping desk per person. Required desk/parking claims confirm
   both or neither; office transfers acquire replacements and release old claims
-  atomically. Eligible waitlisted demand precedes fresh direct requests.
+  atomically. Before either booking starts, explicit cancellation of either part
+  of a both-required pair cancels both atomically; optional links cancel
+  independently. Once either starts, cancel the selected booking unless both
+  are explicitly chosen. Automatic desk no-show/vacancy release retains parking until
+  its own end or explicit release. The [linked-booking contract](../api-surfaces/linked-bookings.md)
+  applies to all five layouts. Eligible waitlisted demand precedes fresh requests.
 - Allocation means allocated; the owner's personal check-in means taken. A PA
   cannot check in the owner's desk. Anonymous occupancy never establishes the
   owner's attendance or withholds a no-show desk from the pool. Optional sensors
-  support post-check-in vacancy release; missing signals are not vacancy.
+  support post-check-in vacancy release; missing signals are not vacancy. Booking
+  owns validated operational evidence and commits facts for separately retained
+  Attendance/Reporting projections.
+- Retirement is immediate or scheduled at an office-local date/time. Publication
+  immediately excludes new bookings for use on/after that point, including
+  descendants, while preserving confirmed commitments. Authorised reactivation
+  validates definitions, calendars and dated inventory with the same identity
+  and history. Deletion is separate and refuses protected dependencies without
+  silent cancellation or cascade.
+- Managed-room admission, recurrence, check-in and autorelease follow effective
+  native Exchange policy across both entry channels. Supported user-context
+  check-in and native observations replace independent room timers/counters.
+  Native recurring-only entitlement, invitation effects and consecutive-miss
+  cancellation gaps remain explicit in the [room contract](../api-surfaces/recurring-rooms-and-leavers.md)
+  and [provider research](../api-surfaces/outlook-room-policy-enforcement.md).
 - Bidirectional Exchange Online room create/edit/cancel. App requests hold local
   capacity pending room acceptance; compatible changes reconcile automatically.
+  Failed replacement after old-room loss retains meeting/attendees with no
+  secured room, organiser notification and replacement/cancellation choices.
+  A chosen replacement confirms only after acceptance/capacity validation; the
+  [room recovery contract](../api-surfaces/room-recovery.md) applies to all layouts.
   Preserve actor versus owner/organiser, source-labelled delegation, revocation
   semantics and configurable native-authority freshness.
 - Entra SSO and actual authenticated SCIM user/mapped-group provisioning;
   Workday workforce lifecycle, structure and usual office. Correlate verified
   source identities without email-only matching; apply effective dates, revoke
   access on observed effective disables/leavers and preserve known state during
-  source outages. Review rooms/events for leaver handover.
+  source outages. A confirmed effective leaver cancels organiser-owned room
+  meetings/series through Booking and Exchange; a departing PA's other-owner
+  meetings remain. Events retains handover.
 - Capabilities plus configurable office scopes; explicit global capabilities
   for organisation-wide settings. Visitor access uses verified email with
   visit/event restrictions. Separately configured visitor, occupancy and
@@ -97,6 +130,17 @@ other four options to reproduce.
   supported public REST; platform workers use private interfaces. User-facing
   Internet access is governed by Conditional Access and application permissions.
   Event visitors include invited guests/speakers attending internal events.
+- The [event workflow contract](../api-surfaces/event-workflows.md) applies to
+  every candidate: material-change reconfirmation, retained ticket/seat during
+  visitor ineligibility, attendee cancellation, purpose-based visit cleanup and
+  optional event waitlists with priority over fresh registration. Event offers
+  hold seats exclusively in eligible join order, end their request on
+  decline/expiry and cannot be accepted after registration closes without an
+  explicit organiser extension. Reconfirmation deadlines release unconfirmed
+  tickets. Outages protect reconfirmation; venue recovery pauses held offers
+  within registration limits. Temporary queue ineligibility preserves position
+  without capacity, while material changes withdraw old offers without ending
+  requests. Initial numeric policy defaults remain unselected.
 - Configurable SpaceWeave RBAC; MCP uses user context, while machine-identity
   scripts use a separate channel. No universal login journey follows from the
   consumer label. Authorised UI edits can create Terraform drift; initial public
@@ -118,7 +162,10 @@ other four options to reproduce.
   explain how ownership is enforced in their own organisation.
 - Azure Blob and Google Cloud Storage behind one interface, active provider by
   deployment configuration; immutable plan/render revisions, PostgreSQL metadata
-  and verified recovery copies before durable/publication acknowledgement.
+  and verified recovery copies before durable/publication acknowledgement. Plans
+  approves immutable assets; Workplace publishes geometry-to-stable-space mappings
+  after Booking validates dated-inventory/commitment impact. Approval is distinct
+  from activation even when one admin workflow performs both.
 - One image/release, independent Kubernetes HTTP/allocation/Exchange/tracing/
   maintenance roles, scoped/federated workload identities, organisational secret
   management and OpenTelemetry/JSON telemetry through a Collector.
@@ -130,7 +177,9 @@ other four options to reproduce.
   the loss budget. Fence prior writers and test whole-system recovery.
 - Confirmed app outages preventing check-in/offer acceptance pause affected
   no-show/offer timeouts and allow configurable recovery grace. Existing
-  reassignments remain protected.
+  reassignments remain protected. Shared operational facilities retain the
+  declaration; Booking and Events own protected deadline state and Policy owns
+  configurable rules. Publication and expiry have guarded ordering.
 
 ## Common comparison scenarios
 
@@ -159,19 +208,35 @@ not inherent guarantees or restrictions of the architectural labels.
 | Decision | Layered | Hexagonal | Clean | DDD | Modular monolith |
 | --- | --- | --- | --- | --- | --- |
 | Main navigation | `transport`, `application`, `model`, `persistence`. | One `core` and driving/driven `adapter` roots. | `entity`, `usecase`, `adapter`, `infrastructure`. | Context first, then uniform `api/domain/application/adapters`. | Module first; small public interface, private implementation, inner ports/adapters where useful. |
-| Booking authority | Booking application service alone receives capacity mutation facets. | Core Booking service alone receives capacity writer ports. | Booking mutation interactor implements injected consumer-owned command ports. | Booking context owns capacity repositories and coordinated application handlers. | Booking module owns claims and all capacity-coupled workflows. |
-| Allocation placement | Sibling application planner calls Booking. | Core allocation service calls Booking through a driving contract. | Allocation use case receives a Booking command implementation through its own port. | Pure planner and allocation handlers inside Booking context. | Separate planning module computes proposals; Booking validates/commits them. |
-| Event venue and ticket consistency | Events coordinates shared transaction; Booking retains its writer. | Core Events coordinates transaction-scoped owner facets. | Capacity-coupled event/ticket operations join the Booking mutation family through Events-owned ports. | Events and Booking use an explicit shared local transaction; ordinary aggregate transactions remain the default. | Event/audience/ticket/admission behaviour lives inside Booking, so venue/ticket changes remain local. |
-| Visitor ticket linkage | Named Events/Visitors shared transaction. | Named owner-participating transaction. | Narrow visit/ticket capabilities in the capacity transaction. | Stage/reuse a visit, then publish a linked ticket idempotently. | Named Booking/Visitors transaction exception. |
-| Identity and access | Separate Directory/Access application subjects over shared models/persistence. | Separate core Directory/Access services over central contracts. | Staff entities plus provisioning/login/authorisation operation families. | Directory and Access contexts with published eligibility views. | One Identity module combines workforce projection, access and delegation. |
-| Exchange state | Exchange application/persistence subject coordinates with Booking. | Core Exchange service and provider adapter call Booking. | Reconciliation use cases consume Booking commands through their own ports. | Exchange context translates provider observations for Booking. | Booking owns room/provider state behind its Exchange adapter. |
+| Booking authority | Booking application service alone receives dated-space claim mutation facets. | Core Booking service alone receives physical-capacity writer ports. | Booking mutation interactor implements injected consumer-owned physical-claim ports. | Booking context owns physical-capacity repositories and coordinated application handlers. | Booking module owns dated-space claims; Events owns ticket capacity. |
+| Allocation placement | Booking service owns a private planning package and consumed solver interface. | Booking core service owns intent/planning and consumes the solver port. | Booking operation family owns collection/planning/run/commit, with a consumed solver interface. | Booking context owns planning and its solver interface/adapter. | Booking module owns planning state and claims; solver is private and replaceable. |
+| Event venue and ticket consistency | Events coordinates shared transaction; Booking retains its writer. | Core Events coordinates transaction-scoped owner facets. | Events' manageevent family coordinates its own ticket state with Booking's venue participant through consumer-owned ports and shared unit of work. | Events and Booking use an explicit shared local transaction; ordinary aggregate transactions remain the default. | Separate Events and Booking owners join the narrow venue transaction; neither receives foreign repositories. |
+| Visitor ticket linkage | Named Events/Visitors shared transaction. | Named owner-participating transaction. | Narrow Events/Visitors capabilities in one transaction. | Named Events/Visitors coordination through published owner interfaces. | Named Events/Visitors transaction exception. |
+| Identity and access | One Identity service with People/Access/Delegation facets across technical roots. | One Identity core service with distinct driving and storage facets. | One Identity operation family and owned SQL group; pure staff/authority models remain separate. | One Identity context with uniform layers and distinct published interfaces. | One Identity module combines workforce projection, access and delegation. |
+| Exchange state | Separate Exchange service/owned SQL coordinates with Booking. | Separate Exchange core service and provider adapter call Booking. | Separate Exchange reconciliation family consumes Booking commands through its own ports. | Separate Exchange context translates provider observations for Booking. | Separate Exchange module owns provider state/progress and calls Booking's room interface. |
 | SQL and migration custody | Logical owners in a common PostgreSQL package plus ownership manifest. | Logical owners in one PostgreSQL adapter plus restricted facets/manifest. | Owner-labelled repository groups and migration manifests, assembled through narrow handles. | Context-owned repositories and migration sets. | Module-private repositories and migration sets. |
 | What enforces locality | Import/facet/query review across horizontal layers. | Core/adapter import checks plus writer/facet construction rules. | Ring checks, no use-case peer implementation imports, writer and SQL ownership checks. | Context API checks, domain purity and explicit transaction exception review. | Public-interface imports, private implementation packages and SQL ownership review. |
-| Main structural cost | One feature touches several technical roots; shared model/store can grow. | Central model/ports/store/composition can become shared hotspots. | More ports and wiring; a deliberately broad transactional interactor. | Uniform layers and context/event contracts; shared transactions couple aggregate/context boundaries. | Broad Booking ownership to keep real invariants local; a visitor transaction still crosses modules. |
+| Main structural cost | One feature touches several technical roots; shared model/store can grow. | Central model/ports/store/composition can become shared hotspots. | More ports and wiring; cross-owner venue coordination through consumer-owned interfaces. | Uniform layers and context/event contracts; shared transactions couple aggregate/context boundaries. | Module custody plus explicit Events/Booking venue coordination and Events/Visitors issuance coupling. |
 
 Every candidate still needs PostgreSQL capacity protection, retry-safe durable
 work, source-aware authorisation, provider reconciliation and whole-system
 recovery exercises. Those concerns are not solved by changing directory names.
+
+## Shared incident and lifecycle contracts
+
+Shared operational facilities own confirmed outage declarations describing
+scope, offices, actions and times. Booking and Events consume the same declared
+facts and control their own deadline state; Policy owns configurable rules.
+Declaration publication and affected expiry require guarded ordering, including
+retries and recovery. A job runner, health probe or delayed event projection
+cannot independently authorise expiry. The [incident contract](../api-surfaces/operational-incidents.md)
+defines the common requirement without adding another business module or service.
+
+Retirement protects existing confirmations. Pre-existing unconfirmed holds and
+offers revalidate at confirmation and cannot confirm use excluded by the
+published retirement schedule. Return a clear unavailable outcome and reconcile
+late Exchange effects through the owning workflows. The [lifecycle contract](../api-surfaces/workplace-lifecycle.md)
+applies equally to every candidate.
 
 ## How to review the set
 
@@ -184,11 +249,12 @@ The most consequential differences to review are:
 - **Where changes concentrate.** A new booking rule crosses horizontal roots in
   options 1–3, a context's four layers in option 4, and the owning module's
   implementation in option 5. Integration/composition changes remain explicit.
-- **How much transaction coupling is acceptable.** Options 1–2 make multi-owner
-  coordination natural but guard writer facets. Option 3 concentrates coupled
-  mutations in an interactor. Option 4 documents coordinated writes across
-  aggregate/context boundaries. Option 5 groups event capacity with Booking and retains
-  one visitor-link exception. Each choice has a different maintenance cost.
+- **How transaction coupling is expressed.** Options 1–2 use guarded owner
+  facets, option 3 consumer-owned participant ports, option 4 context interfaces,
+  and option 5 module APIs with registered scope participants. All retain the
+  agreed Events/Booking venue and Events/Visitors registration boundaries.
+  Creating a visit specifically for registration must commit with its ticket;
+  the remaining differences concern how each layout enforces owner participation.
 - **Whether an internal seam earns its cost.** The shared core, repeated use-case
   ports, uniform context layers and selectively deep modules expose different
   amounts of wiring. A printed folder is not automatically useful abstraction.

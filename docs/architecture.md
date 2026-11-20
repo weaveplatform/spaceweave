@@ -5,10 +5,10 @@ This design record distinguishes product/runtime requirements, existing floor-pl
 capabilities and proposed implementation boundaries. The [scope](../README.md#product-scope),
 [glossary](../GLOSSARY.md) and [decision records](README.md) define the requirements.
 
-The [architecture blueprint](architecture-blueprint.md) proposes one module map;
+The [architecture blueprint](architecture-blueprint.md) records agreed logical owners;
 the [five-option comparison](research/architecture-options/README.md) evaluates
-alternative layouts against the same workflows. Detailed module selection remains
-open. [Architecture foundations](research/architecture-options/architecture-foundations.md)
+alternative layouts against the same workflows. The repository-architecture choice remains pending; concrete package placement
+and publication-guard mechanics remain under review. [Architecture foundations](research/architecture-options/architecture-foundations.md)
 and the [API research](research/api-surfaces/README.md) provide primary-source
 technical guidance and design tradeoffs.
 
@@ -66,17 +66,37 @@ technical guidance and design tradeoffs.
   - Established: retain Golang.
   - Research compares the five reference layouts: layered, hexagonal, clean,
     DDD and modular monolith, applied to SpaceWeave.
-  - Established: choose a domain-first modular monolith, with ports and adapters
-    inside modules where their complexity warrants them. The
+  - Pending: choose among layered, hexagonal, Clean, DDD and modular-monolith
+    repository architectures. A domain-first modular monolith is the preferred
+    candidate; the
     [research comparison](research/architecture-options-spaceweave.md) and
-    [architecture decision](adr/0009-use-a-domain-first-modular-monolith.md)
+    [proposed architecture decision](adr/0009-use-a-domain-first-modular-monolith.md)
     record the reasoning.
   - Established: Booking owns local space availability and booking transitions;
     other modules use its interface.
   - Established: Workplace owns location/space definitions and baseline
     neighbourhoods; Booking owns dated capacity and temporary neighbourhood
-    adjustments. Planning uses a versioned snapshot outside long transactions;
+    adjustments. Booking's private planner uses a versioned snapshot outside long transactions;
     Booking revalidates bounded commits and protects confirmed allocations.
+  - Established: Identity combines source/workforce facts, sessions, permissions
+    and delegation through distinct interfaces. Booking owns intents, cycles,
+    groups and planning; Exchange separately owns provider state/progress and
+    applies transitions through Booking. These owners apply across all five layouts.
+  - Established: Booking owns validated operational occupancy evidence used for
+    release; Attendance projects committed facts with separate reporting retention.
+    Plans approves immutable assets; Workplace publishes geometry-to-stable-space
+    mappings after Booking validates dated inventory and commitment impact.
+  - Established: shared operational facilities own confirmed outage declarations
+    with affected offices/actions/times. Booking and Events own deadline effects;
+    Policy owns configurable rules. Expiry checks authoritative declared scope
+    with guarded ordering rather than waiting for an asynchronous projection.
+  - Established: retirement is immediate or scheduled at an office-local time.
+    Publication excludes new bookings for use on/after that point while protected
+    confirmations remain manageable. Reactivation validates definitions, calendars
+    and inventory, retaining identity/history. Dependency-blocked deletion never
+    silently retires, cancels bookings or cascades through child resources.
+    Unconfirmed holds/offers revalidate at confirmation and cannot confirm
+    excluded use; late Exchange effects require reconciliation.
   - Established: one application image/release supports independently scaled
     HTTP, allocation, Exchange sync, tracing and maintenance roles.
   - Established: separate React/TypeScript staff/mobile-web and admin entrypoints
@@ -113,8 +133,53 @@ technical guidance and design tradeoffs.
     person/application across sessions and clients.
   - Established: durable public operation references with authorised progress,
     failure and result reads for allocation, floor-plan processing and exports.
-  - Then: receipt retention, stable-refusal replay, partial operation results and
-    cancellation boundaries; exact wire details and load-validated numeric limits.
+  - Established: recover ambiguous outcomes across reloads/client restarts and
+    a return the next working day before inviting another submission. Resource
+    visibility is independent of retry-receipt retention.
+  - Established: equivalent retries ignore JSON property order and whitespace,
+    preserve omitted/null distinctions and include owner/target/preconditions.
+  - Established: definitive refusal replay, accurate partial allocation results
+    and cancellation at workflow boundaries. Stop allocation before another group
+    commit, prevent unfinished plan publication and clean incomplete exports;
+    preserve committed groups and completed export access/expiry.
+  - Established: Events owns registration, tickets and admission; Booking owns
+    event-space claims. Capacity-coupled changes coordinate through owning
+    interfaces in one local transaction where required.
+  - Established: booking/ticket recovery covers the end of the next working day
+    in the relevant office calendar, including weekends/closures; publish the
+    deadline. After expiry, reconcile authorised resources before offering a new
+    submission; explain inconclusive recovery and require an explicit new attempt.
+  - Established: cancellation stays requested until execution stops, serialized
+    against commits/publication. Earlier commits survive; cancellation winning
+    the ordering prevents the next commit/publication.
+  - Established: a registration-created visit and event ticket commit together;
+    failed issuance leaves an existing valid reused visit intact. Confirmed venue
+    loss retains tickets pending recovery, pauses admission/issuance and requires
+    explicit organiser replacement/cancellation with confirmed changes communicated.
+  - Established: an outage spanning the recovery deadline extends affected
+    requests through the end of the next office working day after restoration;
+    preserve evidence and publish the extension without extending booked periods.
+  - Established: event office/time changes require attendee reconfirmation and
+    linked visit validation; later visit ineligibility blocks admission while
+    retaining the ticket/seat pending authorised repair or cancellation.
+  - Established: attendees can cancel unused tickets. Optional event waitlists
+    receive released seats before fresh registration through time-limited offers
+    with current eligibility checked on acceptance. Event cancellation cancels
+    visits whose only remaining valid purpose was that event, preserving others.
+  - Established: event offers follow eligible join order and hold seats exclusively;
+    decline/expiry ends the request and rejoining creates a new request. Acceptance
+    ends at registration closing time unless the organiser explicitly extends it.
+  - Established: published reconfirmation deadlines release unconfirmed tickets
+    under the enabled waitlist policy. Unused-ticket cancellation also cancels
+    an associated future visit with no other valid purpose, preserving reception history.
+  - Established: confirmed outages pause affected event reconfirmation deadlines;
+    preserve seats and publish usable recovery grace. Venue recovery preserves
+    offers and pauses expiry clocks, with acceptance bounded by registration close.
+  - Established: temporary queue ineligibility preserves position without holding
+    capacity. Office/time changes administratively withdraw old offers without
+    ending their requests, preserving positions for offers under updated details.
+  - Then: receipt duration/retained expiry evidence, exact wire details and
+    load-validated numeric limits.
   - Then: shared review of the detailed module map and interface contracts in
     the blueprint, followed by implementation validation.
 - Persistence and background work
@@ -171,9 +236,22 @@ technical guidance and design tradeoffs.
   - Established: effective-dated office/team changes update unconfirmed derived
     planning defaults while preserving explicit travel and confirmed bookings.
     Notify owners when existing arrangements need attention.
-  - Established: automatically release leavers' future personal desk/parking
-    bookings. Route rooms/events through assisted ownership-handover review;
-    this does not assume Exchange permits an in-place organiser change.
+  - Established: before either booking starts, explicit cancellation of either
+    component of a both-required desk/parking pair cancels both atomically;
+    optional pairs permit independent cancellation. Once either starts, cancel
+    the selected booking unless both are explicitly chosen. Automatic desk no-show or
+    vacancy release retains parking until its own end or explicit release.
+    All five layouts extend their existing Booking transition/store paths.
+  - Established: automatically release a confirmed effective leaver's future
+    personal desk/parking and cancel all organiser-owned room meetings/series,
+    reconciling Exchange and notifying attendees. A departing PA's other-owner
+    bookings remain. Events retains its own handover; disable or missing source
+    data alone does not establish departure.
+  - Established: native Exchange room policy, check-in eligibility and autorelease
+    are authoritative across Outlook and SpaceWeave. The app adapts supported
+    user-context check-in and observes native outcomes without a second timer.
+    Recurring-only per-person admission, exact invitation effects and consecutive-
+    miss cancellation remain unverified native capability gaps, not custom rules.
   - Established: organisation-wide policies, identity mappings and integration
     administration require explicit global capabilities beyond office scope.
   - Then: tenant-specific integration mappings/permissions and protocol validation.
@@ -192,7 +270,7 @@ technical guidance and design tradeoffs.
     explicitly migrated.
   - Established: [the initial defaults](policy-defaults.md) are accepted starting
     values, all configurable, including weekday, local time and duration values.
-  - Established: a confirmed application outage preventing check-in or offer
+  - Established: a confirmed application outage preventing desk check-in or offer
     acceptance pauses affected no-show releases and waitlist-offer expiries,
     followed by a configurable recovery grace period.
   - Then: typed policy validation, effective dates, publication and migrations.
@@ -236,12 +314,29 @@ retry receipts, previous-version configuration edits, two actor-owned admission
 classes and durable public operation status. Definitive refusals replay their
 retained outcome. Allocation results distinguish unfulfilled demand from technical
 interruption; cancellation stops future work at safe boundaries while preserving
-committed effects. Receipt-retention duration and expiry/reconciliation policy
-remain unresolved; no numeric default is selected.
+committed effects. JSON formatting does not change a retry identity; omitted
+fields and explicit null remain distinct. Ambiguous outcomes must be recoverable
+after reloads/client restarts through the end of the next working day in the
+relevant office calendar, including weekends/closures. Publish that deadline;
+after expiry, reconcile authorised resources before offering an explicit new
+attempt when uncertainty remains. Cancellation stays requested until work stops
+and is ordered against commits/publication. Receipt duration and retained expiry
+evidence remain engineering decisions; no numeric default is selected. An outage
+spanning the deadline extends recovery through the end of the next office working
+day after restoration, preserving evidence and publishing the extension.
 
-Remaining architectural work includes detailed module/data ownership, operation
-schemas, provider deployment permissions, load-validated limits and recovery
-validation. Numerical proposals become defaults only with an explicit requirement
+The [Events–Booking decision](adr/0023-separate-events-from-venue-booking.md)
+settles that ownership boundary and its narrow capacity transaction. The design
+also preserves [atomic visitor registration](adr/0024-create-event-visitor-visits-with-tickets-atomically.md)
+and the agreed organiser-controlled venue recovery, retaining tickets while
+admission and issuance are paused. Remaining architectural work includes the
+pending repository-architecture choice, concrete incident-ordering protocols,
+concrete evidence/activation protocols, operation schemas, provider deployment
+permissions, load-validated limits and recovery
+validation. The [event workflow contract](research/api-surfaces/event-workflows.md)
+also records reconfirmation, retained seats during visitor ineligibility,
+attendee cancellation, optional event waitlists and purpose-based visit cleanup.
+Numerical proposals become defaults only with an explicit requirement
 and validation rationale. Private Teams delivery is limited to an individually
 opted-in booking-raised message.
 
@@ -486,8 +581,11 @@ establish whether a particular PA is authorised to act for a particular person.
 [Calendar permissions](https://learn.microsoft.com/en-us/graph/permissions-reference#calendarsreadwriteshared).
 
 No verified generic room-swap contract guarantees retention of the old room
-until a replacement accepts. Room/time change handling needs a deliberate
-workflow and validation against provider behaviour.
+until a replacement accepts. The agreed [room recovery contract](research/api-surfaces/room-recovery.md)
+retains the meeting and attendees with no secured room when replacement fails
+after old-room loss, notifies the organiser, and offers replacement choices or
+explicit cancellation. Replacement confirmation requires acceptance/capacity
+validation; exact provider compensation mechanics still require tenant validation.
 [Event updates](https://learn.microsoft.com/en-us/graph/api/event-update?view=graph-rest-1.0).
 
 Room request approval, calendar delegation and the application's mailbox access

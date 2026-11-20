@@ -1,8 +1,9 @@
 # Architecture foundations for SpaceWeave
 
 Research date: 19 November 2026. Audience: technical architects and engineers.
-Status: foundation for five candidate layouts; the detailed module map remains
-undecided. A modular monolith is the preferred direction, subject to the
+Status: foundation for five candidate layouts; the repository-architecture choice
+is pending. Agreed logical owners apply across them; a modular monolith remains
+the preferred candidate, subject to the
 consistency, ownership and operational checks described here.
 
 ## The system being designed
@@ -161,9 +162,12 @@ those principles into Go requires Go visibility and architecture checks.
 give them explicit persistence ownership, and use ordinary Go calls inside a
 runtime. Use internal ports/adapters where complexity warrants them. A Booking
 module may contain many aggregates; it should not become one enterprise-sized
-aggregate or lock. Whether event registration belongs inside Booking or uses a
-named transaction with another owner remains a design choice. Inspect
-[the modular-monolith layout](5-modular-monolith.md) for the proposed tradeoff.
+aggregate or lock. SpaceWeave has selected a separate Events owner for
+registration, tickets and admission, coordinating venue changes with Booking
+through owning interfaces in a narrow local transaction. Inspect
+[the modular-monolith layout](5-modular-monolith.md) and
+[boundary decision](../../adr/0023-separate-events-from-venue-booking.md) for the
+tradeoff; the rest of the module map remains proposed.
 
 ## Go boundaries: release units, packages and visibility
 

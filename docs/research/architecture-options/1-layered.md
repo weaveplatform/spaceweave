@@ -1,5 +1,14 @@
 # Option 1: Layered architecture
 
+The repository-architecture decision is pending. This candidate expresses the
+same agreed logical owners as the other four: combined Identity; attendance
+planning and claim commitment inside Booking; separate Exchange and Events.
+Its package organisation and dependency rules remain specific to this style.
+[Identity](../../adr/0026-combine-workforce-identity-and-access-ownership.md),
+[Booking planning](../../adr/0027-keep-attendance-planning-inside-booking.md) and
+[Exchange](../../adr/0028-separate-exchange-synchronisation-from-booking.md)
+record those ownership decisions independently of repository style.
+
 SpaceWeave manages desks, meeting rooms, parking, events and hosted visitors for
 one organisation with approximately 100,000 staff and 60,000 desks. This candidate
 organises the Go backend by technical responsibility while preserving one local
@@ -36,7 +45,10 @@ sibling-call restrictions below are additional SpaceWeave safeguards.
 
 Booking alone owns dated availability/transitions across application, model,
 store facets, SQL and migrations. Rules/review enforce that logical ownership.
-Allocation is a sibling service computing proposals; Booking commits capacity.
+Booking owns demand, private planning and capacity commitment. A solver interface
+isolates calculation outside long transactions while the allocation role scales
+independently. Identity combines people/source facts, sessions and delegation;
+Exchange separately owns calendar integration state and progress.
 
 Dependency rules:
 
@@ -51,7 +63,7 @@ Dependency rules:
 6. Public `pkg` packages import neither internal nor cmd. Generated clients may
    depend on public transport schemas, never internal booking contracts.
 7. Within application, calls follow a reviewed acyclic allowlist. Only Booking
-   uses capacity mutation facets; only Events can invoke its venue transaction
+   uses dated-space claim mutation facets; only Events can invoke its venue transaction
    entry point; only the named coordinators can open shared business transactions.
 8. SQL and migration ownership follows a checked manifest, even though files sit
    in common technical packages. A shared database is not shared write authority.
@@ -122,15 +134,17 @@ internal/
 │   ├── policy.go                     policy revision and pinned operational values
 │   ├── intent.go                     attendance date, travel, requirements, collaboration
 │   ├── allocation.go                 cycles, per-date groups, snapshots and proposals
-│   ├── booking.go                    claims, linked parking, holds and booking versions
+│   ├── booking.go                    claims, pair identity/required kind, holds and versions
 │   ├── deskuse.go                    allocated/taken/released states and personal check-in
 │   ├── calendar.go                   desired/observed room changes and reconciliation state
+│   ├── room.go                       series/occurrence identity, native outcome refs and cancellation
 │   ├── plans.go                      drawing package and immutable asset revision metadata
 │   ├── visitor.go                    restricted visitor identity, hosted visit and reception
 │   ├── event.go                      audience, registration, tickets and admissions
 │   ├── reporting.go                  evidence kinds and projection freshness
 │   ├── notification.go               message kinds, recipients and per-message preferences
 │   ├── work.go                       durable task envelopes, outbox facts and retry identity
+│   ├── incident.go                   confirmed operational scope/times/revision values
 │   └── failure.go                    unavailable/stale/pending/forbidden/dependency results
 ├── support/
 │   ├── clock/
@@ -216,6 +230,8 @@ internal/
 │   │   │   └── discovery.go          service-provider/resource/schema discovery
 │   │   ├── exchange/
 │   │   │   └── notifications.go      validate callbacks; durably schedule reconciliation
+│   │   ├── occupancy/
+│   │   │   └── receiver.go           source-authenticated evidence command to Booking
 │   │   ├── teams/
 │   │   │   └── activities.go         authenticated personal app/conversation lifecycle
 │   │   ├── health/
@@ -245,57 +261,61 @@ internal/
 │   │   ├── transfer.go               acquire replacements/release old claims atomically
 │   │   ├── adjustment.go             dated movement of unallocated neighbourhood desks
 │   │   ├── checkin.go                only assignee can mark live allocation taken
-│   │   ├── release.go                cancellation/no-show/vacancy and linked claim policy
+│   │   ├── evidence.go               validate/deduplicate operational evidence; commit facts
+│   │   ├── release.go                explicit selected/pair cancellation; timed desk-only release
 │   │   ├── waitlist.go               eligibility, ordering and offer creation
 │   │   ├── offer.go                  versioned acceptance, expiry and next candidate
 │   │   ├── rooms.go                  pending local holds and room acceptance transitions
-│   │   ├── roomchange.go             revalidate externally observed room/time changes
+│   │   ├── series.go                 native-policy series requests and cancellation fence
+│   │   ├── roomuse.go                native check-in orchestration and observed room release
+│   │   ├── roomchange.go             room changes, no-secured-room recovery and retained meeting
 │   │   ├── venue.go                  venue mutation inside Events' named transaction
-│   │   ├── lifecycle.go              idempotent leaver personal-claim cleanup
+│   │   ├── lifecycle.go              owner-based desk/parking/room leaver cancellation
 │   │   ├── outage.go                 protected timeout evaluation/recovery grace
-│   │   └── record.go                 booking facts, audit and outbox inside transaction
-│   ├── allocation/
-│   │   ├── run.go                    load snapshot; plan outside database transaction
-│   │   ├── groups.go                 per-date grouping distinct from external teams
-│   │   ├── packing.go                neighbourhood/floor placement and split candidates
-│   │   ├── eligibility.go            mandatory features, calendars and required parking
-│   │   ├── objective.go              demand, explicit collaboration, proximity, unmet demand
-│   │   └── replan.go                 affected uncommitted groups after stale proposal
+│   │   ├── record.go                 booking facts, audit and outbox inside transaction
+│   │   ├── solver.go                 Booking-owned solver interface and planning orchestration
+│   │   └── planning/                 private calculation; Booking owns demand/progress/claims
+│   │       ├── run.go                    load snapshot; plan outside database transaction
+│   │       ├── groups.go                 per-date grouping distinct from external teams
+│   │       ├── packing.go                neighbourhood/floor placement and split candidates
+│   │       ├── eligibility.go            mandatory features, calendars and required parking
+│   │       ├── objective.go              demand, explicit collaboration, proximity, unmet demand
+│   │       └── replan.go                 affected uncommitted groups after stale proposal
 │   ├── workplace/
 │   │   ├── workplace.go              office/building/floor/space definitions
 │   │   ├── neighbourhood.go          baseline bundles within one building
-│   │   └── revision.go               prepare/publish immutable definition versions
+│   │   ├── revision.go               prepare/publish immutable definition versions
+│   │   ├── mapping.go                publish approved geometry bindings after Booking validation
+│   │   └── retirement.go             scheduled retirement/reactivation; guarded deletion
 │   ├── policy/
 │   │   ├── policy.go                 resolve pinned versions and permitted office overrides
 │   │   └── publish.go                validate effective dates and cross-field consistency
-│   ├── directory/
-│   │   ├── directory.go              canonical staff identity and source-owned fields
+│   ├── identity/
+│   │   ├── identity.go               People/Access/Delegation facades under one owner
 │   │   ├── correlation.go            verified identifiers; ambiguous-match review
-│   │   ├── scim.go                   provisioning lifecycle and mapped group semantics
-│   │   ├── workforce.go              Workday snapshots, updates and effective facts
-│   │   ├── eligibility.go            independent disabling inputs; no outage deactivation
-│   │   └── reconcile.go              source progress, missing-record review and repair
-│   ├── access/
-│   │   ├── access.go                 capability + office scope + explicit global powers
-│   │   ├── sessions.go               staff session and server-owned provider-token lifecycle
-│   │   ├── delegation.go             native-derived/app-managed grants and freshness
-│   │   ├── visitor.go                verified email access limited to visits/events
-│   │   └── eligibility.go            observe effective Directory denial on every action
+│   │   ├── scim.go                   provisioning lifecycle and mapped groups
+│   │   ├── workforce.go              Workday source-owned effective facts
+│   │   ├── eligibility.go            reduce independent disabling inputs
+│   │   ├── reconcile.go              source progress and missing-record repair
+│   │   ├── access.go                 current capability, office and global checks
+│   │   ├── sessions.go               session and server-owned token lifecycle
+│   │   ├── delegation.go             app-managed/source-labelled grant evaluation
+│   │   ├── native_delegation.go      fresh native evidence through provider adapter
+│   │   ├── visitor.go                restricted verified-email visitor access
+│   │   └── decide.go                 current own eligibility/session denial
 │   ├── exchange/
 │   │   ├── exchange.go               send committed desired room operations after commit
 │   │   ├── observe.go                retain provider observations and local correspondence
 │   │   ├── reconcile.go              three-way compatible merge; incompatible review tasks
 │   │   ├── acceptance.go             associate responses with current request/hold revision
 │   │   ├── delta.go                  calendar/window cursor rounds and resynchronisation
-│   │   ├── subscriptions.go          renew subscriptions and process lifecycle recovery
-│   │   └── delegation.go             refresh source-labelled native authority evidence
+│   │   └── subscriptions.go          renew subscriptions and process lifecycle recovery
 │   ├── plans/
 │   │   ├── ingest.go                 drawing package deduplication and revision identity
 │   │   ├── process.go                conversion/tracing workflow ← internal/worker
 │   │   ├── review.go                 approve/reject/retry/retrace application decisions
 │   │   ├── profiles.go               version corrections and enqueue affected retraces
-│   │   ├── publish.go                recovery-verified immutable asset publication
-│   │   └── geometry.go               approved geometry to stable Workplace space identities
+│   │   └── publish.go                recovery-verified immutable asset publication
 │   ├── visitors/
 │   │   ├── visitors.go               host, visit window and restricted visitor details
 │   │   ├── reception.go              arrival/departure distinct from event admission
@@ -304,13 +324,13 @@ internal/
 │   │   ├── events.go                 event/audience/access and organiser management
 │   │   ├── venue.go                  coordinate venue and issued-ticket capacity atomically
 │   │   ├── registration.go           named staff/visitor ticket issue and duplicate requests
+│   │   ├── protection.go             apply shared incidents to Events-owned deadlines
 │   │   ├── admission.go              one successful entry scan per usable ticket
-│   │   └── handover.go               assisted leaver ownership/venue recovery work
+│   │   └── handover.go               assisted Event ownership/venue recovery work
 │   ├── reporting/
-│   │   ├── ingest.go                 person/desk/office evidence semantics and provenance
 │   │   ├── projection.go             committed booking/check-in facts and source freshness
 │   │   ├── reports.go                own history and scoped individual/aggregate queries
-│   │   └── retention.go              separate evidence/copy retention and purge progress
+│   │   └── retention.go              reporting projection/copy retention and purge progress
 │   ├── notifications/
 │   │   ├── record.go                 intended recipients/message kind from committed outcome
 │   │   ├── preferences.go            message-specific delivery choices/Teams opt-in evidence
@@ -318,8 +338,8 @@ internal/
 │   │   ├── templates.go              email/in-app/private booking-raised content
 │   │   └── teams.go                  eligibility and private conversation prerequisites
 │   ├── operations/
-│   │   ├── workplace.go              coordinate definition changes with Booking validation
-│   │   ├── incidents.go              persist affected outage windows and recovery grace
+│   │   ├── workplace.go              coordinate asset approval, mapping and Booking validation
+│   │   ├── incidents.go              own confirmed declarations; owners apply deadline policy
 │   │   └── recovery.go               lag/readiness assessment and explicit failover evidence
 │   └── jobs/
 │       ├── jobs.go                   enqueue/claim/retry primitives and registered handlers
@@ -329,51 +349,56 @@ internal/
     ├── store/
     │   ├── store.go                  aggregate factory and narrow read/write facets
     │   ├── tx.go                     explicit transaction handle and bounded Tx callback
-    │   ├── booking.go                Booking mutations; allocation snapshot/read contracts
-    │   ├── directory.go              staff/source/effective-state provisioning persistence
-    │   ├── access.go                 sessions, scoped grants and delegation evidence
+    │   ├── booking.go                claims, scoped cancellation, room recovery and evidence
+    │   ├── identity_people.go        Identity staff/source/effective-state facets
+    │   ├── identity_access.go        Identity sessions, grants and delegation facets
     │   ├── workplace.go              versioned definitions and calendars
     │   ├── policy.go                 policy publication and pinned-version lookup
     │   ├── exchange.go               desired/observed mappings, subscriptions and cursors
     │   ├── plans.go                  package/revision/profile/recovery-copy metadata
     │   ├── events.go                 venue coordination state, tickets and admissions
     │   ├── visitors.go               visit links and reception/retention state
-    │   ├── reporting.go              evidence, projections and scoped read queries
+    │   ├── reporting.go              derived projections and scoped read queries
     │   ├── notifications.go          preferences, inbox and delivery identities
-    │   ├── work.go                   jobs/outbox/leases/incidents/idempotency records
+    │   ├── incidents.go              operational declaration writer and guarded readers
+    │   ├── work.go                   jobs/outbox/leases/idempotency records
     │   ├── postgres/
     │   │   ├── postgres.go           pool lifecycle and facet implementation constructors
     │   │   ├── transaction.go        commit/rollback; shared handle validation and retries
     │   │   ├── booking.go            booking claims and transitions; no business bypass API
     │   │   ├── capacity.go           stable lock rows and overlap/capacity constraints
     │   │   ├── allocation.go         snapshot/cycle/group/proposal rows
-    │   │   ├── directory.go          canonical IDs, source observations and effective facts
-    │   │   ├── access.go             session/grant/token persistence
+    │   │   ├── evidence.go           Booking-owned desk evidence; native room outcome refs
+    │   │   ├── rooms.go              series/occurrences, native outcome refs and cancellation fences
+    │   │   ├── identity_people.go    Identity source observations and effective facts
+    │   │   ├── identity_access.go    Identity session/grant/token persistence
     │   │   ├── workplace.go          definition revisions and immutable references
     │   │   ├── policy.go             validated published revisions
     │   │   ├── exchange.go           durable calendar observations and reconciliation state
     │   │   ├── plans.go              asset revisions and publication state
     │   │   ├── events.go             event locks, ticket counters and unique admissions
     │   │   ├── visitors.go           visit association, arrival/departure and purge state
-    │   │   ├── reporting.go          projections/evidence and paged scope-filtered reports
+    │   │   ├── reporting.go          derived projections and paged scope-filtered reports
     │   │   ├── notifications.go      deliveries/preferences and attempt uniqueness
+    │   │   ├── incidents.go          operational declarations and scope ordering guards
     │   │   ├── jobs.go               due claims, leases, backoff and failed-job inspection
     │   │   ├── outbox.go             same-transaction append and consumer checkpoints
     │   │   ├── migrate.go            one ordered migration runner and ownership manifest
     │   │   └── migrations/
     │   │       ├── owners.yaml       table/file owner and permitted cross-owner references
-    │   │       ├── 0001_directory.sql Directory tables and verified source constraints
-    │   │       ├── 0002_access.sql    Access sessions/capabilities/grants
-    │   │       ├── 0003_workplace.sql Workplace definitions and calendar revisions
+    │   │       ├── 0001_identity_people.sql Identity people/source constraints
+    │   │       ├── 0002_identity_access.sql Identity sessions/capabilities/grants
+    │   │       ├── 0003_workplace.sql Workplace definitions, calendars and active mappings
     │   │       ├── 0004_policy.sql    Policy revisions and publications
-    │   │       ├── 0005_booking.sql   Booking dated inventory/intents/cycles/claims
+    │   │       ├── 0005_booking.sql   Booking claims/planning/room series/use/cancellation
     │   │       ├── 0006_exchange.sql  Exchange mappings/observations/cursors
     │   │       ├── 0007_plans.sql     Plans revisions and recovery metadata
     │   │       ├── 0008_visitors.sql  Visitors/visits and reception state
     │   │       ├── 0009_events.sql    Events/tickets/admissions
-    │   │       ├── 0010_reporting.sql Reporting evidence/projections/purge progress
+    │   │       ├── 0010_reporting.sql Reporting projections and purge progress
     │   │       ├── 0011_messages.sql  Notifications preferences/inbox/attempts
-    │   │       └── 0012_work.sql      durable jobs/outbox/incidents and retry records
+    │   │       ├── 0012_work.sql      durable jobs/outbox and retry records
+    │   │       └── 0013_incidents.sql operational declaration ownership
     │   └── storetest/
     │       ├── booking.go            concurrent claim/transfer/check-in contract suite
     │       └── workflows.go          event/visit/identity/shared-transaction contract suite
@@ -434,7 +459,7 @@ event visitors retain their scoped verified-email flow.
 | Surface/consumer | Kind and contract | Placement in this candidate |
 | --- | --- | --- |
 | UI, MCP, SDK, script, public contract tests and Terraform | Shared supported public REST business operations with capability/field views. | `transport/http` maps public wire schemas to the owning `application` facades. Staff/admin are separate experiences over those contracts, not private business APIs. |
-| Human and application caller profiles | Session/CSRF or appropriate API token; actual actor, client and owner/grant checks. | Transport validates credentials; Access/application owners enforce current capabilities, office and delegation scope. Conditional Access differs for humans and workloads. |
+| Human and application caller profiles | Session/CSRF or appropriate API token; actual actor, client and owner/grant checks. | Transport validates credentials; Identity/command owners enforce current capabilities, office and delegation scope. Conditional Access differs for humans and workloads. |
 | Internal-event visitor, such as a guest speaker | Publicly reachable invitation/verification and limited visit/event/ticket REST. | Visitor transport mapping and scoped session; no full staff model or general public event catalogue follows. |
 | Entra, Graph, Teams and optional sensor clients | Provider/source-restricted native protocols or selected ingestion REST. | Dedicated HTTP adapters preserve protocol authentication/media/errors and dispatch to the relevant application owner. |
 | Platform workers, scheduling and runtime tools | Private Go and versioned job/fact interfaces. | `transport/{jobs,trigger}` invokes application facades directly. Worker commit/release/reconciliation internals are not public REST operations. |
@@ -453,7 +478,7 @@ Terraform scope are agreed; first-party MCP/provider implementations follow the
 core platform and SDKs. Public version compatibility is independent of UI
 releases. RBAC is configurable; MCP uses user context, machine-identity scripts
 use their own channel, UI edits may create Terraform drift and initial version
-retirement notice is 180 days. The Access application owner holds role policy;
+retirement notice is 180 days. Identity holds role policy;
 global administration, SCIM-backed mappings, grant-only scoped composition and
 self-permission discovery are agreed. The [agreed request contract](../api-surfaces/request-behaviour.md)
 places atomic command receipts in the owning application/persistence transaction,
@@ -469,7 +494,7 @@ wire version. Counts above still describe the printed candidate tree only.
 
 `booking/intents.go` records chosen dates, usual-office defaults, travel,
 requirements/preferences and explicit collaboration priority. Imported teams,
-including multiple memberships, inform per-date groups in `allocation/groups.go`;
+including multiple memberships, inform per-date groups in `booking/planning/groups.go`;
 group IDs never replace source team identities.
 
 Cycles pin office calendars, cohorts and policy versions. Seven-day cycles and
@@ -496,7 +521,7 @@ state transition. A stale offer cannot displace a later confirmation.
 ### One capacity writer, linked parking and transactions
 
 Only composition receives aggregate `Store`; services receive narrow facets.
-Allocation, Exchange and Events call Booking for capacity. Booking's transaction
+Exchange and Events call Booking; its planner is private for capacity. Booking's transaction
 facet names supported transitions, avoiding generic `Save(any)` access.
 
 Proposed pseudocode illustrates placement, not a promised Go API:
@@ -526,6 +551,21 @@ results and follow-up facts. Planning/provider calls stay outside. Transfers
 lock old/replacement keys in stable order and commit acquisition/release together;
 failure retains the old allocation.
 
+Before either linked booking starts, explicit cancellation of either component
+of a both-required desk/parking pair cancels both in one Booking transaction.
+Optional links allow independent cancellation. The command resolves and
+revalidates the persisted pair, start times, current authority and claim state
+under the normal guards; its receipt, affected claims and follow-up facts commit
+together. Automatic desk no-show or vacancy release instead ends the desk claim
+only. Parking remains booked until its own end or explicit release, including
+in bay/pool capacity calculations. Desk-use evidence cannot establish that a car
+has left. The [linked-booking contract](../api-surfaces/linked-bookings.md)
+defines the public outcomes and concurrency validation. Once either booking
+starts, explicit cancellation affects only the selected booking unless the caller
+explicitly chooses both. Retain the other until its own end or explicit
+cancellation. Preserve the requested scope in the command/retry identity;
+revalidation at the first-start boundary cannot silently change affected claims.
+
 Propose half-open time ranges and database overlap constraints for individual
 resources and one overlapping desk per person. PostgreSQL supports exclusion
 constraints over ranges; that does not solve pooled capacity greater than one.
@@ -546,15 +586,15 @@ job claiming, not the inventory query deciding who can book.
 
 | Logical owner | Application decisions | Persistence files/tables it alone mutates |
 | --- | --- | --- |
-| Booking | claims, dated inventory, intents/cycles, waitlists, check-in/release | booking/capacity/allocation SQL; booking-owned claim/inventory tables |
-| Workplace | baseline definitions, calendars and immutable revisions | workplace SQL and definition tables |
-| Directory | canonical IDs, source inputs/effective facts, SCIM lifecycle | directory SQL and staff/source/provisioning tables |
-| Access | session/grant/token lifecycle and capability decisions | access SQL and sessions/grants |
+| Booking | claims/planning, room intentions/occurrences, native outcome refs and owner-based cancellation | booking/capacity/allocation/rooms/evidence SQL; only Booking mutates its claim/use/cancellation state |
+| Workplace | baseline definitions, calendars, lifecycle schedules and active geometry mappings | workplace SQL and definition/mapping tables |
+| Identity | canonical IDs/source facts, SCIM, sessions, capabilities and delegation | Identity-owned people/access facets and migration files under the shared SQL layer |
 | Exchange | correspondence, provider observations, progress | exchange SQL and mapping/cursor/subscription tables |
 | Plans | drawing packages, processing/review/publication | plans SQL and asset/revision/profile tables |
 | Visitors / Events | visits/reception / event/tickets/admission | visitors SQL / events SQL, respectively |
-| Reporting / Notifications | evidence/projections / preferences/delivery | reporting SQL / notifications SQL, respectively |
-| Policy / Jobs | version publications / durable execution mechanics | policy SQL / jobs/outbox/incidents, respectively |
+| Reporting / Notifications | derived projections/report retention / preferences/delivery | reporting SQL / notifications SQL, respectively |
+| Operational facilities | confirmed incident declarations, scope/times/revisions and guarded reads | operations/incidents service and incidents SQL; no business deadline writers |
+| Policy / Jobs | version publications / durable execution mechanics | policy SQL / jobs/outbox, respectively |
 
 `owners.yaml` lists table/query/migration owners and approved references.
 Architecture checks inspect imports, facet selectors and queries; schema review
@@ -578,15 +618,17 @@ with an explicit cross-owner consistency contract.
 `checkin.go` requires the authenticated actor to own a live allocation: allocated
 → taken. A PA cannot check in for the owner. QR identifies the desk, not its user.
 
-Reporting distinguishes anonymous occupancy, identified desk evidence and office
-presence. Booking queries fresh, provenance-labelled vacancy evidence. Anonymous
+Booking validates and stores operational evidence, distinguishing anonymous
+occupancy, identified desk evidence and office presence. Reporting projects
+committed facts under separately configured reporting retention. Anonymous
 occupancy cannot establish attendance or prevent no-show release. After personal
 check-in, fresh sustained vacancy may release capacity; missing signals mean unknown.
 
 Expiry workers read current booking version, policy and protected outage
-intervals under the same transition locks as check-in. An operator-declared
-incident records affected actions/offices/times durably; a worker-local health
-flag cannot decide everybody's expiry policy. Confirmed app outages preventing
+intervals under the same transition locks as check-in. The Operations service
+records an operator-confirmed incident through its own incidents facet/SQL,
+including affected actions/offices/times; a worker-local health flag cannot
+decide everybody's expiry policy. Confirmed app outages preventing
 check-in/offer acceptance pause those deadlines, followed by configured recovery
 grace. They do not extend actual space use past the booking period. An old
 allocation is never resurrected over a committed reassignment.
@@ -595,7 +637,7 @@ allocation is never resurrected over a committed reassignment.
 
 Booking owns local room holds and confirmation; Exchange owns provider mapping,
 desired/observed state and progress. A PA request records the owner as organiser
-and PA as actor. Access checks current app grants or native-derived evidence
+and PA as actor. Identity checks current app grants or native-derived evidence
 within the configurable fifteen-minute freshness limit before a new delegated
 action. Application mailbox access is not evidence of that PA's personal rights.
 
@@ -628,9 +670,20 @@ before sending and checks again when applying its result.
 Do not infer Graph compare-and-swap from `changeKey`: the update reference does
 not establish that event-specific conditional-write contract. Do not promise an
 atomic provider room swap retaining the old room until replacement acceptance.
-Replacement, organiser handover and compensating cancellation need validated
-workflows. Organiser cancellation and deleting a room calendar copy also remain
+Replacement compensation needs provider validation; Event handover remains
+with Events.
+Organiser cancellation and deleting a room calendar copy also remain
 distinct operations. [Event update contract](https://learn.microsoft.com/en-us/graph/api/event-update?view=graph-rest-1.0).
+
+
+If an ordinary meeting's replacement request fails after the previous room is
+lost, retain the meeting and attendees and expose no secured room. Booking owns
+the room intention/claim outcome; Exchange retains provider observations and
+reconciliation progress. Notify the organiser and offer available replacements
+or explicit cancellation. A selected replacement remains pending until current
+room acceptance and Booking capacity validation succeed. The
+[room recovery contract](../api-surfaces/room-recovery.md) distinguishes this
+outcome from uncertain provider state and preserves Events-managed venue rules.
 
 Notifications accelerate discovery; durable reconciliation runs on the agreed
 five-minute healthy cadence and measures actual freshness. Each calendar/window
@@ -640,12 +693,12 @@ and tokens are opaque. Rollover/reinitialisation is an explicit workflow, not
 an assumption that one token represents all history.
 [Calendar-view delta](https://learn.microsoft.com/en-us/graph/delta-query-events).
 
-### Directory, SSO and actual SCIM provisioning
+### Identity, SSO and actual SCIM provisioning
 
-Directory keeps canonical StaffID, verified source links and separate source
+Identity keeps canonical StaffID, verified source links and separate source
 inputs. Entra owns sign-in/account security and supplies authenticated SCIM Users
 and mapped Groups provisioning. Workday owns workforce lifecycle, structure and
-usual office. SpaceWeave owns preferences and explicit dated travel. Directory's
+usual office. SpaceWeave owns preferences and explicit dated travel. Identity's
 field-authority table and effective-date logic prevent one import overwriting
 another source's responsibility.
 
@@ -665,8 +718,11 @@ mapping and reconciliation rather than an assumed instantaneous complete feed.
 [Workday integration reference](https://learn.microsoft.com/en-us/entra/identity/app-provisioning/workday-integration-reference).
 
 An observed effective disable/leaver immediately denies existing/new sessions;
-another source cannot clear its authoritative denial. Durable cleanup releases
-future personal desk/parking through Booking and raises room/event handover.
+another source cannot clear its authoritative denial. A confirmed effective
+workforce departure separately schedules Booking cleanup of future personal
+desk/parking and all organiser-owned room bookings/series, with Exchange
+cancellation progress. Events retains its own handover. Disable alone does not
+invent departure; a departing PA's other-owner meetings remain.
 Effective office/team changes update unconfirmed defaults, preserving travel and
 confirmations. Cleanup lag never postpones denial.
 
@@ -682,12 +738,14 @@ the shared transaction, checks issued tickets against prospective limit/capacity
 asks Booking to acquire/release venue claims, updates event state and appends
 facts. A move to capacity below issued tickets fails rather than revoking
 entitlements incidentally. Generic Booking venue edits route through this
-workflow; externally invalidated venue facts block new ticket issuance and open
-recovery work.
+workflow. Confirmed venue loss retains tickets pending recovery and pauses
+admission and new issuance; the organiser explicitly secures a suitable
+replacement or cancels, and confirmed changes are communicated to attendees.
 
-Visitors creates/reuses the named visit link inside ticket issuance; publish only
-a committed linked ticket. Retry identities prevent duplicate tickets/visits;
-conditional admission allows one successful scan. Reception remains separate;
+Events and Visitors commit a registration-created visit and its ticket together;
+failed issuance leaves no new visit. A reused existing valid visit remains intact.
+Publish only a committed linked ticket. Retry identities prevent duplicates;
+conditional admission checks the venue-recovery pause and allows one successful scan. Reception remains separate;
 verified-email access reveals only relevant visit/event actions.
 
 ### Plans: evolve the current pipeline without losing it
@@ -713,9 +771,12 @@ a directory rename.
 Tracing stages bytes in bounded scratch space, checks lease/revision on progress,
 writes immutable objects and verifies recovery copies before durable/publication
 acknowledgement. PostgreSQL holds IDs, hashes, status and current pointers.
-Approval advances pointers without overwriting referenced history. Reviewed
-geometry association maps to stable Workplace IDs; detection alone creates no
-authoritative bookable desks.
+Plans approval advances asset pointers without overwriting referenced history.
+Workplace publishes the reviewed geometry-to-stable-space mapping through
+`application/workplace/mapping.go`, after Booking validates dated-inventory and
+commitment impact. `application/operations/workplace.go` can coordinate approval
+and activation in one administrator workflow, returning each actual outcome;
+detection or asset approval alone creates no authoritative bookable desks.
 
 Azure uses ETags for conditional operations; GCS uses generation preconditions.
 The interface carries opaque provider tokens separately from content hashes.
@@ -862,13 +923,106 @@ transactions must prove locking, idempotency and shared-transaction rollback.
 Thin transport/provider packages retain coverage obligations: contract-test
 mapping, authority and failures; exclude only explicit generated outputs.
 
+### Workplace retirement, reactivation and deletion
+
+`internal/application/workplace/retirement.go` handles explicit retirement and dependency-checked removal
+through the existing owning interfaces. Retirement is immediate or scheduled at an
+office-local date/time. Publishing the schedule immediately excludes new bookings
+for use on/after that point, including descendant spaces; confirmed commitments
+remain readable and manageable. Booking compares requested use with the published
+lifecycle revision at claim commit. A stale snapshot cannot bypass the schedule.
+Authorised reactivation revalidates definitions, calendars and dated inventory,
+preserving the same identity, commitments and history. Pre-existing unconfirmed
+holds/offers revalidate at confirmation and cannot confirm excluded use. Return
+a clear unavailable outcome and reconcile late Exchange side effects; existing
+confirmations remain protected. Deletion reports blocking bookings,
+children or other dependencies and never silently retires, cancels or cascades.
+Retired resources remain present for authorised read/refresh/import, including
+Terraform. The [workplace lifecycle contract](../api-surfaces/workplace-lifecycle.md)
+applies independently of this candidate's technical organisation.
+
+### Evidence custody and operational plan activation
+
+Booking owns validated operational occupancy evidence used for desk-release
+commands. Source adapters authenticate and translate observations; Booking checks
+scope, provenance, granularity and freshness, deduplicates and commits evidence
+facts. Attendance/Reporting consumes committed facts into projections with
+separately configured reporting retention. A report or delayed projection never
+authorises release. Personal check-in remains the only transition to taken;
+anonymous occupancy cannot prevent a no-show returning to the pool.
+
+Plans approval identifies an immutable, durable asset. Workplace owns publication
+of geometry-to-stable-space mappings; Booking validates dated inventory and
+confirmed-claim impact before operational activation. A combined administrator
+workflow may complete both steps, but reports approval separately when activation
+cannot succeed. The [mapping publication contract](../api-surfaces/plan-publication.md)
+and [operational evidence decision](../../adr/0029-keep-operational-occupancy-evidence-in-booking.md)
+apply in this candidate's directory style. Version guards, atomic visibility and
+retry outcomes need transaction-level validation; this owner agreement does not
+choose a repository architecture.
+
+Shared operational facilities retain confirmed outage declarations, including
+affected offices/actions/times and revisions. Booking and Events consume narrow
+private incident reads and own their respective protected deadline state; Policy
+owns configurable rules. Declaration publication is ordered against expiry
+through the guarded read/transition protocol, rather than relying on delayed
+notifications. Job execution supplies mechanics without choosing business expiry.
+The [incident contract](../api-surfaces/operational-incidents.md) also preserves
+incident-scoped request-recovery extensions. These owners apply independently of
+repository style.
+
+### Exchange-led room policy, check-in and leavers
+
+`application/booking/{series,roomuse,lifecycle}.go` orchestrates room intentions/native outcomes and leaver cleanup across the horizontal layers. Exchange application/provider facets own native policy and delegated check-in integration; `store/postgres/rooms.go` stores Booking-owned intent/outcome references.
+
+Exchange's supported resource policies govern room acceptance, recurrence,
+principal/delegate admission, native check-in and autorelease for both Outlook
+and SpaceWeave requests. App RBAC protects application operations; it does not
+replace native resource admission with a stricter actual-author-only or
+recurring-only rule. Unsupported requested granularity remains a capability gap.
+Native recurrence/conflict outcomes must remain representable; a local conflict
+is not a native decline. Any room-specific neighbourhood priority must also be
+expressible through supported native policy rather than an app-only gate.
+
+Room occurrences include one-off bookings and series instances/exceptions.
+SpaceWeave can adapt its check-in surface to the documented native create/read
+contracts using the required delegated user context and native eligibility.
+An app-only worker cannot impersonate that context. Keep request acceptance,
+native result and local observation progress distinct; a missing claim read is
+not proof of non-use, and native claims do not identify a named person.
+
+The effective native grace governs autorelease. Apply observed resource outcomes
+through Booking and promise availability only from current native/local state;
+do not add a second expiry timer or pause Exchange using an app-local incident.
+Exact invitation/future-series effects must match validated native behaviour.
+The previously proposed consecutive-miss series cancellation is unverified as a
+native feature; no independent application counter/canceller is selected.
+
+A confirmed effective leaver still triggers supported Exchange cancellation of
+organiser-owned room meetings/series, alongside personal desk/parking cleanup.
+Other-owner meetings created by a departing PA remain. Disable, SCIM deletion
+and incomplete imports do not establish departure; Events retains handover.
+Cancellation fences and bounded progress prevent recurrence expansion or stale
+provider observations from recreating cancelled local commitments.
+
+HTTP roles accept requests; Exchange roles reconcile supported provider work and
+Booking handlers apply committed outcomes. Native check-in reads require the
+supported user context rather than an assumed app-only polling permission.
+Observe native-policy freshness, pending outcomes and cleanup completion.
+
+The [native-policy research](../api-surfaces/outlook-room-policy-enforcement.md)
+and [room-use/leaver contract](../api-surfaces/recurring-rooms-and-leavers.md)
+record source facts, permission boundaries and delivery gaps. Physical
+unavailability inputs/declarations remain unselected.
+
 ## Walkthroughs
 
 ### 1. Commit a group while inventory changes
 
-1. Trigger enqueues a due office cycle; Allocation loads Booking's versioned
+1. Trigger enqueues a due office cycle; Booking's allocation worker loads its versioned
    snapshot, source-effective teams/eligibility and pinned policy/calendar.
-2. `groups.go` and `packing.go` form/date-place groups outside a long transaction;
+2. Private `booking/planning/groups.go` and `packing.go` form/date-place groups through
+   Booking's consumed solver interface outside a long transaction;
    required parking and mandatory features constrain candidates.
 3. A direct request or cancellation reaches Booking through the same service.
    Its transaction changes capacity/version and commits associated outbox facts.
@@ -876,19 +1030,22 @@ mapping, authority and failures; exclude only explicit generated outputs.
    affected snapshot dependencies, current claims, waitlist precedence and people.
 5. If required parking is unavailable, the whole group transaction rolls back;
    no desk in that proposed group is partly confirmed.
-6. Allocation replans affected uncommitted groups. Successful groups atomically
+6. Booking replans affected uncommitted groups. Successful groups atomically
    create claims and work records; confirmed earlier groups remain protected.
 
 ### 2. Race check-in, release and waitlist promotion
 
 1. Staff POST/QR check-in identifies the authenticated actor and target booking;
-   Access and Booking require the assigned owner, never a delegate substitute.
+   Identity and Booking require the assigned owner, never a delegate substitute.
 2. Maintenance claims a due no-show job. Both paths lock/check the same current
    booking transition and protected incident interval.
 3. If valid check-in commits first, the later no-show job observes taken state
    and does nothing. If release commits first, stale check-in cannot restore it.
-4. Anonymous occupancy stays a separate report observation and cannot stop the
-   no-show capacity returning to the pool.
+4. Automatic no-show/vacancy release returns desk capacity only; linked parking
+   remains booked until its own end or explicit release. The source receiver
+   calls Booking to validate/deduplicate/store operational
+   evidence and commit facts. Reporting projects those facts; anonymous occupancy
+   cannot stop the no-show capacity returning to the pool.
 5. Booking promotes eligible waitlist demand and holds capacity for an offer.
    Accept/expiry compete on current offer/claim state through Booking.
 6. A confirmed preventing app outage pauses affected deadlines and adds configured
@@ -897,7 +1054,7 @@ mapping, authority and failures; exclude only explicit generated outputs.
 
 ### 3. PA room request, late updates and revoked authority
 
-1. Staff transport passes PA actor + owner organiser. Access verifies app grant
+1. Staff transport passes PA actor + owner organiser. Identity verifies app grant
    or sufficiently fresh native-derived grant, preserving the authority source.
 2. Booking commits pending hold, owner/actor audit and desired room-sync work.
    Exchange calls Graph after commit and records correspondence/results.
@@ -906,12 +1063,16 @@ mapping, authority and failures; exclude only explicit generated outputs.
 4. An Outlook edit is read through notification-driven/delta reconciliation.
    Exchange compares agreed/local/observed fields; compatible changes merge and
    room/time changes are revalidated through Booking.
-5. Incompatible changes become visible review work without discarding the
-   provider observation or claiming a generic atomic room-swap facility.
+5. Incompatible changes become visible review work, preserving provider facts.
+   If replacement fails after the previous room is lost, retain the meeting and
+   attendees, show no secured room and notify the organiser. Offer replacements
+   or explicit cancellation; a replacement confirms only after room acceptance
+   and capacity validation.
 6. Subsequent native-grant revocation removes that grant. New actions refresh
    stale evidence or use an independently valid app grant. Existing booking
    ownership and PA audit survive; app-managed authority does not change Outlook
-   permissions or allow PA check-in.
+   permissions. Desk check-in remains personal to its assignee; room check-in
+   follows native eligibility through the supported delegated user context.
 
 ### 4. Smaller venue, competing ticket and visitor admission
 
@@ -926,22 +1087,26 @@ mapping, authority and failures; exclude only explicit generated outputs.
    publication; retries reuse the same outcome.
 5. Ticket delivery happens after commit. A unique admission transition allows
    one successful scan; reception arrival remains a separate visit operation.
-6. External venue invalidation is recorded, blocks new issuance and opens
-   recovery work rather than silently reducing already issued entitlements.
+6. Confirmed venue loss is recorded, retains tickets pending recovery and pauses
+   admission/new issuance. The organiser explicitly replaces the venue or cancels;
+   confirmed changes are communicated to attendees.
 
 ### 5. SCIM disable plus effective workforce change during outage
 
-1. Authenticated SCIM PATCH reaches Directory, not a staff-session endpoint.
-   Directory updates that source's status and records effective eligibility.
-2. Access reads current authoritative denial for existing sessions and new
-   actions; a queued booking cleanup is not the access-control boundary.
+1. Authenticated SCIM PATCH reaches Identity's provisioning interface.
+   Identity updates source status, effective eligibility and session/access
+   invalidation in one owned transaction.
+2. Identity's Access facade rejects existing sessions and new actions against
+   current state; queued booking cleanup is not the access-control boundary.
 3. A verified Workday office/team change is retained with its effective date.
    At that date, unconfirmed derived planning defaults update; travel choices
    and confirmed bookings retain their meaning/history.
 4. A partial Workday outage preserves known data and its freshness marker.
    Missing responses neither invent a leaver nor undo SCIM disable.
-5. Committed lifecycle work releases future personal desk/parking claims through
-   Booking and creates room/event handover tasks. An ambiguous correlation waits
+5. A confirmed effective leaver schedules Booking to release future personal
+   desk/parking and cancel organiser-owned room meetings/series in Exchange.
+   Other-owner bookings created by a departing PA remain; Events gets handover
+   work. An ambiguous correlation waits
    for review rather than matching mutable email.
 6. SCIM deletion later removes that provisioning resource; internal history and
    identifiable reporting copies follow their respective retention policies.
@@ -1010,10 +1175,10 @@ sketches and walkthrough paths are not counted again.
 | Measure | Printed candidate |
 | --- | --- |
 | Internal Go packages | 78 |
-| Application packages | 14 |
+| Application packages | 13 |
 | Persistence packages | 23 |
-| Representative Go files, including generated servers and architecture tests | 222 |
-| Initial named SQL migrations | 12; one ordered sequence, individually owned |
+| Representative Go files, including generated servers and architecture tests | 234 |
+| Initial named SQL migrations | 13; one ordered sequence, individually owned |
 | Dependency/ownership rules | 8; application edges and SQL owner manifest expand their checks |
 | Independent runtime roles from one release | 5 |
 | Explicit shared business transaction workflows | 2: venue/ticket capacity and visitor ticket/visit link |
@@ -1032,10 +1197,12 @@ adapters increase coverage obligations even when they contain few lines.
 - **Model is shared horizontally.** Stable IDs and value types avoid transport
   coupling, but identity/booking/event changes can still affect many packages.
   Shared types need careful ownership; `model` is not a miscellaneous DTO dump.
-- **Allocation is a sibling of Booking.** This fits technical layering and keeps
-  CPU planning away from the write path, but the allocation/commit contract is
-  spread over model, services, store queries and tests. Moving it inside Booking
-  would trade sibling simplicity for a deeper consistency module.
+- **Planning is private Booking behaviour.** Technical layering is retained,
+  but demand, group/proposal progress and capacity commitment share one owner.
+  Booking consumes a solver interface implemented by its private planning package;
+  calculation runs outside short claim transactions. The broader service reduces
+  cross-owner validation at the cost of more operation-specific private code.
+
 - **Booking ownership is logical, not directory-enclosed.** Facets, manifests,
   allowed calls and real transaction tests compensate. A future developer can
   still bypass it by weakening checks; nested module boundaries would give a
@@ -1045,7 +1212,8 @@ adapters increase coverage obligations even when they contain few lines.
   Splitting storage into per-domain packages would reduce collision but begin
   rebuilding domain modules below a horizontal facade.
 - **Application calls remain visible.** Events calls Booking/Visitors;
-  Booking calls Access/Policy/Workplace/Notifications; Access reads Directory.
+  Booking calls Identity/Policy/Workplace/Notifications; Identity keeps People,
+  Access and Delegation as distinct internal/published facets.
   Every new edge must remain acyclic and authorised. The generic job registry
   removes import cycles but cannot become a way to hide synchronous invariants.
 - **Shared transactions are explicit.** Events coordinates two narrow workflows

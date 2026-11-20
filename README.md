@@ -82,8 +82,10 @@ temporary feed outages preserve the last verified state of known staff. Apply
 office/team changes on their effective dates to unconfirmed planning defaults,
 preserving explicit travel choices and confirmed bookings, and notify owners
 where existing arrangements need attention. Release leavers' future personal
-desk/parking bookings automatically; route rooms and events for assisted
-ownership-handover review. Provisioning distinguishes deactivation from deletion;
+desk/parking bookings automatically. A confirmed effective leaver also cancels
+all remaining room meetings and recurring series they own as organiser, with
+Exchange reconciliation and attendee notification. A departing PA's bookings for
+other owners remain; Events retains its own handover review. Provisioning distinguishes deactivation from deletion;
 SpaceWeave exposes an authenticated SCIM 2.0 interface for Entra user and mapped
 group provisioning, including creation, updates, deactivation, reactivation and
 deletion. Workday remains a separate integration with the agreed field ownership.
@@ -117,9 +119,10 @@ bundles, preserving existing bookings. Staff can request another neighbourhood
 for particular days; their desk demand is counted in that neighbourhood for those
 days. Collaboration requests identify the people the requester needs to sit near,
 as well as the requested neighbourhood, to guide physical placement. Assigned
-groups receive priority access to the neighbourhood's meeting rooms, with
-remaining availability open to other staff through a configurable room-booking
-policy. Explicit collaboration priority can override general team proximity;
+groups' desired priority access to bundled meeting rooms is subject to supported
+native Exchange admission; an app-only neighbourhood preference is not enforced
+in Outlook. Any remaining room availability follows the effective native policy.
+Explicit collaboration priority can override general team proximity;
 the staff member deliberately sets that priority on their request.
 Among placement plans accommodating the same number of people, prioritise
 explicit collaboration, then general team proximity, then previously unfulfilled
@@ -169,6 +172,24 @@ a parking area. Staff can link desk and parking bookings for the same attendance
 day and manage them together, while each retains its own availability and rules.
 They may mark a linked request as both required, so neither booking is confirmed
 unless both can be secured. Otherwise, their availability is handled independently.
+Before either starts, explicitly cancelling either booking in a both-required pair
+cancels both atomically; optional links permit independent cancellation. Once
+either starts, cancellation affects only the selected booking unless both are
+explicitly chosen. The other retains its own end or explicit cancellation. Automatic
+desk no-show or vacancy release leaves parking booked until its own end or
+explicit release. Desk-use evidence does not establish that a car has left.
+The [linked-booking contract](docs/research/api-surfaces/linked-bookings.md) defines
+the shared cancellation and release behaviour.
+
+Managed-room admission, recurrence, check-in and autorelease follow supported
+Exchange/Microsoft Places behaviour across Outlook and SpaceWeave. The app
+uses supported native check-in contracts and reflects the effective native grace
+and release outcome; it does not run a second room-expiry policy. Recurring-only
+per-person entitlements, exact invitation effects and consecutive-miss series
+cancellation remain capability gaps where native support is unverified. The
+[room-use/leaver contract](docs/research/api-surfaces/recurring-rooms-and-leavers.md)
+and [native-policy research](docs/research/api-surfaces/outlook-room-policy-enforcement.md)
+record supported behaviour and validation needs.
 
 Meeting rooms use start/end times, with staff finding suitable rooms by capacity
 and facilities. Their calendar integration is with Microsoft Exchange Online:
@@ -178,6 +199,11 @@ changes and cancellations made in either system update the other.
 App-originated room requests remain pending with an expiring local hold until
 the Exchange room accepts; they are then confirmed, declined or expired according
 to the outcome.
+If a replacement request fails after the previous room is lost, retain the
+meeting and attendees with a clear no-secured-room outcome. Notify the organiser
+and offer available replacements or explicit cancellation; a replacement confirms
+only after room acceptance and capacity validation. The [room recovery contract](docs/research/api-surfaces/room-recovery.md)
+defines the shared behaviour.
 Synchronisation automatically merges compatible edits, discards stale updates
 and revalidates room/time changes. People resolve genuinely incompatible
 intentions; ordinary reconciliation proceeds automatically.
@@ -194,6 +220,13 @@ to their visitor visit record, with visit arrival and event admission recorded
 separately. Each ticket identifies one attendee and is scanned at event entry to
 record admission and prevent duplicate use.
 
+Attendees can cancel unused tickets. Events may enable waitlists, offering
+released seats to eligible waiting attendees before fresh registrations.
+Changing an event's office or time requires attendee reconfirmation and valid
+linked visits. Venue loss pauses admission and issuance while preserving tickets
+for organiser-led recovery. The [event workflow contract](docs/research/api-surfaces/event-workflows.md)
+defines cancellation, visitor eligibility and visit-purpose handling.
+
 ### Visitors and administration
 
 Staff invite external visitors with a named staff host and a visit window.
@@ -209,6 +242,17 @@ identity and retention settings remain organisation-wide.
 Organisation-wide policies, identity mappings and integration administration
 require explicitly granted global capabilities beyond an administrator's office
 scope.
+
+Administrators can retire offices, buildings, floors or spaces immediately or at
+a scheduled office-local date/time. Publishing retirement prevents new bookings
+for use on/after that time while preserving confirmed commitments. Authorised
+reactivation validates definitions, calendars and inventory while retaining
+identity and history. Unconfirmed holds/offers revalidate at confirmation and
+cannot confirm excluded use; late Exchange effects require reconciliation.
+Deletion reports blocking dependencies and does not silently cancel bookings or
+cascade through child resources. The
+[workplace lifecycle contract](docs/research/api-surfaces/workplace-lifecycle.md)
+defines the shared behaviour for the portals and automation.
 
 Operational policies are versioned database records editable through
 administration, separate from deployment configuration. Changes apply to new

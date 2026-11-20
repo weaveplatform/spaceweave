@@ -90,12 +90,15 @@ expiration policy, optional request fingerprints, handling completed retries
 and concurrent attempts, and published server behaviour. A client cannot assume
 support merely by sending the header. [Draft §§2.2–2.7][retry-draft].
 
-**Proposed SpaceWeave convention, subject to contract review:** document a retry
-key only for commands whose duplicate execution matters. The contract would say:
+**SpaceWeave requirements:** booking creation, ticket issuance and background-work
+submission require retry keys and atomic acceptance receipts. Equivalent JSON
+requests ignore property order/whitespace while preserving client-supplied values,
+omitted/null distinctions, owner, target and preconditions. The remaining wire
+contract must specify:
 
 - Which operation requires it, its wire name/format, and which caller identity
   and operation form the uniqueness scope.
-- What makes two payloads equivalent, and how reusing a key with different
+- The encoding of that agreed equivalence and how reusing a key with different
   command content is rejected.
 - How an in-progress attempt is represented, and what a completed retry returns.
 - How long keys/results are retained, what happens after expiry, and which
@@ -105,17 +108,19 @@ key only for commands whose duplicate execution matters. The contract would say:
 - How authorisation is checked on each attempt and how a replay result avoids
   disclosing data after the caller's rights change.
 
-The durable record/transaction and replay-result rules above are application
-design proposals. The draft does not supply a PostgreSQL implementation or
+Durable acceptance, current-authority replay and recovery after client restart
+or a return the next working day are adopted application requirements; exact
+headers, response schemas and retention duration remain design work. The draft
+does not supply a PostgreSQL implementation or
 promise exactly-once execution across external providers. An incoming HTTP key,
 an internal job identity and a provider's retry mechanism require explicit
 mapping; they are not automatically the same contract.
 
 ## Asynchronous acceptance and visible business state
 
-**Proposed application convention:** where work cannot finish during the request,
-return an authorised operation reference only after the agreed durable acceptance
-boundary. Specify how to read progress and terminal outcome, retention/expiry,
+**SpaceWeave requirement:** allocation, floor-plan processing and exports return
+an authorised operation reference only after durable acceptance.
+Specify how to read progress and terminal outcome, retention/expiry,
 polling behaviour, and the reference to any resulting domain resource. Do not
 expose internal queue payloads as the client contract.
 
@@ -245,8 +250,8 @@ scheme for it.
 | Consumer grants | UI/MCP/SDK/script/test/Terraform are supported audiences; exact client grants and allowed operations remain to define. |
 | Publication/reachability | Supported contract audience, listener/route exposure, and authentication independently. |
 | Concurrency | Required previously read versions for configuration edits; exact validator representation and precondition responses. |
-| Retry policy | Booking/ticket/work creation requires keys and atomic receipts; resolve wire equivalence, retention and expiry/reconciliation details. |
-| Asynchronous contract | Allocation/plan processing/export monitors are required; define schemas, progress freshness, cancellation races and result expiry. |
+| Retry policy | Keys/atomic receipts and JSON-value equivalence are required. Office-calendar recovery deadlines and reconciliation before another submission are agreed; resolve fingerprint encoding/versioning, receipt duration and retained expiry evidence. |
+| Asynchronous contract | Allocation/plan processing/export monitors and requested-until-stopped cancellation ordered against commits/publication are required; define concrete schemas, progress freshness and result expiry. |
 | Errors and lists | Problem catalogue, protocol-specific mappings, pagination and consistency guarantees. |
 | Browser security | Origins, session separation/lifecycle and concrete redirect/write CSRF controls. |
 | Token profiles | Define audiences and concrete grants for the separate human/application authority profiles. |

@@ -31,6 +31,7 @@ bot service authentication. These are distinct from the staff browser session.
 | --- | --- | --- |
 | Entra provisioning | Inbound SCIM client requests | Authenticate the configured provisioning client; preserve SCIM semantics. |
 | Graph notifications/lifecycle | Inbound provider callbacks | Reachable HTTPS callbacks, challenge handling and notification validation. |
+| Native room check-in | Outbound Graph create/read calls on a user's behalf | Supported delegated user permission and native eligibility; no assumed application-permission check-in reader or independent room-expiry service. |
 | Teams personal delivery | Outbound messages plus inbound bot activities | Bot installation/conversation/authentication contract, separate from Graph callbacks. |
 | Workday HR retrieval | Outbound provider API calls if retrieval is selected | SOAP WWS is verified; REST coverage and tenant access need selection. |
 | Asset capability issuance | App request followed by client-to-storage transfer | App authority is checked before delegating a limited storage capability. |
@@ -168,6 +169,23 @@ Neither notifications nor delta establish Graph event compare-and-swap.
 The latter remains explicitly unverified in the existing architecture notes.
 [Webhook retries](https://learn.microsoft.com/en-us/graph/change-notifications-delivery-webhooks#http-codes-and-retry-logic),
 [existing Exchange constraints](../../architecture.md#verified-exchange-constraints).
+
+## Exchange-native room policy and check-in
+
+Native Exchange room admission/check-in/autorelease governs managed rooms across
+Outlook and SpaceWeave. The supported native check-in create/read APIs require
+user-delegated permission; calendar application permissions do not imply access
+to those operations. Native claims lack a named-person field, so keep application
+request audit separate from attendance inference. The
+[native-policy research](outlook-room-policy-enforcement.md) cites the exact
+contracts, configuration limitations, eligibility and release effects.
+
+Configure native room policy through supported native administration/integration.
+Document how effective settings are obtained/refreshed; do not assume Graph
+exposes every Exchange administrative setting. A desired local configuration
+record is not proof of native activation. The
+[room contract](recurring-rooms-and-leavers.md) excludes independent application
+timers/counters and records unverified requested behaviour as capability gaps.
 
 ## Teams: private proactive personal booking-raised message
 

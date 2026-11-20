@@ -10,7 +10,7 @@ here. Decision records live in `docs/adr/`.
   design tree, open decisions and verified integration constraints.
 
 - [Consolidated architecture blueprint](architecture-blueprint.md): agreed
-  product/runtime decisions and the detailed module ownership proposed for review.
+  product/runtime and core ownership decisions, with representative package placement.
 
 - [Operational policy defaults](policy-defaults.md): the agreed, configurable
   initial values and allocation priority rules.
@@ -37,6 +37,37 @@ here. Decision records live in `docs/adr/`.
   application request requirements, retention tradeoffs and primary-source
   research on HTTP/PostgreSQL idempotency, admission and API contract tooling.
 
+- [Event registration and ticket lifecycle](research/api-surfaces/event-workflows.md):
+  venue recovery, attendee reconfirmation, visitor eligibility, cancellation and
+  optional event waitlists across the supported API consumers.
+
+- [Workplace retirement, reactivation and deletion](research/api-surfaces/workplace-lifecycle.md):
+  publish effective retirement schedules, preserve confirmations, validate
+  reactivation and report removal dependencies to administrators and automation.
+
+- [Plan approval and mapping publication](research/api-surfaces/plan-publication.md):
+  distinguish approved immutable assets from operational geometry mappings and
+  validate dated-inventory impact before activation.
+
+- [Linked desk and parking lifecycle](research/api-surfaces/linked-bookings.md):
+  cancel a both-required pair atomically before either starts, select explicit
+  post-start scope, and preserve parking after automatic desk release.
+
+- [Room use, recurring bookings and leavers](research/api-surfaces/recurring-rooms-and-leavers.md):
+  follow native Exchange admission/check-in/autorelease and reconcile owner-based
+  departure cancellation.
+
+- [Exchange room-policy research](research/api-surfaces/outlook-room-policy-enforcement.md):
+  native controls and delegated check-in APIs, provider boundaries and gaps.
+
+- [Meeting-room changes and recovery](research/api-surfaces/room-recovery.md):
+  retain meeting/attendees after failed replacement, show actual room state and
+  offer organiser-directed recovery or cancellation.
+
+- [Confirmed outages and deadline protection](research/api-surfaces/operational-incidents.md):
+  share operational declarations while keeping deadline state with Booking and
+  Events and configurable rules with Policy.
+
 - [Allocate advance desk intents together](adr/0001-allocate-advance-desk-intents-together.md):
   consider attendance demand together to place groups by team proximity.
 
@@ -61,8 +92,9 @@ here. Decision records live in `docs/adr/`.
 - [Separate booking ownership from the acting delegate](adr/0008-separate-booking-ownership-from-the-acting-delegate.md):
   retain the booking owner's identity and the delegate's actions.
 
-- [Use a domain-first modular monolith](adr/0009-use-a-domain-first-modular-monolith.md):
-  organise domain ownership with ports and adapters inside substantial modules.
+- [Consider a domain-first modular monolith](adr/0009-use-a-domain-first-modular-monolith.md):
+  proposed architecture direction; the repository-style decision remains pending
+  across all five candidates.
 
 - [Keep app-managed delegation local](adr/0010-keep-app-managed-delegation-local.md):
   grant app-mediated booking authority while synchronising booking outcomes.
@@ -104,3 +136,55 @@ here. Decision records live in `docs/adr/`.
 - [Commit retry receipts with command acceptance](adr/0022-commit-retry-receipts-with-command-acceptance.md):
   recover accepted outcomes after response loss without repeating the mutation
   or durable work submission.
+
+- [Separate Events from venue booking](adr/0023-separate-events-from-venue-booking.md):
+  keep registration, tickets and admission in Events while coordinating venue
+  capacity changes with Booking through a narrow local transaction.
+
+- [Create event visitor visits with tickets atomically](adr/0024-create-event-visitor-visits-with-tickets-atomically.md):
+  roll back a visit created solely for failed registration while retaining an
+  existing valid visit reused by the attempt.
+
+- [Retire workplaces before removing protected resources](adr/0025-retire-workplaces-before-removing-protected-resources.md):
+  schedule withdrawal from new use, validate reactivation and separate
+  dependency-checked deletion from protected commitments.
+
+- [Combine workforce identity and access ownership](adr/0026-combine-workforce-identity-and-access-ownership.md):
+  keep source identity, sessions, permissions and delegation in one Identity owner.
+
+- [Keep attendance planning inside Booking](adr/0027-keep-attendance-planning-inside-booking.md):
+  isolate the solver while keeping demand and capacity validation together.
+
+- [Separate Exchange synchronisation from Booking](adr/0028-separate-exchange-synchronisation-from-booking.md):
+  own provider integration independently while Booking remains the claim authority.
+
+- [Keep operational occupancy evidence in Booking](adr/0029-keep-operational-occupancy-evidence-in-booking.md):
+  retain evidence used for release with the claim owner; project committed facts
+  into Attendance reports with separately configured retention.
+
+- [Separate plan approval from operational mapping activation](adr/0030-separate-plan-approval-from-operational-mapping-activation.md):
+  Plans approves assets, Workplace publishes mappings and Booking validates
+  dated-inventory and commitment impact.
+
+- [Share incident declarations with owning deadline workflows](adr/0031-share-incident-declarations-with-owning-deadline-workflows.md):
+  give operational facilities custody of confirmed outage scope/times, with
+  Booking and Events retaining their own transition authority.
+
+- [Separate linked cancellation from automatic desk release](adr/0032-separate-linked-cancellation-from-automatic-desk-release.md):
+  keep deliberate paired cancellation atomic while retaining parking when desk
+  evidence cannot establish vehicle departure.
+
+- [Retain meetings during room replacement recovery](adr/0033-retain-meetings-during-room-replacement-recovery.md):
+  preserve meeting continuity with explicit room recovery and current acceptance
+  before confirming a replacement.
+
+- [Superseded app-specific recurring-room enforcement](adr/0034-restrict-recurring-room-bookings-and-cancel-unused-series.md):
+  historical proposal replaced by Exchange-led room policy and native check-in.
+
+- [Cancel leavers' owned room bookings](adr/0035-cancel-leavers-owned-room-bookings.md):
+  cancel future organiser-owned room meetings/series while preserving other-owner
+  bookings created by departing delegates and retaining Event handover.
+
+- [Follow Exchange room policy and native check-in](adr/0036-follow-exchange-room-policy-and-native-check-in.md):
+  use provider-native admission, eligibility and autorelease across entry paths;
+  retain unsupported requested behaviour as explicit capability gaps.

@@ -36,6 +36,14 @@ are confined to the [current-system inventory](current-surfaces.md).
 | Topic | Purpose |
 | --- | --- |
 | [Request contract](request-behaviour.md) | Booking retries, configuration concurrency, actor budgets and operation lifecycle. |
+| [Event workflows](event-workflows.md) | Registration, venue recovery, exclusive offers, reconfirmation and admission. |
+| [Workplace lifecycle](workplace-lifecycle.md) | Scheduled retirement, identity-preserving reactivation and dependency-checked deletion. |
+| [Plan publication](plan-publication.md) | Asset approval versus operational mapping activation and dated-inventory validation. |
+| [Operational incidents](operational-incidents.md) | Shared outage declarations and owner-controlled deadline protection. |
+| [Linked bookings](linked-bookings.md) | Pre-start paired cancellation, explicit post-start scope and automatic desk-only release. |
+| [Room recovery](room-recovery.md) | Retain meeting/attendees after failed replacement and expose actual room outcomes. |
+| [Room use, recurring bookings and leavers](recurring-rooms-and-leavers.md) | Native room policy/check-in/release, local consistency and organiser-owned departure cleanup. |
+| [Exchange room-policy research](outlook-room-policy-enforcement.md) | Native admission/permissions, delegated check-in APIs, autorelease and explicit capability gaps. |
 | [Idempotency and concurrency](idempotency-and-concurrency.md) | HTTP semantics, durable acceptance, replay safety and retention tradeoffs. |
 | [API contract engineering](api-contract-engineering.md) | Primary guidance for specifications, generation, admission, backpressure and clients. |
 | [Protocol contracts](protocol-contracts.md) | HTTP, OAuth, errors, pagination and compatibility facts. |
@@ -130,7 +138,7 @@ deployment choices.
 | User and group provisioning | Entra user/group provisioning. | SCIM 2.0 `/scim/v2/Users`, `/Groups` and supported discovery. | Published provider/provisioning protocol. | Provisioning-only authentication; direct Entra connectivity or a supported private-agent route. |
 | Exchange change notifications | Exchange change/lifecycle delivery from Microsoft Graph. | Provider callback `/integrations/graph/notifications` and lifecycle route. | Provider-specific ingress, not a general booking API. | Public HTTPS edge with Graph challenge/notification validation; enqueue or persist promptly. |
 | Teams activities | Teams installation/conversation/activity handling. | Teams activity protocol `/integrations/teams/activities`. | Provider-specific ingress supporting optional personal delivery. | Provider-authenticated messaging edge; registration/SDK choice remains open. Installation never grants booking authority or message opt-in. |
-| Occupancy evidence ingestion | Optional occupancy connectors. | Source-specific push HTTP/batch or outbound pull adapter. | Published source-restricted ingestion where push is selected; private connector execution. | Restricted Internet edge for configured push sources, or outbound pull; source identity and office/device/evidence scope, never staff check-in authority. |
+| Occupancy evidence ingestion | Optional occupancy connectors calling Booking, which owns validated operational evidence and commits facts for Attendance projections. | Source-specific push HTTP/batch or outbound pull adapter. | Published source-restricted ingestion where push is selected; private connector execution. | Restricted Internet edge for configured push sources, or outbound pull; source identity and office/device/evidence scope, never staff check-in authority. |
 | Protected asset transfer | Floor-plan manifests, source uploads, approved renders, ticket/export bytes. | Authorised metadata/capability HTTP plus bounded binary transfer. | Access-controlled asset contract; public frontend bundles are separate. | App authorises before stream/signing; storage capability limits object, method and lifetime. |
 | Workflow status and recovery | Administrative workflow status and permitted repairs. | Public REST status/command operations with restricted operator capabilities. | Supported public contract for authorised operators/clients. | Internet-facing access follows applicable Conditional Access; private execution stays behind owning interfaces. No generic SQL/event injection/state setter. |
 | Application health and observability | Liveness/readiness, metrics, telemetry export and diagnostics. | Private probe HTTP, optional metrics scrape, OTLP and structured logs. | Private operational contracts. | Dedicated listener/routing and platform identity controls; no general portal access to raw metrics/debug endpoints. |
@@ -161,12 +169,15 @@ business operations under their actual authority and permitted projections.
 | `GET /availability?officeId=...&from=...&to=...` | Find dated/timed suitable capacity. | A snapshot with generation time and relevant versions, not a promise or lock; bounded time range, features and result size. |
 | `GET /people?...` | Find intended collaborators. | Minimal directory plus agreed relevant teammate/collaborator planned-day/desk projection; no source identifiers, employment details or general raw attendance payloads. |
 | `POST /attendance-intents`, `PATCH /attendance-intents/{id}` | Declare chosen dates, office/travel, required features and explicit collaboration. | Explicit owner, authorised actor, expected revision and retry semantics. Keep imported teams distinct from internal allocation groups. |
-| `GET /me/bookings`, `/bookings/{id}`, `/waitlist-offers/{id}` | Understand allocation, room acceptance and outstanding choices. | Kind-specific business state, deadlines, office timezone, policy version and permitted next actions; no inference that a booked desk proves attendance. |
+| `GET /me/bookings`, `/bookings/{id}`, `/waitlist-offers/{id}` | Understand allocation, room acceptance and outstanding choices. | Kind-specific business state, including no-secured-room recovery, deadlines, office timezone, policy version and permitted next actions; no inference that a booked desk proves attendance. |
 | `POST /desk-bookings`, `/linked-booking-requests` | Book spare capacity after the main run, including both-required parking. | One Booking transaction; waitlist precedence; no premature direct claim before the cohort run; never split a both-required request into client-coordinated calls. |
-| `POST /bookings/{id}/transfers`, `/cancellations` | Secure a replacement or cancel an authorised booking. | Transfer is an atomic command including linked parking; cancellation records intention/reconciliation state for Exchange. |
+| `POST /bookings/{id}/transfers`, `/cancellations` | Secure a replacement or cancel an authorised booking. | Transfer is atomic including linked parking. Before either starts, explicit cancellation of either booking in a both-required pair cancels both atomically; optional links cancel independently. Once either starts, cancel the selected booking unless both are explicitly chosen. Room cancellation records Exchange reconciliation state. |
 | `POST /bookings/{id}/check-ins` | Personally take an allocated desk. | Actor must be the assigned owner. QR supplies a desk reference, not authority or proof of physical identity/location. |
 | `POST /waitlist-offers/{id}/acceptances` or `/declines` | Respond to a still-valid offer. | Server checks current offer/version/deadline, protected outages and required linked capacity. |
 | `POST /room-requests` | Request a suitable Exchange-connected room. | Creates a pending request/hold; owner is organiser, actor is retained; response distinguishes acceptance and sync state. |
+| Room series/occurrence commands, illustratively `/room-series/...` | Authorised application users request/change a series or instance. | App operation permission/scope and supported native Exchange admission remain separate; bounded expansion, retries/versions and actual native acceptance/decline outcomes. |
+| Native room check-in, illustratively `/room-occurrences/{id}/check-ins` | Request check-in for a one-off or series occurrence. | Adapt supported native create/read using required user context and native eligibility; distinguish accepted request from native success. Native device verification cannot be inferred from app login; no independent room timer or inferred personal attendance. |
+| Room change/recovery commands under `/room-requests/{id}/...` | Choose an available replacement for an existing meeting or explicitly cancel under current authority. | Failed replacement after old-room loss retains meeting/attendees with no secured room and organiser notification. Candidate acceptance and Booking capacity validation precede confirmation; exact command paths remain engineering work. |
 | `POST /visits`, `/events/{id}/registrations` | Invite a hosted visitor or obtain a free ticket. | Host/event authority and event audience rules; issue no usable visitor ticket before its required visit link exists. |
 | `GET /me/attendance`, `/me/notifications` | Read own evidence/history and messages. | Distinct bookings/check-ins/occupancy evidence, freshness and retention; no minimum-attendance enforcement. |
 | Message-specific Teams delivery preference | Opt in to the private booking-raised message. | Explicit individual/message consent, rechecked at dispatch; no shared channel or implied permission for other Teams messages. |
@@ -181,7 +192,7 @@ hatch. The application validates transitions regardless of which surface calls.
 | --- | --- | --- |
 | Workplace definitions | Office-scoped facilities staff configure buildings/floors/spaces/features/baseline bundles and calendars. | Definitions versus dated inventory and protected confirmed claims; impactful changes return explicit impact/workflow results. |
 | Allocation control | Authorised admins inspect cycles, demand, group proposals, placement progress and unfulfilled demand; trigger permitted work. | Proposal versus committed assignment; duplicate triggers do not create duplicate runs/claims. |
-| Plan management | Upload sources, associate floor/space identity, inspect trace/review, approve revisions and publication. | Sources/reports/drafts have different access from approved staff-facing render manifests; no raw filesystem browsing. |
+| Plan management | Upload sources, inspect trace/review and approve immutable assets through Plans; publish operational geometry-to-stable-space mappings through Workplace after Booking validates impact. | Approval versus activation have separate outcomes, including in a combined admin workflow; source/report/draft access differs from staff-facing manifests. |
 | Reception/admission | Expected visits, arrival/departure and event-ticket scans. | Office/event capabilities; reception arrival and ticket admission are different records. Duplicate admission is explicit. |
 | Event management | Authorised organisers manage event audience, access, venue and ticket cap. | Current secured venue and active issued count are checked atomically; no arbitrary cap write through a generic admin DTO. |
 | Reporting | Scoped individual/aggregate reports and, if selected, asynchronous exports. | Subject/office/date filters authorised server-side; output fields, download access and retention are part of the contract. |
@@ -189,6 +200,28 @@ hatch. The application validates transitions regardless of which surface calls.
 | Configurable RBAC | Existing authorised global administration configures roles and scoped assignments; SCIM supplies configured group mappings. | No added office-level role-delegation hierarchy. Grant-only composition, complete scope pairings and current domain checks remain enforced. |
 | Identity/integration configuration | Global admins manage correlation review, mappings, client/source enrolment and integration status. | Source-owned membership is not locally editable; secret references/status are not secret values. |
 | Failure repair | Operators inspect redacted job/operation status, retry an eligible failure or resolve incompatible calendar intent. | Narrow authorised action, current version, reason and audit; replay is not permission to bypass owner checks. |
+
+Confirmed event venue loss retains tickets pending recovery and pauses both
+admission and new issuance. The organiser explicitly secures a suitable
+replacement or cancels; confirmed changes are communicated to attendees.
+Office/time changes require attendee reconfirmation and linked visit validation.
+A later invalid visit blocks admission while retaining the ticket and seat
+pending authorised repair or explicit cancellation. Attendees can cancel their
+own unused tickets; optional event waitlists receive released capacity before
+fresh registrations through time-limited, eligibility-checked offers. Event
+cancellation also cancels visits whose only remaining valid purpose was that
+event. The [event workflow contract](event-workflows.md) defines
+exclusive FIFO offers, decline/expiry/rejoin, the registration cutoff and
+published reconfirmation deadlines releasing unconfirmed tickets. Unused-ticket
+cancellation also cancels an associated future visit with no other valid purpose,
+preserving other-purpose visits and reception history. Confirmed outages pause
+affected reconfirmation deadlines; venue recovery preserves offers and pauses
+expiry within registration limits. Temporary queue ineligibility preserves
+position without capacity; office/time changes withdraw old offers without
+ending requests, preserving position for updated offers. Initial numeric
+offer/notice/recovery-grace defaults remain unselected.
+When registration creates a visit solely for a ticket, Events and Visitors
+commit both or neither; an existing valid reused visit survives failed issuance.
 
 An admin portal remains a separate user experience. Its route prefix alone is
 not an authorisation mechanism, and broad Kubernetes access is not automatically
@@ -344,8 +377,16 @@ access and temporary failure. A Terraform client must not drop state after a
 `401`, `403`, throttling or dependency error. Resource contracts that interpret
 `404` as deletion cannot mask an authorisation failure as that same result;
 scope checks before lookup can return a uniform denial without exposing whether
-a particular object exists. Deletion/retirement still respects confirmed
-bookings and returns an explicit impact/conflict or operation outcome.
+a particular object exists. Published retirement, immediate or scheduled, excludes
+new bookings for use on/after its office-local effective time while keeping
+existing confirmations manageable. Pre-existing unconfirmed holds/offers cannot
+confirm excluded use; revalidate at confirmation and reconcile late Exchange
+effects. Authorised reactivation revalidates definitions,
+calendars and inventory while retaining identity/history. Separate deletion reports unresolved bookings,
+children or other dependencies and refuses removal without cancelling/cascading.
+Retired state remains readable/importable and is not absence. The
+[workplace lifecycle contract](workplace-lifecycle.md) supplies these semantics;
+an asynchronous status reference cannot hide a dependency conflict.
 
 Internet-facing human access uses Entra Conditional Access rules and policies
 alongside API authentication, capability, office, owner and delegation checks.
@@ -438,8 +479,8 @@ our documented contract, not a universal HTTP-server guarantee.
 | Throttled or temporarily unavailable | `429`/`503`, with retry guidance where applicable. | Not proof that a previous timed-out command failed to commit. |
 
 `GET /operations/{id}` belongs to the public REST contract with access restricted
-to the authorised initiator/owner/operator scope. Define accepted/running/succeeded/failed
-and any genuinely supported cancellation separately from the business resource.
+to the authorised initiator/owner/operator scope. Define execution states and the
+required allocation/plan-processing/export cancellation separately from the business resource.
 Return bounded error/result links and progress/freshness, not raw provider
 payloads, SQL or secrets. Expiry of operation history does not delete the booking.
 
@@ -487,7 +528,11 @@ contract; none follows merely from choosing React or Kubernetes.
 ## Assets and native integrations
 
 Approved floor geometry is a consumer contract even if delivered as JSON files
-rather than under `/api`. Current `generated/catalog.json`, plan/report/original
+rather than under `/api`. Plans approves immutable assets; Workplace separately
+activates their geometry-to-stable-space mappings after Booking validates dated
+inventory/commitment impact. One admin workflow may do both, exposing each actual
+outcome. The [plan publication contract](plan-publication.md) applies across all
+five architecture candidates. Current `generated/catalog.json`, plan/report/original
 reads therefore belong in the migration inventory. Do not transfer broad
 generated-directory access into the production staff/visitor surface.
 
@@ -609,12 +654,26 @@ public operation references with authorised progress and result reads.
 
 Definitive business refusals replay the same outcome for a retained command identity.
 Allocation results distinguish unfulfilled demand from technical interruption.
-Authorised cancellation stops work at safe boundaries and preserves committed
-placements/effects. These behaviours are detailed in the [request contract](request-behaviour.md).
+Authorised cancellation stops allocation before another group commit, prevents
+unfinished plan publication and cleans incomplete exports; completed effects and
+export results retain their normal rules. Ambiguous outcomes are recoverable
+across reloads/client restarts and a return the next working day. Equivalent
+JSON requests ignore property order/whitespace, preserving omitted/null values
+and original preconditions. The recovery guarantee covers the end of that day
+using the relevant office calendar, including weekends/closures, with a published
+deadline. After expiry, reconcile authorised resources before offering a new
+submission; explain inconclusive recovery and require an explicit new attempt.
+An outage spanning the deadline extends affected recovery through the end of
+the next office working day after restoration, retaining evidence and publishing
+the extended deadline.
+Cancellation is requested until execution stops, ordered against commits and
+publication; earlier commits survive. These behaviours are detailed in the
+[request contract](request-behaviour.md).
 
-Remaining design work includes retry-retention duration and expiry/reconciliation
-behaviour, concrete operation/resource schemas, pagination/input bounds, measured
+Remaining design work includes receipt duration and retained expiry evidence,
+concrete operation/resource schemas, pagination/input bounds, measured
 rates and worker capacity, provider deployment permissions and compatibility-tested
-code generation. The repository/module layout remains an independent architecture
+code generation. The [Events–Booking boundary](../../adr/0023-separate-events-from-venue-booking.md)
+is agreed; the remaining repository/module layout is an independent architecture
 choice. Each unresolved item should identify a requirement, alternatives, tradeoff
 and validation criterion before becoming an implementation contract.
