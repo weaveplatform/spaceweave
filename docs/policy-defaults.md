@@ -123,6 +123,22 @@ validation succeed. Events-managed venues retain their own recovery workflow.
 The [room recovery contract](research/api-surfaces/room-recovery.md) separates
 product outcomes from provider compensation mechanics requiring validation.
 
+## Recurring-room non-use and leavers
+
+Recurring room creation/management requires an explicitly granted capability;
+ordinary staff membership is insufficient. The organiser or an authorised
+attendee can personally check in to the occurrence, independently of who created
+the series. Count consecutive eligible unused occurrences and reset after
+verified use. At the configurable threshold, cancel the remaining meetings in
+Exchange and notify attendees. No numerical initial threshold or room check-in/
+evaluation deadline has been agreed; configure them before automatic enforcement.
+
+A confirmed effective workforce departure cancels all remaining room meetings and
+series owned by that organiser. Other-owner meetings created by a departing PA
+remain. Disable, SCIM deletion or incomplete imports do not invent departure.
+Events retains its own handover. The [recurring-room and leaver contract](research/api-surfaces/recurring-rooms-and-leavers.md)
+defines durable cancellation, provider scope and remaining policy choices.
+
 ## Agreed allocation rules
 
 Among plans accommodating the same number of people, prioritise explicit

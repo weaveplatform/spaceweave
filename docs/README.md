@@ -53,6 +53,10 @@ here. Decision records live in `docs/adr/`.
   cancel a both-required pair atomically before either starts, select explicit
   post-start scope, and preserve parking after automatic desk release.
 
+- [Recurring rooms, usage and leavers](research/api-surfaces/recurring-rooms-and-leavers.md):
+  restrict series authoring, verify occurrence use, cancel abandoned series and
+  cancel leavers' organiser-owned room meetings with Exchange reconciliation.
+
 - [Meeting-room changes and recovery](research/api-surfaces/room-recovery.md):
   retain meeting/attendees after failed replacement, show actual room state and
   offer organiser-directed recovery or cancellation.
@@ -170,3 +174,11 @@ here. Decision records live in `docs/adr/`.
 - [Retain meetings during room replacement recovery](adr/0033-retain-meetings-during-room-replacement-recovery.md):
   preserve meeting continuity with explicit room recovery and current acceptance
   before confirming a replacement.
+
+- [Restrict recurring rooms and cancel unused series](adr/0034-restrict-recurring-room-bookings-and-cancel-unused-series.md):
+  use scoped authority and organiser/attendee check-in to enforce a configurable
+  consecutive non-use threshold with Exchange cancellation.
+
+- [Cancel leavers' owned room bookings](adr/0035-cancel-leavers-owned-room-bookings.md):
+  cancel future organiser-owned room meetings/series while preserving other-owner
+  bookings created by departing delegates and retaining Event handover.

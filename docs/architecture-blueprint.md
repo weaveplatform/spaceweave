@@ -88,7 +88,7 @@ from Workplace operational mapping activation, validated against Booking invento
 | Identity | Staff identities/source links, effective workforce/team facts, SCIM/Workday progress, sessions, capabilities/scopes, global grants and source-labelled delegation. | Separate People, Access and Delegation interfaces resolve current eligibility, source-owned facts, sessions and actor/owner authority under one owner. |
 | Workplace | Offices, buildings, floors, space features, calendars, baseline neighbourhoods, lifecycle schedules and operational plan mappings. | Publish versioned definitions/mappings, retire/reactivate resources and validate dated impact through Booking. |
 | Policy | Versioned operational policies, allowed office overrides, publication/effective dates and organisation retention settings. | Resolve the applicable policy/version and validate a prospective publication. |
-| Booking | Attendance intents/preferences/travel exceptions, allocation cycles/groups/proposals, dated inventory, holds, bookings, waitlists, validated operational occupancy evidence and desk check-in/release transitions. | Request, allocate, confirm, transfer, cancel, check in or release capacity while enforcing the same invariants from every caller. |
+| Booking | Attendance intents/preferences/travel exceptions, allocation cycles/groups/proposals, dated inventory, holds, bookings, waitlists, room series/occurrences/check-in/consecutive-use evaluation, owner-based room cancellation, operational evidence and desk check-in/release. | Request, allocate, confirm, transfer, cancel, check in or release capacity while enforcing the same invariants from every caller. |
 | Exchange | Provider mappings, desired/observed calendar state, durable observations, delta cursors/subscriptions and reconciliation work. | Consume Booking's committed room intentions and reconcile provider activity through Booking's owning room interface; never write claims directly. |
 | Plans | Drawing packages, tracing/review workflows, immutable plan/render revisions and blob metadata/asset publication. | Upload, process, approve and retrieve immutable assets; Workplace separately publishes their operational mappings. |
 | Visitors | Visitor profiles, hosted visits, visit windows and reception arrival/departure records. | Create/retrieve a visit, record reception activity and apply visitor retention. |
@@ -187,6 +187,7 @@ booking/check-in health distinct from degraded Exchange or notification delivery
 | Workplace retirement/reactivation/deletion | Published immediate/scheduled retirement excludes new use on/after the office-local effective time, including descendants. Booking compares requested use with the lifecycle revision. Reactivation revalidates definitions/calendars/inventory while retaining identity/history; unconfirmed holds/offers cannot confirm excluded use and late Exchange effects reconcile. Confirmations remain manageable and deletion never silently cancels/cascades. |
 | Operational plan activation | Plans approves immutable assets; Workplace owns geometry-to-stable-space mappings. Booking validates dated inventory and confirmed-claim impact under version guards before activation. Approval and activation have distinct public outcomes. |
 | Check-in, no-show and vacancy | Booking decides the transition against current state/policy. A personal check-in wins only if the allocation remains valid. Anonymous occupancy cannot reserve a released desk. Sensor outages do not establish vacancy. |
+| Recurring rooms and abandonment | Explicit series-authoring capability; organiser or authorised-attendee occurrence check-in. Booking owns consecutive-miss evaluation and cancellation fences; verified use resets the count and configured non-use cancels remaining meetings in Exchange with attendee notification. |
 | Room requests and reconciliation | Booking owns local holds/claims and transitions; Exchange owns provider observations/progress. Confirm only after acceptance and capacity revalidation. Keep external observations even if they conflict with local claims. Failed replacement after old-room loss retains meeting/attendees with no secured room; notify the organiser and offer replacements or explicit cancellation. |
 | Venue changes and ticket issuance | Events coordinates its ticket state with Booking's venue state through owning interfaces in a named shared local transaction where required. Generic booking edits cannot bypass the event venue workflow. |
 | Visitor ticket issuance | Events and Visitors atomically commit a visit created specifically for registration with its ticket and retry outcome, or neither. A reused existing valid visit survives failed issuance. Visit arrival and event admission remain distinct actions. |
@@ -273,9 +274,10 @@ When a confirmed effective disable/leaver event is observed, reject further staf
 access including existing sessions. Retain known state during feed outages.
 Effective office/team changes update unconfirmed derived defaults, preserving
 explicit travel and confirmed bookings. Release a leaver's future personal
-desk/parking claims; review room/event ownership through assisted handover.
-Provider organiser changes require an appropriate workflow, not an assumed
-in-place Exchange property update.
+desk/parking claims. A confirmed effective departure also cancels all organiser-
+owned room meetings/series through Booking and Exchange, with attendee notices.
+A departing PA's meetings for other owners remain; Events retains handover.
+Account disable and SCIM deletion alone do not establish workforce departure.
 
 Identity checks app-managed delegation against current local state. New actions
 relying on native-derived grants require verification within the configurable

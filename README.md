@@ -82,8 +82,10 @@ temporary feed outages preserve the last verified state of known staff. Apply
 office/team changes on their effective dates to unconfirmed planning defaults,
 preserving explicit travel choices and confirmed bookings, and notify owners
 where existing arrangements need attention. Release leavers' future personal
-desk/parking bookings automatically; route rooms and events for assisted
-ownership-handover review. Provisioning distinguishes deactivation from deletion;
+desk/parking bookings automatically. A confirmed effective leaver also cancels
+all remaining room meetings and recurring series they own as organiser, with
+Exchange reconciliation and attendee notification. A departing PA's bookings for
+other owners remain; Events retains its own handover review. Provisioning distinguishes deactivation from deletion;
 SpaceWeave exposes an authenticated SCIM 2.0 interface for Entra user and mapped
 group provisioning, including creation, updates, deactivation, reactivation and
 deletion. Workday remains a separate integration with the agreed field ownership.
@@ -177,6 +179,13 @@ desk no-show or vacancy release leaves parking booked until its own end or
 explicit release. Desk-use evidence does not establish that a car has left.
 The [linked-booking contract](docs/research/api-surfaces/linked-bookings.md) defines
 the shared cancellation and release behaviour.
+
+Recurring room creation/management is restricted to people granted the configured
+capability. The organiser or an authorised attendee checks in to an occurrence;
+the creating PA need not attend. A configurable number of consecutive unused
+occurrences cancels the remaining meetings in Exchange and notifies attendees;
+verified use resets the count. The [recurring-room and leaver contract](docs/research/api-surfaces/recurring-rooms-and-leavers.md)
+defines the policy, ownership and remaining timing/enforcement choices.
 
 Meeting rooms use start/end times, with staff finding suitable rooms by capacity
 and facilities. Their calendar integration is with Microsoft Exchange Online:

@@ -50,7 +50,9 @@ authority and provider reconciliation workflow.
 
 Recovery rechecks the latest meeting intention and provider state. A genuine
 organiser cancellation or superseding change remains effective; stale failure
-or acceptance work cannot revive it.
+or acceptance work cannot revive it. Separately authorised non-use and leaver
+policies can cancel meetings through the [recurring-room and leaver workflow](recurring-rooms-and-leavers.md);
+room recovery must respect those cancellation fences.
 
 Events-managed venue changes continue through the separate
 [event recovery contract](event-workflows.md); generic room recovery cannot

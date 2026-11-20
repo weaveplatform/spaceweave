@@ -282,7 +282,9 @@ internal/
 │   │   ├── claim/
 │   │   │   ├── claim.go                      booking lifecycle and owned resource claims
 │   │   │   ├── requestset.go                 pair identity, required kind and cancellation scope
-│   │   │   └── transition.go                 room holds, check-in, no-show, vacancy and cancellation
+│   │   │   ├── transition.go                 room holds, check-in, no-show, vacancy and cancellation
+│   │   │   ├── series.go                     recurrence, consecutive misses and cancellation fence
+│   │   │   └── occurrence.go                 per-instance use/check-in and evaluation state
 │   │   ├── waitlist/
 │   │   │   ├── request.go                    eligible unmet demand and priority
 │   │   │   └── offer.go                      timed capacity offer and acceptance state
@@ -305,6 +307,9 @@ internal/
 │   │   ├── release.go                        explicit selected/pair cancellation; timed desk-only release
 │   │   ├── promote.go                        reserve/accept/expire eligible waitlist offers
 │   │   ├── room.go                           room intentions, acceptance and retained-meeting recovery
+│   │   ├── room_series.go                    capability-gated series commands and cancellation
+│   │   ├── room_use.go                       organiser/attendee check-in and threshold evaluation
+│   │   ├── lifecycle.go                      owner-based desk/parking/room leaver cancellation
 │   │   └── venue.go                          event-governed capacity participant
 │   └── adapters/
 │       ├── occupancy/
@@ -320,7 +325,8 @@ internal/
 │           ├── allocation.go                 snapshot versions, runs and group commit progress
 │           ├── waitlist.go                   competing offers and acceptance
 │           ├── inventory.go                  dated neighbourhood/capacity rows
-│           ├── evidence.go                   Booking-owned operational occupancy records
+│           ├── evidence.go                   Booking-owned occupancy and occurrence check-in
+│           ├── rooms.go                      series/occurrence state and cancellation fences
 │           └── migrations/
 │               └── 0001_booking.sql
 ├── exchange/
@@ -412,7 +418,7 @@ internal/
 │   │   ├── register.go                       ticket capacity plus required visitor visit link
 │   │   ├── protection.go                     apply shared incidents to Events-owned deadlines
 │   │   ├── admit.go                          duplicate-scan-safe admission
-│   │   └── handover.go                       leaver event/room ownership review
+│   │   └── handover.go                       leaver Event ownership review
 │   └── adapters/
 │       ├── http/
 │       │   ├── events.go
@@ -703,8 +709,11 @@ staff access, including existing sessions. An asynchronous session-cleanup event
 cannot be the only guard against known ineligibility. During feed failure, retain
 last verified state; absence from a partial response is not a delete. Effective
 office/team changes update unconfirmed derived defaults, preserving explicit
-travel and confirmed bookings. Release leavers' future personal desk/parking
-claims; rooms/events enter assisted handover review.
+travel and confirmed bookings. A confirmed effective workforce departure
+separately triggers personal desk/parking cleanup and cancellation of all
+organiser-owned room meetings/series through Booking and Exchange. A disable is
+not a departure; other-owner meetings created by the departing PA remain.
+Events retains its own handover.
 
 SCIM resource deletion hides it from that provisioning interface; it does not
 imply erasing internal booking/audit history outside retention policy. Workday
@@ -918,6 +927,44 @@ The [incident contract](../api-surfaces/operational-incidents.md) also preserves
 incident-scoped request-recovery extensions. These owners apply independently of
 repository style.
 
+### Recurring rooms, verified use and leaver cancellation
+
+Booking claim `series.go`/`occurrence.go`, application `room_series.go`/`room_use.go`/`lifecycle.go`, published Booking commands and owned room persistence retain the context's four-layer organisation.
+
+Series creation/management requires the configured recurring-room capability
+and current scope/delegation. Series permission and check-in eligibility are
+distinct: the organiser or an authorised attendee can personally check in to an
+occurrence; the creating PA need not attend. Booking owns series/occurrence
+identity, revision, use evidence, consecutive-miss progress and cancellation
+fences. Exchange owns provider master/occurrence/exception correspondence and
+reconciliation, while Attendance projects committed facts.
+
+Verified occurrence use resets the miss count. Eligible consecutive unused
+occurrences reach a configurable threshold that cancels the remaining meetings
+in Exchange and notifies attendees. Evaluation is durable and ordered by
+occurrence; retries cannot add misses. The initial threshold number and use
+window/evaluation deadline remain unselected. Automatic early release of an
+individual room occurrence has not been agreed.
+
+A confirmed effective leaver cancels the organiser/owner's remaining room
+meetings and series, alongside personal desk/parking cleanup. Meetings a PA
+created for other owners remain. Disable, SCIM deletion and partial imports
+cannot invent departure. Events retains its own handover/venue authority.
+Commit cancellation intent/fence and durable work first; reconcile provider
+outcomes after commit and expose pending/failure/completion distinctly. Bounded
+occurrence expansion and stale provider replay cannot recreate a cancelled
+series; cleanup must cover future bookings beyond the local window.
+
+Existing HTTP roles accept the commands/check-ins; maintenance roles run
+bounded occurrence evaluation and cleanup jobs, with Exchange roles reconciling
+provider work. Observe evaluation lag, pending cancellation age, source freshness
+and cleanup completion independently of access revocation.
+
+The [recurring-room and leaver contract](../api-surfaces/recurring-rooms-and-leavers.md)
+defines these shared outcomes, source limitations and remaining policy choices.
+Physical-unavailability detection and administrative declarations remain
+unselected; they are not supplied by these room-use and leaver rules.
+
 ## Walkthroughs
 
 ### Commit one allocation group while capacity changes
@@ -990,8 +1037,10 @@ repository style.
    at the relevant date, preserving explicit travel and confirmed bookings.
 4. A failing/partial source response does not delete known staff or reactivate
    another source's disabled eligibility input.
-5. If the effective event is a leaver, Booking releases future personal desk/
-   parking; Events/room handover work preserves context for assisted review.
+5. If the effective event is a confirmed leaver, Booking releases future personal
+   desk/parking and cancels organiser-owned room meetings/series through Exchange.
+   A departing PA's other-owner meetings remain. Events gets its own handover.
+   Cancellation fences block later occurrence expansion or stale acceptance.
 
 ### Add a private booking-raised Teams message
 
@@ -1043,7 +1092,7 @@ staffing or runtime. Counts describe the representative tree in this document.
 | Business contexts | 10, named in the full tree. |
 | Uniform context layer directories | 40: `api`, `domain`, `application`, `adapters` for each context, before their internal subdivisions. |
 | Explicit Go-bearing package paths | 112: one per parent directory with a named `.go` file in the full tree. |
-| Explicit representative Go filenames | 199, including generated examples; co-located tests and unprinted retained engine files are excluded. |
+| Explicit representative Go filenames | 205, including generated examples; co-located tests and unprinted retained engine files are excluded. |
 | Shared-kernel packages shown | 4: IDs, principal envelope, interval values and clock. |
 | Explicit booking multi-aggregate operations | Group placement, required linked claim, pre-start both-required pair cancellation, explicitly scoped post-start cancellation and office transfer. |
 | Explicit cross-context transaction families | Event venue/capacity through Events and Booking; registration-created visit/ticket through Events and Visitors. |

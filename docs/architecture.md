@@ -242,9 +242,16 @@ technical guidance and design tradeoffs.
     the selected booking unless both are explicitly chosen. Automatic desk no-show or
     vacancy release retains parking until its own end or explicit release.
     All five layouts extend their existing Booking transition/store paths.
-  - Established: automatically release leavers' future personal desk/parking
-    bookings. Route rooms/events through assisted ownership-handover review;
-    this does not assume Exchange permits an in-place organiser change.
+  - Established: automatically release a confirmed effective leaver's future
+    personal desk/parking and cancel all organiser-owned room meetings/series,
+    reconciling Exchange and notifying attendees. A departing PA's other-owner
+    bookings remain. Events retains its own handover; disable or missing source
+    data alone does not establish departure.
+  - Established: recurring room series creation/management requires an explicit
+    configured capability. Organiser or authorised-attendee occurrence check-in
+    establishes use; consecutive unused occurrences meet a configurable threshold
+    that cancels remaining meetings in Exchange with attendee notification.
+    Verified use resets the count; initial threshold and use deadline are unselected.
   - Established: organisation-wide policies, identity mappings and integration
     administration require explicit global capabilities beyond office scope.
   - Then: tenant-specific integration mappings/permissions and protocol validation.

@@ -47,6 +47,9 @@ rather than proving its correctness or performance.
    explicit post-start scope and automatic desk release retaining parking.
 10. [Room recovery](api-surfaces/room-recovery.md): retained meeting/attendees,
     no-secured-room outcomes and organiser-directed recovery.
+11. [Recurring rooms and leavers](api-surfaces/recurring-rooms-and-leavers.md):
+    restricted series, occurrence check-in, consecutive non-use cancellation and
+    organiser-owned leaver cleanup.
 
 The catalogue links specialised research on authentication, role-based access,
 Entra groups, Conditional Access, MCP/Terraform and provider protocols. The

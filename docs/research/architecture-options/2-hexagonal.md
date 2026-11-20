@@ -161,7 +161,7 @@ spaceweave/
 │   │   │   ├── intent.go
 │   │   │   ├── allocation.go
 │   │   │   ├── booking.go
-│   │   │   ├── room.go
+│   │   │   ├── room.go                 series/occurrence identity, use and cancellation state
 │   │   │   ├── delegation.go
 │   │   │   ├── drawing.go
 │   │   │   ├── visit.go
@@ -290,6 +290,9 @@ spaceweave/
 │   │       │   ├── release.go          explicit selected/pair cancellation; timed desk-only release
 │   │       │   ├── evidence.go
 │   │       │   ├── rooms.go            room intentions/holds and no-secured-room recovery
+│   │       │   ├── series.go           restricted series commands and cancellation fence
+│   │       │   ├── roomuse.go          organiser/attendee check-in and consecutive misses
+│   │       │   ├── lifecycle.go        owner-based desk/parking/room leaver cleanup
 │   │       │   ├── venue.go
 │   │       │   └── outages.go
 │   │       ├── exchange/
@@ -422,7 +425,7 @@ spaceweave/
 │   │       │   └── migrations/
 │   │       │       ├── 0001_identity.sql
 │   │       │       ├── 0002_workplace_policy.sql
-│   │       │       ├── 0003_booking_capacity.sql
+│   │       │       ├── 0003_booking_capacity.sql room series/use/cancellation and capacity
 │   │       │       ├── 0004_work_outbox.sql
 │   │       │       ├── 0005_exchange.sql
 │   │       │       ├── 0006_plans.sql
@@ -705,7 +708,7 @@ pretending to coordinate distributed transactions.
 | Identity | staff/source facts, teams, SCIM, sessions, capabilities/scopes and delegation evidence | Identity-owned people/access facets inside the shared adapter |
 | Workplace | office/building/floor/space definitions, calendars, baseline bundles, lifecycle schedules and active geometry mappings | `workplace` |
 | Policy | revisioned policies, office overrides, publication/effective records | `policy` |
-| Booking | intents/cycles/groups/proposals, dated inventory, claims/holds, waitlist/offers, check-ins, validated operational occupancy evidence and own protected deadline state | `booking` only |
+| Booking | intents/cycles/groups/proposals, dated inventory, claims/holds, waitlist/offers, check-ins, validated operational evidence, room series/use/consecutive misses, owner-based cancellation and own protected deadlines | `booking` only |
 | Exchange | mailbox/event mappings, desired/observed revisions, acceptance facts, subscriptions/cursors | `exchange` |
 | Plans | drawing packages, processing attempts, immutable revisions, blob/recovery/publication metadata | `plans` |
 | Visitors | visitor identities, hosted visits, verified-link grants, reception records | `visitors` |
@@ -907,10 +910,12 @@ Workday-to-SpaceWeave SCIM transport.
 Observed effective deactivation invalidates existing staff sessions and new
 access, not only the next login. Identity commits source/eligibility changes,
 access-epoch advancement and session invalidation in one owned transaction.
-Requests check its current epoch; there is no cross-owner Access participant. Durable
-follow-up releases future personal desk/parking claims through Booking and opens
-room/event handover review. Recheck eligibility at claim commit during cleanup
-lag. A SCIM delete removes the provisioning resource while retained booking
+Requests check its current epoch; there is no cross-owner Access participant.
+A confirmed effective workforce departure separately schedules Booking cleanup
+of future personal desk/parking and organiser-owned room bookings/series, with
+Exchange reconciliation and Events-only handover. A disable is not a departure,
+and a PA's meetings for other owners remain. Recheck eligibility at claim commit
+during cleanup lag. A SCIM delete removes the provisioning resource while retained booking
 history remains subject to policy; it does not automatically erase staff history.
 
 ### Visitors, events and reporting
@@ -1195,6 +1200,44 @@ The [incident contract](../api-surfaces/operational-incidents.md) also preserves
 incident-scoped request-recovery extensions. These owners apply independently of
 repository style.
 
+### Recurring rooms, verified use and leaver cancellation
+
+`core/service/booking/{series,roomuse,lifecycle}.go` implements the driving room/booking contracts using restricted capacity/room facets. `rules/calendar/occurrences.go` calculates dates; it does not own usage or cancellation progress.
+
+Series creation/management requires the configured recurring-room capability
+and current scope/delegation. Series permission and check-in eligibility are
+distinct: the organiser or an authorised attendee can personally check in to an
+occurrence; the creating PA need not attend. Booking owns series/occurrence
+identity, revision, use evidence, consecutive-miss progress and cancellation
+fences. Exchange owns provider master/occurrence/exception correspondence and
+reconciliation, while Attendance projects committed facts.
+
+Verified occurrence use resets the miss count. Eligible consecutive unused
+occurrences reach a configurable threshold that cancels the remaining meetings
+in Exchange and notifies attendees. Evaluation is durable and ordered by
+occurrence; retries cannot add misses. The initial threshold number and use
+window/evaluation deadline remain unselected. Automatic early release of an
+individual room occurrence has not been agreed.
+
+A confirmed effective leaver cancels the organiser/owner's remaining room
+meetings and series, alongside personal desk/parking cleanup. Meetings a PA
+created for other owners remain. Disable, SCIM deletion and partial imports
+cannot invent departure. Events retains its own handover/venue authority.
+Commit cancellation intent/fence and durable work first; reconcile provider
+outcomes after commit and expose pending/failure/completion distinctly. Bounded
+occurrence expansion and stale provider replay cannot recreate a cancelled
+series; cleanup must cover future bookings beyond the local window.
+
+Existing HTTP roles accept the commands/check-ins; maintenance roles run
+bounded occurrence evaluation and cleanup jobs, with Exchange roles reconciling
+provider work. Observe evaluation lag, pending cancellation age, source freshness
+and cleanup completion independently of access revocation.
+
+The [recurring-room and leaver contract](../api-surfaces/recurring-rooms-and-leavers.md)
+defines these shared outcomes, source limitations and remaining policy choices.
+Physical-unavailability detection and administrative declarations remain
+unselected; they are not supplied by these room-use and leaver rules.
+
 ## Walkthroughs
 
 ### 1. Commit a group while direct requests and cancellations change capacity
@@ -1296,8 +1339,10 @@ repository style.
    disable or rewrite explicit travel preferences.
 4. When effective, the workforce update refreshes unconfirmed defaults and future
    snapshots. Confirmed bookings retain their history and explicit choices.
-5. Idempotent lifecycle work releases future personal desk/parking via Booking
-   and opens room/event handover review. Booking commit checks deny new claims
+5. A confirmed effective leaver triggers idempotent Booking desk/parking cleanup
+   and cancellation of organiser-owned room meetings/series in Exchange. Keep
+   other-owner bookings created by a departing PA; handover concerns Events.
+   Booking commit checks deny new claims
    even if cleanup is still queued. Reconciliation later repairs the partial feed.
 
 ### 6. Add the private booking-raised Teams adapter
@@ -1356,6 +1401,7 @@ packages are included. They are not implementation-effort estimates.
 | Measure | Printed candidate |
 | --- | --- |
 | Named Go package directories, including command/client/test-only packages | 86 |
+| Named Go files, including generated and test examples | 263 |
 | Core packages | 30 |
 | Core service packages | 12 |
 | Driving adapter packages | 21 |

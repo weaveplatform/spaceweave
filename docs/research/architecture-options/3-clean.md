@@ -173,7 +173,8 @@ internal/entity/
 │   ├── claim.go
 │   ├── eligibility.go
 │   ├── transition.go
-│   └── capacity.go
+│   ├── capacity.go
+│   └── room.go                series/occurrence and unused-series cancellation rules
 ├── intent/               staff choices, explicit travel, cutoff and collaboration priority
 │   ├── intent.go
 │   ├── cycle.go
@@ -251,7 +252,10 @@ internal/usecase/
 │   ├── run.go
 │   ├── repair.go
 │   ├── evidence.go
-│   └── protection.go
+│   ├── protection.go
+│   ├── series.go              restricted recurring-room authoring and cancellation
+│   ├── roomuse.go             organiser/attendee check-in and consecutive misses
+│   └── lifecycle.go           owner-based room and personal-claim cleanup
 ├── availability/         eligible search and authoritative reads; no promises from cache
 │   ├── port.go
 │   └── query.go
@@ -302,7 +306,7 @@ internal/usecase/
 │   ├── reconcile.go
 │   ├── apply.go
 │   ├── revoke_access.go
-│   └── handover.go
+│   └── lifecycle.go           dispatch Booking cleanup and Events handover separately
 ├── managevisit/          host/window checks and reception operations
 │   ├── port.go
 │   ├── invite.go
@@ -445,7 +449,8 @@ internal/adapter/
 │   │   ├── claims.go
 │   │   ├── capacity.go
 │   │   ├── transitions.go
-│   │   └── evidence.go
+│   │   ├── evidence.go
+│   │   └── rooms.go            series/occurrences, use and cancellation fences
 │   ├── workplace/
 │   │   ├── repository.go
 │   │   ├── definitions.go
@@ -715,7 +720,10 @@ internal/usecase/booking/
 ├── snapshot.go            versioned planning inputs
 ├── plan.go                solver port and pure policy orchestration outside transactions
 ├── run.go                 Booking-owned group/proposal progress
-└── repair.go              replan affected uncommitted groups
+├── repair.go              replan affected uncommitted groups
+├── series.go              restricted series commands and occurrence scope
+├── roomuse.go             organiser/attendee check-in; consecutive-miss threshold
+└── lifecycle.go           cancel leaver-owned rooms and personal claims
 ```
 
 The file split does not create new importable packages. This candidate accepts
@@ -732,7 +740,8 @@ case's `Input` struct:
 | `roomrequest` | `RoomCommands.Request/Change/Cancel(context, claim.RoomCommand)` | Booking interactor owns room intention/claim and no-secured-room recovery outcomes. |
 | `exchangesync` | `RoomObserver.Apply(context, exchange.Observation)` | booking interactor |
 | `manageevent` | `VenueParticipant.Validate/Replace(context, unitofwork.Scope, claim.VenueCommand)` | Booking's owning venue participant; Events keeps its ticket/admission writer. |
-| `identity` | `PersonalClaims.ReleaseFuture(context, staff.Departure)` | booking interactor |
+| `identity` | `OwnedBookings.CleanupLeaver(context, staff.Departure)` | Booking releases personal desk/parking and cancels organiser-owned room meetings/series. |
+| `identity` | `EventContinuity.Review(context, staff.Departure)` | manageevent handles Event handover through its own writer; no room handover. |
 | `recordoccupancy` | `OperationalEvidence.Record(context, attendance.Observation)` | Booking validates, deduplicates, persists and commits evidence facts; the edge use case has no evidence-store writer. |
 | `manageworkplace` | `DatedInventory.ValidateAndApply(context, workplace.Change)` | Booking validates dated-inventory/commitment impact under the definition-version protocol, including mapping activation. |
 
@@ -766,7 +775,7 @@ labels describe data responsibility, not self-contained domain packages.
 
 | SQL owner | Durable records | Mutation authority and enforcement |
 | --- | --- | --- |
-| booking | claims, person guards, dated inventory, parking pools, waitlist/offer state, dated neighbourhood adjustments and validated operational occupancy evidence | injected only into booking; evidence validation/deduplication and exclusion/capacity constraints |
+| booking | claims, person guards, dated inventory, parking pools, waitlist/offer state, dated neighbourhood adjustments, room series/occurrences/use, consecutive misses and cancellation fences | injected only into booking; evidence validation/deduplication and exclusion/capacity constraints |
 | workplace | office calendars, buildings, floors, space definitions, baseline bundles, lifecycle schedules and active geometry mappings | manageworkplace; Booking validates dated impact under versioned activation |
 | identity | source links/facts, membership, sessions, capabilities and source-labelled grants | Identity operation family with distinct People, Access and Delegation facets |
 | exchange | external mappings, common baseline, cursors, subscriptions, conflicts | exchangesync; no direct mutation of booking claims |
@@ -1016,14 +1025,16 @@ not keep a disabled account active. Effective future changes are scheduled;
 source outages preserve known verified state and freshness flags. A missing page
 or failed run cannot fabricate a leaver.
 
-The same transaction enqueues cleanup of future personal desks/parking through
-the booking command port and room/event handover review. This makes revocation
-immediate locally and cleanup retryable; it does not claim instantaneous source
-offboarding or atomic updates across Workday, Entra and Exchange.
+A confirmed effective workforce departure separately enqueues Booking cleanup
+of future personal desks/parking and organiser-owned room meetings/series, with
+Exchange cancellation progress and Events-only handover. A disable is not a
+departure and a departing PA's meetings for other owners remain. Revocation stays
+immediate locally while cleanup is retryable; this does not claim instantaneous
+source offboarding or atomic updates across Workday, Entra and Exchange.
 Workforce office/team changes update unconfirmed derived defaults on the
 effective date, preserving explicit travel and confirmed arrangements.
-Rooms/events need assisted continuation decisions; organiser transfer is not
-assumed to be an in-place provider operation.
+Events retains assisted continuity decisions; room cleanup cancels the leaver's
+owned meetings rather than transferring their organiser.
 
 SCIM deactivation, reactivation and deletion remain distinct. A deletion removes
 the resource from SCIM responses even when retained booking/audit history still
@@ -1426,6 +1437,44 @@ The [incident contract](../api-surfaces/operational-incidents.md) also preserves
 incident-scoped request-recovery extensions. These owners apply independently of
 repository style.
 
+### Recurring rooms, verified use and leaver cancellation
+
+Booking `series.go`, `roomuse.go` and `lifecycle.go` use entity claim/attendance values and Booking-owned repository handles. Identity dispatches through its own consumed cleanup port; it never imports Booking or Events use-case implementations.
+
+Series creation/management requires the configured recurring-room capability
+and current scope/delegation. Series permission and check-in eligibility are
+distinct: the organiser or an authorised attendee can personally check in to an
+occurrence; the creating PA need not attend. Booking owns series/occurrence
+identity, revision, use evidence, consecutive-miss progress and cancellation
+fences. Exchange owns provider master/occurrence/exception correspondence and
+reconciliation, while Attendance projects committed facts.
+
+Verified occurrence use resets the miss count. Eligible consecutive unused
+occurrences reach a configurable threshold that cancels the remaining meetings
+in Exchange and notifies attendees. Evaluation is durable and ordered by
+occurrence; retries cannot add misses. The initial threshold number and use
+window/evaluation deadline remain unselected. Automatic early release of an
+individual room occurrence has not been agreed.
+
+A confirmed effective leaver cancels the organiser/owner's remaining room
+meetings and series, alongside personal desk/parking cleanup. Meetings a PA
+created for other owners remain. Disable, SCIM deletion and partial imports
+cannot invent departure. Events retains its own handover/venue authority.
+Commit cancellation intent/fence and durable work first; reconcile provider
+outcomes after commit and expose pending/failure/completion distinctly. Bounded
+occurrence expansion and stale provider replay cannot recreate a cancelled
+series; cleanup must cover future bookings beyond the local window.
+
+Existing HTTP roles accept the commands/check-ins; maintenance roles run
+bounded occurrence evaluation and cleanup jobs, with Exchange roles reconciling
+provider work. Observe evaluation lag, pending cancellation age, source freshness
+and cleanup completion independently of access revocation.
+
+The [recurring-room and leaver contract](../api-surfaces/recurring-rooms-and-leavers.md)
+defines these shared outcomes, source limitations and remaining policy choices.
+Physical-unavailability detection and administrative declarations remain
+unselected; they are not supplied by these room-use and leaver rules.
+
 ## Walkthroughs
 
 ### 1. Commit a group while capacity changes
@@ -1510,8 +1559,10 @@ repository style.
    Field ownership prevents that feed from re-enabling an Entra-disabled account.
 4. A failed related Workday page preserves its previous state with stale-source
    evidence; it does not clear teams, infer deletion or manufacture a leaver.
-5. Lifecycle jobs release future personal desks/parking through booking and
-   create room/event handover tasks. History remains subject to retention.
+5. A confirmed effective leaver triggers Booking personal desk/parking cleanup
+   and organiser-owned room/series cancellation through Exchange; other-owner
+   meetings created by a departing PA remain. Events gets its own handover task.
+   History remains subject to retention.
 6. Unconfirmed planning defaults adopt valid effective source changes; explicit
    travel and confirmations survive. Ambiguous source correlations enter review.
 7. Recovery reconciles missed pages and related records. SCIM deletion later
@@ -1589,7 +1640,7 @@ as required by [CLAUDE.md](../../../CLAUDE.md).
 | concurrent integration | group/direct/transfer races, check-in/no-show/offer races, smaller venue/ticket race, lease fencing |
 | provider contracts | Graph duplicates/out-of-order/missed deltas; SCIM PATCH/filter/delete; Workday effective/related changes; personal Teams failures |
 | drawing regression | current deterministic golden/real CAD corpus, renderer validation, immutable manifest and recovery-copy failure |
-| browser/acceptance | two portals, backend scope/CSRF, PA personal check-in denial, restricted visitor and duplicate ticket scan |
+| browser/acceptance | two portals, backend scope/CSRF, denial of another person's desk check-in, valid organiser/attendee room check-in, restricted visitor and duplicate ticket scan |
 | failure/recovery | commit-before-crash, send-before-ack, lost lease, confirmed outage grace, source outage and regional failover |
 | load/SLO | representative concurrent office bursts, hot parking pools/events, initial p95, allocation completion and DB contention |
 
@@ -1602,7 +1653,8 @@ every durable event/job has a registered versioned handler,
 and each role gets only required capabilities.
 
 Acceptance must prove adversarial cases, not mirror implementation: an anonymous
-occupied desk still releases as no-show; a PA cannot check in; stale native
+occupied desk still releases as no-show; a PA cannot check in another person's
+desk; an authorised attendee can check in to a room occurrence; stale native
 authority cannot authorise a new action; an app grant survives unrelated native
 revocation; a visitor expiry removes identifiable report/export copies; a Teams
 opt-out during retry suppresses that specific message. Recovery tests restore
@@ -1630,7 +1682,7 @@ They are structural design counts, not estimates of final implementation size.
 | Infrastructure packages | 7 |
 | Composition/enforcement/devtool packages | 3 |
 | Total explicitly inventoried Go packages | 108 |
-| Explicit `.go` file entries, including generated/enforcement examples | 332 |
+| Explicit `.go` file entries, including generated/enforcement examples | 337 |
 | Core dependency rules plus ownership/port rules | 9 |
 | Common comparison scenarios traced | 6 |
 

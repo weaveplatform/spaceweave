@@ -92,6 +92,12 @@ layouts without selecting a repository style.
   validates definitions, calendars and dated inventory with the same identity
   and history. Deletion is separate and refuses protected dependencies without
   silent cancellation or cascade.
+- Recurring rooms support series and occurrence actions, restricted by explicit
+  capability. Organiser/authorised-attendee check-in establishes use. Consecutive
+  unused occurrences reach a configurable threshold that cancels remaining
+  meetings in Exchange with attendee notification; verified use resets the count.
+  The [recurring-room contract](../api-surfaces/recurring-rooms-and-leavers.md)
+  applies across all five layouts; no timing/count default is assumed.
 - Bidirectional Exchange Online room create/edit/cancel. App requests hold local
   capacity pending room acceptance; compatible changes reconcile automatically.
   Failed replacement after old-room loss retains meeting/attendees with no
@@ -104,7 +110,9 @@ layouts without selecting a repository style.
   Workday workforce lifecycle, structure and usual office. Correlate verified
   source identities without email-only matching; apply effective dates, revoke
   access on observed effective disables/leavers and preserve known state during
-  source outages. Review rooms/events for leaver handover.
+  source outages. A confirmed effective leaver cancels organiser-owned room
+  meetings/series through Booking and Exchange; a departing PA's other-owner
+  meetings remain. Events retains handover.
 - Capabilities plus configurable office scopes; explicit global capabilities
   for organisation-wide settings. Visitor access uses verified email with
   visit/event restrictions. Separately configured visitor, occupancy and

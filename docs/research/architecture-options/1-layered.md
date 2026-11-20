@@ -137,6 +137,7 @@ internal/
 │   ├── booking.go                    claims, pair identity/required kind, holds and versions
 │   ├── deskuse.go                    allocated/taken/released states and personal check-in
 │   ├── calendar.go                   desired/observed room changes and reconciliation state
+│   ├── room.go                       series/occurrence identity, use and cancellation state
 │   ├── plans.go                      drawing package and immutable asset revision metadata
 │   ├── visitor.go                    restricted visitor identity, hosted visit and reception
 │   ├── event.go                      audience, registration, tickets and admissions
@@ -265,9 +266,11 @@ internal/
 │   │   ├── waitlist.go               eligibility, ordering and offer creation
 │   │   ├── offer.go                  versioned acceptance, expiry and next candidate
 │   │   ├── rooms.go                  pending local holds and room acceptance transitions
+│   │   ├── series.go                 restricted series commands and cancellation fence
+│   │   ├── roomuse.go                attendee/organiser check-in; consecutive-miss evaluation
 │   │   ├── roomchange.go             room changes, no-secured-room recovery and retained meeting
 │   │   ├── venue.go                  venue mutation inside Events' named transaction
-│   │   ├── lifecycle.go              idempotent leaver personal-claim cleanup
+│   │   ├── lifecycle.go              owner-based desk/parking/room leaver cancellation
 │   │   ├── outage.go                 protected timeout evaluation/recovery grace
 │   │   ├── record.go                 booking facts, audit and outbox inside transaction
 │   │   ├── solver.go                 Booking-owned solver interface and planning orchestration
@@ -323,7 +326,7 @@ internal/
 │   │   ├── registration.go           named staff/visitor ticket issue and duplicate requests
 │   │   ├── protection.go             apply shared incidents to Events-owned deadlines
 │   │   ├── admission.go              one successful entry scan per usable ticket
-│   │   └── handover.go               assisted leaver ownership/venue recovery work
+│   │   └── handover.go               assisted Event ownership/venue recovery work
 │   ├── reporting/
 │   │   ├── projection.go             committed booking/check-in facts and source freshness
 │   │   ├── reports.go                own history and scoped individual/aggregate queries
@@ -365,7 +368,8 @@ internal/
     │   │   ├── booking.go            booking claims and transitions; no business bypass API
     │   │   ├── capacity.go           stable lock rows and overlap/capacity constraints
     │   │   ├── allocation.go         snapshot/cycle/group/proposal rows
-    │   │   ├── evidence.go           Booking-owned operational occupancy records
+    │   │   ├── evidence.go           Booking-owned desk evidence and occurrence check-ins
+    │   │   ├── rooms.go              series/occurrences, use evaluation and cancellation fences
     │   │   ├── identity_people.go    Identity source observations and effective facts
     │   │   ├── identity_access.go    Identity session/grant/token persistence
     │   │   ├── workplace.go          definition revisions and immutable references
@@ -386,7 +390,7 @@ internal/
     │   │       ├── 0002_identity_access.sql Identity sessions/capabilities/grants
     │   │       ├── 0003_workplace.sql Workplace definitions, calendars and active mappings
     │   │       ├── 0004_policy.sql    Policy revisions and publications
-    │   │       ├── 0005_booking.sql   Booking inventory/intents/cycles/claims/evidence
+    │   │       ├── 0005_booking.sql   Booking claims/planning/room series/use/cancellation
     │   │       ├── 0006_exchange.sql  Exchange mappings/observations/cursors
     │   │       ├── 0007_plans.sql     Plans revisions and recovery metadata
     │   │       ├── 0008_visitors.sql  Visitors/visits and reception state
@@ -582,7 +586,7 @@ job claiming, not the inventory query deciding who can book.
 
 | Logical owner | Application decisions | Persistence files/tables it alone mutates |
 | --- | --- | --- |
-| Booking | claims, dated inventory, intents/cycles, waitlists, check-in/release and validated operational occupancy evidence | booking/capacity/allocation/evidence SQL; Booking-owned claim/inventory/evidence tables |
+| Booking | claims/planning, room series/occurrences, organiser/attendee use, consecutive misses and owner-based cancellation | booking/capacity/allocation/rooms/evidence SQL; only Booking mutates its claim/use/cancellation state |
 | Workplace | baseline definitions, calendars, lifecycle schedules and active geometry mappings | workplace SQL and definition/mapping tables |
 | Identity | canonical IDs/source facts, SCIM, sessions, capabilities and delegation | Identity-owned people/access facets and migration files under the shared SQL layer |
 | Exchange | correspondence, provider observations, progress | exchange SQL and mapping/cursor/subscription tables |
@@ -666,7 +670,8 @@ before sending and checks again when applying its result.
 Do not infer Graph compare-and-swap from `changeKey`: the update reference does
 not establish that event-specific conditional-write contract. Do not promise an
 atomic provider room swap retaining the old room until replacement acceptance.
-Replacement compensation and organiser handover need provider validation.
+Replacement compensation needs provider validation; Event handover remains
+with Events.
 Organiser cancellation and deleting a room calendar copy also remain
 distinct operations. [Event update contract](https://learn.microsoft.com/en-us/graph/api/event-update?view=graph-rest-1.0).
 
@@ -713,8 +718,11 @@ mapping and reconciliation rather than an assumed instantaneous complete feed.
 [Workday integration reference](https://learn.microsoft.com/en-us/entra/identity/app-provisioning/workday-integration-reference).
 
 An observed effective disable/leaver immediately denies existing/new sessions;
-another source cannot clear its authoritative denial. Durable cleanup releases
-future personal desk/parking through Booking and raises room/event handover.
+another source cannot clear its authoritative denial. A confirmed effective
+workforce departure separately schedules Booking cleanup of future personal
+desk/parking and all organiser-owned room bookings/series, with Exchange
+cancellation progress. Events retains its own handover. Disable alone does not
+invent departure; a departing PA's other-owner meetings remain.
 Effective office/team changes update unconfirmed defaults, preserving travel and
 confirmations. Cleanup lag never postpones denial.
 
@@ -963,6 +971,44 @@ The [incident contract](../api-surfaces/operational-incidents.md) also preserves
 incident-scoped request-recovery extensions. These owners apply independently of
 repository style.
 
+### Recurring rooms, verified use and leaver cancellation
+
+`application/booking/{series,roomuse,lifecycle}.go` owns these workflows; flat model values and restricted store facets cross the horizontal layers, with room persistence in `store/postgres/rooms.go`.
+
+Series creation/management requires the configured recurring-room capability
+and current scope/delegation. Series permission and check-in eligibility are
+distinct: the organiser or an authorised attendee can personally check in to an
+occurrence; the creating PA need not attend. Booking owns series/occurrence
+identity, revision, use evidence, consecutive-miss progress and cancellation
+fences. Exchange owns provider master/occurrence/exception correspondence and
+reconciliation, while Attendance projects committed facts.
+
+Verified occurrence use resets the miss count. Eligible consecutive unused
+occurrences reach a configurable threshold that cancels the remaining meetings
+in Exchange and notifies attendees. Evaluation is durable and ordered by
+occurrence; retries cannot add misses. The initial threshold number and use
+window/evaluation deadline remain unselected. Automatic early release of an
+individual room occurrence has not been agreed.
+
+A confirmed effective leaver cancels the organiser/owner's remaining room
+meetings and series, alongside personal desk/parking cleanup. Meetings a PA
+created for other owners remain. Disable, SCIM deletion and partial imports
+cannot invent departure. Events retains its own handover/venue authority.
+Commit cancellation intent/fence and durable work first; reconcile provider
+outcomes after commit and expose pending/failure/completion distinctly. Bounded
+occurrence expansion and stale provider replay cannot recreate a cancelled
+series; cleanup must cover future bookings beyond the local window.
+
+Existing HTTP roles accept the commands/check-ins; maintenance roles run
+bounded occurrence evaluation and cleanup jobs, with Exchange roles reconciling
+provider work. Observe evaluation lag, pending cancellation age, source freshness
+and cleanup completion independently of access revocation.
+
+The [recurring-room and leaver contract](../api-surfaces/recurring-rooms-and-leavers.md)
+defines these shared outcomes, source limitations and remaining policy choices.
+Physical-unavailability detection and administrative declarations remain
+unselected; they are not supplied by these room-use and leaver rules.
+
 ## Walkthroughs
 
 ### 1. Commit a group while inventory changes
@@ -1019,7 +1065,8 @@ repository style.
 6. Subsequent native-grant revocation removes that grant. New actions refresh
    stale evidence or use an independently valid app grant. Existing booking
    ownership and PA audit survive; app-managed authority does not change Outlook
-   permissions or allow PA check-in.
+   permissions. Desk check-in remains personal to its assignee; room check-in
+   requires the actual actor's organiser/attendee eligibility.
 
 ### 4. Smaller venue, competing ticket and visitor admission
 
@@ -1050,8 +1097,10 @@ repository style.
    and confirmed bookings retain their meaning/history.
 4. A partial Workday outage preserves known data and its freshness marker.
    Missing responses neither invent a leaver nor undo SCIM disable.
-5. Committed lifecycle work releases future personal desk/parking claims through
-   Booking and creates room/event handover tasks. An ambiguous correlation waits
+5. A confirmed effective leaver schedules Booking to release future personal
+   desk/parking and cancel organiser-owned room meetings/series in Exchange.
+   Other-owner bookings created by a departing PA remain; Events gets handover
+   work. An ambiguous correlation waits
    for review rather than matching mutable email.
 6. SCIM deletion later removes that provisioning resource; internal history and
    identifiable reporting copies follow their respective retention policies.
@@ -1122,7 +1171,7 @@ sketches and walkthrough paths are not counted again.
 | Internal Go packages | 78 |
 | Application packages | 13 |
 | Persistence packages | 23 |
-| Representative Go files, including generated servers and architecture tests | 230 |
+| Representative Go files, including generated servers and architecture tests | 234 |
 | Initial named SQL migrations | 13; one ordered sequence, individually owned |
 | Dependency/ownership rules | 8; application edges and SQL owner manifest expand their checks |
 | Independent runtime roles from one release | 5 |

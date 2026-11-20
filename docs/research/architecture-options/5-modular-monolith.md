@@ -272,6 +272,7 @@ spaceweave/
 │   │   ├── core/
 │   │   │   ├── model/
 │   │   │   │   ├── claim.go             persisted pair/required kind and release cause
+│   │   │   │   ├── room.go              series/occurrence identity and usage/cancellation state
 │   │   │   │   ├── versions.go
 │   │   │   │   └── outcome.go
 │   │   │   ├── port/
@@ -296,6 +297,9 @@ spaceweave/
 │   │   │   │   └── accept.go
 │   │   │   ├── rooms/
 │   │   │   │   ├── request.go
+│   │   │   │   ├── series.go            restricted series commands and cancellation fence
+│   │   │   │   ├── checkin.go           organiser/authorised-attendee occurrence check-in
+│   │   │   │   ├── evaluate.go          consecutive misses/reset and threshold cancellation
 │   │   │   │   ├── apply_observation.go  accepted/lost room outcomes and meeting recovery
 │   │   │   │   └── cancel.go
 │   │   │   ├── venues/
@@ -304,8 +308,7 @@ spaceweave/
 │   │   │   │   ├── outages.go
 │   │   │   │   └── deadlines.go
 │   │   │   ├── lifecycle/
-│   │   │   │   ├── leavers.go
-│   │   │   │   └── handover.go
+│   │   │   │   └── leavers.go           owner-based desk/parking/room leaver cancellation
 │   │   │   └── planning/
 │   │   │       ├── cycle.go
 │   │   │       ├── intents.go
@@ -319,18 +322,20 @@ spaceweave/
 │   │       │   └── planning.go
 │   │       ├── postgres/
 │   │       │   ├── claims.go
+│   │       │   ├── rooms.go             series/occurrences, use and cancellation fences
 │   │       │   ├── capacity.go
 │   │       │   ├── venues.go
 │   │       │   ├── evidence.go
 │   │       │   ├── migrations/
 │   │       │   │   ├── 0001_inventory_claims.sql
-│   │       │   │   ├── 0002_room_requests.sql
+│   │       │   │   ├── 0002_room_requests.sql series/occurrences/use and cancellation
 │   │       │   │   └── 0003_planning.sql
 │   │       │   └── planning.go
 │   │       ├── sensors/
 │   │       │   └── ingest.go
 │   │       ├── jobs/
 │   │       │   ├── releases.go
+│   │       │   ├── room_use.go          evaluate due occurrences; cancel abandoned series
 │   │       │   ├── leavers.go
 │   │       │   └── allocation.go
 │   │       ├── storetest/
@@ -352,6 +357,7 @@ spaceweave/
 │   │   │   ├── visit_link.go
 │   │   │   ├── admit.go
 │   │   │   ├── protection.go         apply shared incidents to Events-owned deadlines
+│   │   │   ├── handover.go           Event continuity review after organiser departure
 │   │   │   └── port/
 │   │   │       └── store.go
 │   │   └── adapters/
@@ -669,7 +675,7 @@ resources it owns; a shared PostgreSQL pool belongs to app.
 | `booking/api.Claims` | Query availability, create claims, resolve linked cancellation from either booking ID, and transfer desk/parking. Before either starts, both-required cancellation ends both atomically; once either starts, cancel the selected booking unless both are explicitly chosen. Optional links cancel independently. |
 | `booking/api.Allocations` | Read planning snapshot; commit one group with expected inputs; return precise stale/conflict causes. |
 | `booking/api.Desks` | Personal check-in, eligible waitlist submission/acceptance, validated operational evidence ingestion and protected expiry; commit facts for Attendance projections. |
-| `booking/api.Rooms` | Own room intentions/holds and secured/recovery outcomes; retain a meeting after failed replacement with no secured room, and confirm recovery only after acceptance/capacity validation. |
+| `booking/api.Rooms` | Own room requests, capability-gated series/occurrence commands, organiser/attendee check-in, consecutive-use evaluation and cancellation. Failed replacement retains the meeting; accepted non-use/leaver policy can cancel it. |
 | `exchange/api.Reconciliation` | Durably accept provider observations, reconcile committed room intentions and expose integration progress; no claim writes. |
 | `booking/api.Venues` | Validate and mutate event-space claims as Booking's participant in the named venue workflow; no event/ticket table access. |
 | `events/api.Events` and `Tickets` | Publish/edit event details, audience and registration; coordinate venue changes; issue/revoke tickets and admit attendees using Events-owned state. |
@@ -796,8 +802,8 @@ migrations install their own tables, indexes and constraints.
 | Identity | `staff`, `source_links`, `source_checkpoints`, `workforce_facts`, `groups`, `memberships`, `sessions`, `capabilities`, `delegation_grants`, `scim_resources` | Correlation, source authority, access and lifecycle in one owned transaction. |
 | Workplace | `offices`, `buildings`, `floors`, `space_definitions`, `office_calendars`, `baseline_neighbourhoods`, `definition_versions`, `plan_mappings`, `lifecycle_schedules` | Definitions and operational mapping publication; no dated active claim writes. |
 | Booking | `inventory_days`, `dated_bundles`, `resource_guards`, `owner_guards`, `claims`, `parking_segments`, `waitlist_entries`, `offers`, `checkins`, `occupancy_evidence`, `protected_deadlines` | All claim/timeout transitions and validated operational occupancy evidence; commit facts for Attendance. |
-| Booking, continued | `room_requests`, `handover_reviews`, `cycles`, `attendance_intents`, `travel_exceptions`, `collaboration_requests`, `allocation_groups`, `runs`, `proposals` | Business room intentions and no-secured-room recovery outcomes, plus planning, demand and group progress under the same claim owner. |
-| Events | `events`, `event_audiences`, `tickets`, `admissions` | Event lifecycle, registration, ticket capacity and admission, coordinated with Booking's venue state. |
+| Booking, continued | `room_requests`, `room_series`, `room_occurrences`, `room_checkins`, `room_use_evaluations`, `room_cancellations`, `cycles`, `attendance_intents`, `travel_exceptions`, `collaboration_requests`, `allocation_groups`, `runs`, `proposals` | Room intentions/recovery, consecutive-use evaluation and cancellation fences plus planning/demand; Booking owns every business outcome. |
+| Events | `events`, `event_audiences`, `tickets`, `admissions`, `handover_reviews` | Event lifecycle, handover, registration, ticket capacity and admission, coordinated with Booking's venue state. |
 | Exchange | `exchange_links`, `provider_observations`, `provider_desired_state`, `sync_cursors`, `subscriptions`, `reconciliation_progress` | Provider correlation, desired/observed calendar state and reconciliation; apply business transitions through Booking. |
 | Visitors | `visitors`, `email_proofs`, `visits`, `visit_restrictions`, `reception_entries` | Verified email, hosts, access windows and visitor-specific retention. |
 | Plans | `uploads`, `plan_revisions`, `render_revisions`, `asset_copies`, `publication_pointers`, `processing_attempts` | Metadata and publication; blob objects remain outside PostgreSQL transactions. |
@@ -1074,8 +1080,9 @@ outage preserves known facts and does not convert missing rows into leavers.
 Security deactivation takes effect when a confirmed effective instruction is
 observed; no architecture can promise instantaneous offboarding before the
 source delivers it. Booking receives durable lifecycle facts. An effective
-leaver instruction releases future personal desk/parking claims retry-safely and
-opens room/event handover reviews. Account disable revokes access; it must not
+leaver instruction releases future personal desk/parking and cancels all
+organiser-owned room meetings/series through Booking and Exchange, retry-safely.
+Other-owner meetings created by a departing PA remain; Events retains handover. Account disable revokes access; it must not
 invent a Workday leaver fact. Cleanup may lag access revocation; the lag is a
 metric and task state. In-place Exchange organiser transfer is not assumed.
 
@@ -1376,6 +1383,44 @@ The [incident contract](../api-surfaces/operational-incidents.md) also preserves
 incident-scoped request-recovery extensions. These owners apply independently of
 repository style.
 
+### Recurring rooms, verified use and leaver cancellation
+
+`booking/core/rooms/{series,checkin,evaluate}.go` uses private model/store contracts, PostgreSQL room state and the room-use job handler. Booking leaver cleanup stays inside Booking; Event handover code/state stays inside Events.
+
+Series creation/management requires the configured recurring-room capability
+and current scope/delegation. Series permission and check-in eligibility are
+distinct: the organiser or an authorised attendee can personally check in to an
+occurrence; the creating PA need not attend. Booking owns series/occurrence
+identity, revision, use evidence, consecutive-miss progress and cancellation
+fences. Exchange owns provider master/occurrence/exception correspondence and
+reconciliation, while Attendance projects committed facts.
+
+Verified occurrence use resets the miss count. Eligible consecutive unused
+occurrences reach a configurable threshold that cancels the remaining meetings
+in Exchange and notifies attendees. Evaluation is durable and ordered by
+occurrence; retries cannot add misses. The initial threshold number and use
+window/evaluation deadline remain unselected. Automatic early release of an
+individual room occurrence has not been agreed.
+
+A confirmed effective leaver cancels the organiser/owner's remaining room
+meetings and series, alongside personal desk/parking cleanup. Meetings a PA
+created for other owners remain. Disable, SCIM deletion and partial imports
+cannot invent departure. Events retains its own handover/venue authority.
+Commit cancellation intent/fence and durable work first; reconcile provider
+outcomes after commit and expose pending/failure/completion distinctly. Bounded
+occurrence expansion and stale provider replay cannot recreate a cancelled
+series; cleanup must cover future bookings beyond the local window.
+
+Existing HTTP roles accept the commands/check-ins; maintenance roles run
+bounded occurrence evaluation and cleanup jobs, with Exchange roles reconciling
+provider work. Observe evaluation lag, pending cancellation age, source freshness
+and cleanup completion independently of access revocation.
+
+The [recurring-room and leaver contract](../api-surfaces/recurring-rooms-and-leavers.md)
+defines these shared outcomes, source limitations and remaining policy choices.
+Physical-unavailability detection and administrative declarations remain
+unselected; they are not supplied by these room-use and leaver rules.
+
 ## Walkthroughs
 
 Each trace uses the same scenarios as the other four options. Package paths
@@ -1572,12 +1617,14 @@ migration checks. Their exact names and the remaining module map stay proposed.
    replans affected uncommitted proposals; explicit travel and confirmed
    bookings retain their intended dates/places and historical context.
 6. Booking distinguishes account disable from effective leaver status. An
-   actual leaver instruction releases future personal desk/parking claims,
-   promotes eligible waitlist demand and opens room/event handover review.
+   actual leaver instruction releases future personal desk/parking and cancels
+   organiser-owned room meetings/series through Exchange, with a durable fence
+   against later occurrence expansion or replay. Other-owner bookings created by
+   a departing PA remain; Events retains handover. Promote only released capacity.
    Neither an office/team move nor a partial feed implies departure. Historical
    claims survive, and in-place Exchange organiser mutation is not assumed.
 7. Notification work explains arrangements requiring attention. Consumer
-   receipts prevent duplicate handover tasks after replay; lifecycle cleanup lag
+   receipts prevent duplicate cancellation effects and Event handover tasks; cleanup lag
    is visible independently of already-effective access revocation.
 8. SCIM reactivation and deletion remain distinct operations with source
    precedence. Deletion removes the provisioning resource while retained
@@ -1670,7 +1717,7 @@ unit tests are excluded. Root overview and prose examples are not counted.
 | Business modules | 10 |
 | Gateway packages | 2 |
 | Go packages | 115 |
-| Named Go files, including generated and test files | 243 |
+| Named Go files, including generated and test files | 249 |
 | Named SQL migration files | 15 |
 | Named non-Go frontend files | 19 |
 | Named Kubernetes manifest files | 7 |
