@@ -867,8 +867,13 @@ later visitor ineligibility retains the ticket/seat pending repair or explicit
 cancellation. Office/time changes revalidate linked visit hosts/windows. Event
 cancellation asks Visitors to cancel visits whose only remaining valid purpose
 was that event, while preserving other-purpose visits and reception history.
-Offer ordering/holding/duration and reconfirmation nonresponse remain open;
-the desk waitlist policy is separate.
+Events selects eligible requests in join order and holds offered seats exclusively.
+Decline/expiry ends that request; explicit rejoin creates a new one. Acceptance
+ends at registration closing time unless the organiser explicitly extends it.
+Published reconfirmation deadlines release unconfirmed tickets. Unused-ticket
+cancellation also cancels a future visit with no other valid purpose. Initial
+numeric durations and recovery/eligibility exceptions remain open; the desk
+waitlist policy is separate.
 
 ### Desk use, waitlists, outage protection and reporting
 

@@ -199,8 +199,12 @@ pending authorised repair or explicit cancellation. Attendees can cancel their
 own unused tickets; optional event waitlists receive released capacity before
 fresh registrations through time-limited, eligibility-checked offers. Event
 cancellation also cancels visits whose only remaining valid purpose was that
-event. The [event workflow contract](event-workflows.md) records these rules and
-their remaining offer/reconfirmation policy decisions.
+event. The [event workflow contract](event-workflows.md) defines
+exclusive FIFO offers, decline/expiry/rejoin, the registration cutoff and
+published reconfirmation deadlines releasing unconfirmed tickets. Unused-ticket
+cancellation also cancels an associated future visit with no other valid purpose,
+preserving other-purpose visits and reception history. Numeric offer/notice
+defaults and recovery/eligibility exceptions remain open.
 When registration creates a visit solely for a ticket, Events and Visitors
 commit both or neither; an existing valid reused visit survives failed issuance.
 

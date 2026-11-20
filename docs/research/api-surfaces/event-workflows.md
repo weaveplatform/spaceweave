@@ -28,9 +28,10 @@ channels; the existing private Teams opt-in concerns booking-raised messages.
 
 ## Registration and admission invariants
 
-- Issued tickets respect the event limit and secured venue capacity. Venue
-  changes and issuance coordinate through the owning interfaces in one local
-  transaction where required.
+- New tickets and exclusive offer holds respect the event limit and secured
+  venue capacity. Active offers count against available seats before they become
+  tickets. Venue/capacity changes account for issued tickets and active offer
+  holds through the owning interfaces in one local transaction where required.
 - A visit created solely for registration commits with its ticket or neither
   does. A failed issue leaves a reused existing valid visit intact. Retained
   definitive refusals do not create a new visit or ticket.
@@ -52,7 +53,11 @@ A suitable replacement within the same office and time retains tickets with
 notification. A change of office or time requires attendee reconfirmation before
 admission, plus revalidation of linked visitor hosts and visit windows. A venue
 replacement alone does not establish that those visit conditions remain valid.
-Reconfirmation deadlines and the treatment of nonresponders remain open.
+The organiser publishes a reconfirmation deadline and notifies affected attendees.
+At that deadline, unconfirmed tickets release their seats under the event's
+enabled waitlist policy; without a waitlist, normal registration rules apply.
+Public resource views show both the deadline and the outcome. The initial notice
+period and reconfirmation protection during an application outage remain open.
 
 ## Visitor eligibility after issuance
 
@@ -67,6 +72,10 @@ entitlement and an admitted attendee in the public resource views.
 Staff and verified visitors may cancel their own unused tickets before admission,
 releasing those seats. Current scope and ticket state govern the action;
 completed admissions remain historical records.
+If an associated future visit has no other valid purpose, also cancel that visit.
+Preserve visits supporting other purposes and existing reception history.
+Visitors checks current purposes before applying the cancellation; a stale event
+link cannot cancel a visit that has acquired another valid purpose.
 
 When an event is cancelled, also cancel visits whose only remaining valid purpose
 was that event. Preserve visits supporting other valid purposes, including reused
@@ -76,14 +85,27 @@ organisation's existing visitor and historical-data rules.
 ## Optional event waitlists
 
 An event may enable a waitlist for eligible attendees. Released seats are offered
-to eligible waitlisted attendees before fresh registrations. Offers are
-time-limited and acceptance rechecks current audience, registration and visit
-eligibility. Expired or cancelled entitlements cannot grant admission.
+to eligible waitlisted attendees in join order before fresh registrations.
+An offer holds one seat exclusively for its recipient until acceptance, decline
+or expiry, counting against available capacity. Acceptance rechecks current
+audience, registration and visit eligibility before issuing the ticket and
+consuming the hold in the same owning capacity transition. An offer itself is
+not a ticket or admission entitlement.
+
+Decline or expiry ends the waitlist request and releases the offered seat to the
+next eligible person. An attendee can explicitly rejoin as a new request under
+the event's ordering policy; the previous request's position is not restored.
+
+Offer acceptance ends no later than the published registration closing time;
+clip each offer's deadline to that cutoff. An organiser can explicitly extend
+registration to permit later acceptance. Outage grace alone does not extend the
+registration window. Expired offers and cancelled tickets cannot grant admission.
 
 Event waitlists have their own policies. Desk allocation priorities and the
-same-day desk offer duration do not define event ordering or expiry. Offer
-ordering, whether an offer holds its seat exclusively, and offer durations remain
-open decisions. Retry and capacity protection must cover simultaneous offer
+same-day desk offer duration do not define event ordering or expiry. Initial
+numeric offer durations, temporarily ineligible queued requests and existing
+offers during venue recovery or material event changes remain open decisions.
+Retry and capacity protection must cover simultaneous offer
 acceptance, fresh registration, cancellation and venue changes.
 
 ## Validation evidence required
@@ -91,8 +113,11 @@ acceptance, fresh registration, cancellation and venue changes.
 Exercise registration losing the last seat, reused-visit preservation, material
 changes racing admission, visitor ineligibility after issuance, ticket cancellation
 racing admission, shared-purpose visit preservation, waitlist priority over fresh
-registration, offer expiry/acceptance, duplicate retries and venue recovery with
-existing tickets. Check all actions through their supported public contracts and
+registration, exclusive hold accounting, FIFO selection, decline/expiry/rejoin,
+acceptance at the registration cutoff, reconfirmation deadline/release, purpose-based
+future-visit cleanup racing a new valid purpose, duplicate retries and venue
+recovery with existing tickets.
+Check all actions through their supported public contracts and
 the real owning transaction boundaries. The
 [request contract](request-behaviour.md) supplies recovery, authority and retry
 requirements independently of the event's business state.

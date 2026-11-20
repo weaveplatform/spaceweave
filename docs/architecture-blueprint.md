@@ -82,7 +82,7 @@ remaining proposed module placements.
 | Exchange | Provider identity mappings, desired/observed calendar state, acceptance observations, delta cursors/subscriptions and reconciliation work. | Reconcile committed room intentions and external changes through Booking; supply native delegation evidence to Access. |
 | Plans | Drawing packages, tracing/review workflows, immutable plan/render revisions and blob metadata/publication. | Upload, process, review and retrieve a revision; associate approved geometry with stable Workplace space identities. |
 | Visitors | Visitor profiles, hosted visits, visit windows and reception arrival/departure records. | Create/retrieve a visit, record reception activity and apply visitor retention. |
-| Events | Event details/audience, registration, ticket capacity, named tickets, admission scans and event venue coordination. | Register/admit an attendee and manage a secured venue without violating issued-ticket capacity. |
+| Events | Event details/audience, registration, tickets/exclusive offers, reconfirmation, waitlists, admission and venue coordination. | Register, offer, reconfirm, cancel or admit within current event capacity and eligibility, coordinating secured venue changes with Booking. |
 | Attendance and reporting | Occupancy evidence, attendance projections and office-scoped reports, with separate evidence/retention categories. | Ingest evidence, expose fresh desk-vacancy observations to Booking and report bookings/check-ins/occupancy distinctly. |
 | Notifications | In-app messages, delivery preferences, message-specific Teams opt-in and asynchronous delivery attempts. | Deliver committed outcomes to intended recipients without altering the booking outcome. |
 
@@ -190,8 +190,13 @@ attendee reconfirmation for office/time changes and linked visitor host/window
 validation. A later invalid visit blocks admission while preserving the ticket
 and seat pending authorised repair or explicit cancellation. Attendees may cancel
 their own unused tickets; optional event waitlists receive released seats before
-fresh registration through time-limited, eligibility-checked offers. Event
-cancellation also cancels visits whose only remaining valid purpose was that
+fresh registration in join order through exclusive, time-limited,
+eligibility-checked offers. Decline/expiry ends the request; explicit rejoin is a
+new request. Offer acceptance ends at registration closing time unless the
+organiser explicitly extends registration. Published reconfirmation deadlines
+release unconfirmed tickets under the enabled waitlist policy. Cancelling an
+unused ticket also cancels an associated future visit with no other valid purpose.
+Event cancellation also cancels visits whose only remaining valid purpose was that
 event, preserving shared-purpose visits and historical records.
 
 The [visitor-ticket decision](adr/0024-create-event-visitor-visits-with-tickets-atomically.md)

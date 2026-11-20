@@ -105,8 +105,11 @@ blueprint's detailed module split remains proposed.
 - The [event workflow contract](../api-surfaces/event-workflows.md) applies to
   every candidate: material-change reconfirmation, retained ticket/seat during
   visitor ineligibility, attendee cancellation, purpose-based visit cleanup and
-  optional event waitlists with priority over fresh registration. Event offer
-  ordering/holding/duration and reconfirmation nonresponse rules remain open.
+  optional event waitlists with priority over fresh registration. Event offers
+  hold seats exclusively in eligible join order, end their request on
+  decline/expiry and cannot be accepted after registration closes without an
+  explicit organiser extension. Reconfirmation deadlines release unconfirmed
+  tickets. Initial numeric durations and recovery/eligibility exceptions remain open.
 - Configurable SpaceWeave RBAC; MCP uses user context, while machine-identity
   scripts use a separate channel. No universal login journey follows from the
   consumer label. Authorised UI edits can create Terraform drift; initial public

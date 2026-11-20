@@ -146,6 +146,12 @@ technical guidance and design tradeoffs.
     receive released seats before fresh registration through time-limited offers
     with current eligibility checked on acceptance. Event cancellation cancels
     visits whose only remaining valid purpose was that event, preserving others.
+  - Established: event offers follow eligible join order and hold seats exclusively;
+    decline/expiry ends the request and rejoining creates a new request. Acceptance
+    ends at registration closing time unless the organiser explicitly extends it.
+  - Established: published reconfirmation deadlines release unconfirmed tickets
+    under the enabled waitlist policy. Unused-ticket cancellation also cancels
+    an associated future visit with no other valid purpose, preserving reception history.
   - Then: receipt duration/retained expiry evidence, exact wire details and
     load-validated numeric limits.
   - Then: shared review of the detailed module map and interface contracts in

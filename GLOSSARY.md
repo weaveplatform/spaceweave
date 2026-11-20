@@ -296,5 +296,13 @@ their ticket can be used for admission.
 **Event waitlist**:
 An optional list of eligible attendees waiting for tickets to a full event.
 
+**Event waitlist offer**:
+A time-limited exclusive hold on an event seat for one waitlisted attendee,
+which becomes a ticket only after acceptance and eligibility checks.
+
+**Reconfirmation deadline**:
+The published latest time for accepting an event's changed office or time,
+after which an unconfirmed ticket releases its seat.
+
 **Event check-in**:
 The admission record created when an attendee's ticket is scanned at event entry.

@@ -56,13 +56,18 @@ behaviour and the remaining receipt-duration/expiry-evidence decisions.
 ## Event ticket policies
 
 Events may enable an attendee waitlist. Released seats go to eligible waitlisted
-attendees before fresh registrations, through time-limited offers with current
-eligibility checked on acceptance. The offer duration and ordering/holding rules
-remain to be selected; the desk waitlist's ten-minute default does not define an
-event offer duration.
+attendees in join order before fresh registrations. Time-limited offers hold
+their seats exclusively and recheck current eligibility on acceptance. Decline or
+expiry ends that request; explicit rejoining creates a new one. Offers expire no
+later than registration closes; only an explicit organiser extension permits
+later acceptance. The initial numeric offer duration remains unselected; the
+desk waitlist's ten-minute default does not define an event offer duration.
 
 Office/time changes require attendee reconfirmation and linked visitor host/window
-validation. Reconfirmation deadlines and nonresponse handling remain open.
+validation. The organiser publishes a reconfirmation deadline and notifies affected
+attendees; unconfirmed tickets release seats at that deadline, following the
+enabled event waitlist policy. Initial notice periods and reconfirmation
+protection during an outage remain open.
 The [event workflow contract](research/api-surfaces/event-workflows.md) records
 ticket cancellation, visitor eligibility and linked-visit lifecycle behaviour.
 
@@ -73,6 +78,8 @@ waitlist offers, pause the affected no-show releases and offer expiries. Resume
 with a configurable recovery grace period. No numerical initial grace value has
 been agreed; configure it explicitly before enabling automatic expiry. These
 protections do not extend a booking beyond its actual usable period.
+For event offers, outage grace also respects the registration cutoff; later
+acceptance requires an explicit organiser extension of registration.
 
 ## Agreed allocation rules
 
