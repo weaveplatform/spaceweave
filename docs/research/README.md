@@ -41,6 +41,8 @@ rather than proving its correctness or performance.
    identity-preserving reactivation, protected confirmations and guarded deletion.
 7. [Plan publication](api-surfaces/plan-publication.md): asset approval, Workplace
    mapping activation and Booking dated-inventory validation across all layouts.
+8. [Operational incidents](api-surfaces/operational-incidents.md): confirmed outage
+   declarations, guarded expiry and business-owned deadline protection.
 
 The catalogue links specialised research on authentication, role-based access,
 Entra groups, Conditional Access, MCP/Terraform and provider protocols. The

@@ -44,6 +44,22 @@ mean that an event has lost its secured venue; an actual loss continues to use
 the [event recovery contract](event-workflows.md). Retirement also does not
 silently migrate, cancel or conceal existing bookings.
 
+## Unconfirmed holds and offers
+
+A hold or offer created before retirement was published cannot subsequently
+confirm use on or after the effective retirement point. Confirmation and offer
+acceptance revalidate the requested use against the current published lifecycle
+revision, even when an earlier proposal or pending request was eligible.
+Return an explicit unavailable/conflict outcome explaining retirement; an old
+hold is not a protected confirmed commitment.
+
+Late Exchange acceptance is retained as a provider observation. Booking refuses
+an invalid local confirmation and Exchange reconciles the resulting side effects
+through its owning workflow. Neither the callback nor an expiry worker bypasses
+the lifecycle check, and the app must not report successful synchronisation while
+the external and local outcomes still require reconciliation. Existing confirmed
+bookings retain the protection described above.
+
 ## Reactivation contract
 
 An authorised administrator can explicitly reactivate a retired resource.
@@ -78,16 +94,15 @@ of resource absence.
 ## Validation and remaining policy details
 
 Exercise scheduled retirement published before an affected future booking,
-use periods crossing the effective point, office-local time conversion,
+use periods crossing the effective point, pre-existing hold/offer acceptance,
+late Exchange acceptance and reconciliation, office-local time conversion,
 retirement/reactivation racing a direct booking or allocation commit, retirement of
 a parent containing active spaces, continued management of confirmed bookings,
 dependency-scoped impact reads, concurrent child/dependency creation, Terraform
 refresh/import of retired resources, identity-preserving reactivation, validation
 failure on reactivation, and refusal without cancellation/cascade.
 
-Treatment of unconfirmed holds/offers remains a separate policy refinement; it
-is not supplied by the protected confirmed-booking decision. Exact resource
-schemas, status mappings and import
-identity conventions remain engineering work. The
+Exact resource schemas, status mappings and import identity conventions remain
+engineering work. The
 [retirement decision](../../adr/0025-retire-workplaces-before-removing-protected-resources.md)
 and [request contract](request-behaviour.md) govern all supported clients.

@@ -86,11 +86,17 @@ technical guidance and design tradeoffs.
     release; Attendance projects committed facts with separate reporting retention.
     Plans approves immutable assets; Workplace publishes geometry-to-stable-space
     mappings after Booking validates dated inventory and commitment impact.
+  - Established: shared operational facilities own confirmed outage declarations
+    with affected offices/actions/times. Booking and Events own deadline effects;
+    Policy owns configurable rules. Expiry checks authoritative declared scope
+    with guarded ordering rather than waiting for an asynchronous projection.
   - Established: retirement is immediate or scheduled at an office-local time.
     Publication excludes new bookings for use on/after that point while protected
     confirmations remain manageable. Reactivation validates definitions, calendars
     and inventory, retaining identity/history. Dependency-blocked deletion never
     silently retires, cancels bookings or cascades through child resources.
+    Unconfirmed holds/offers revalidate at confirmation and cannot confirm
+    excluded use; late Exchange effects require reconciliation.
   - Established: one application image/release supports independently scaled
     HTTP, allocation, Exchange sync, tracing and maintenance roles.
   - Established: separate React/TypeScript staff/mobile-web and admin entrypoints
@@ -311,7 +317,7 @@ settles that ownership boundary and its narrow capacity transaction. The design
 also preserves [atomic visitor registration](adr/0024-create-event-visitor-visits-with-tickets-atomically.md)
 and the agreed organiser-controlled venue recovery, retaining tickets while
 admission and issuance are paused. Remaining architectural work includes the
-pending repository-architecture choice, confirmed outage-record custody,
+pending repository-architecture choice, concrete incident-ordering protocols,
 concrete evidence/activation protocols, operation schemas, provider deployment
 permissions, load-validated limits and recovery
 validation. The [event workflow contract](research/api-surfaces/event-workflows.md)

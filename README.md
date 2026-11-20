@@ -221,7 +221,8 @@ Administrators can retire offices, buildings, floors or spaces immediately or at
 a scheduled office-local date/time. Publishing retirement prevents new bookings
 for use on/after that time while preserving confirmed commitments. Authorised
 reactivation validates definitions, calendars and inventory while retaining
-identity and history.
+identity and history. Unconfirmed holds/offers revalidate at confirmation and
+cannot confirm excluded use; late Exchange effects require reconciliation.
 Deletion reports blocking dependencies and does not silently cancel bookings or
 cascade through child resources. The
 [workplace lifecycle contract](docs/research/api-surfaces/workplace-lifecycle.md)

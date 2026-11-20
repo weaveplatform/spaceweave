@@ -82,6 +82,12 @@ ticket cancellation, visitor eligibility and linked-visit lifecycle behaviour.
 
 ## Outage protection
 
+Shared operational facilities retain confirmed outage declarations describing
+affected offices, actions and times. Booking and Events own the deadline effects;
+Policy owns the configured rules. The [incident contract](research/api-surfaces/operational-incidents.md)
+defines declaration custody and ordering against expiry, including recovery
+extensions for uncertain requests.
+
 During a confirmed application outage preventing desk check-in or acceptance of
 waitlist offers, pause the affected no-show releases and offer expiries. Resume
 with a configurable recovery grace period. No numerical initial grace value has

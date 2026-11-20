@@ -66,6 +66,9 @@ local transaction where required. Architecture style changes the package,
 dependency and composition mechanisms rather than these business owners.
 Published retirement schedules exclude new bookings for use on/after their
 office-local effective point; validated reactivation retains identity/history.
+Unconfirmed holds/offers revalidate at confirmation and cannot confirm excluded
+use. Shared operational facilities retain outage declarations; Booking and Events
+apply the declared scope to their own deadlines, with rules owned by Policy.
 [Proposed architecture decision](../adr/0009-use-a-domain-first-modular-monolith.md),
 [five candidate layouts](architecture-options/README.md).
 

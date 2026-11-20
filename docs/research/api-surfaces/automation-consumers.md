@@ -129,7 +129,7 @@ This benefits other API clients even before a provider exists.
 | Read/refresh | Return authoritative managed fields and relevant computed status; provide an explicit absence outcome. |
 | Import | Resolve an existing object by documented identity using ordinary read permissions; no privileged import endpoint is implied. |
 | Update | Distinguish mutable fields from changes requiring a new object; expose lifecycle schedules/current state, protect concurrent edits and retain domain validation. Reactivation keeps identity after definitions/calendar/inventory validation. |
-| Delete | Retirement is immediate or scheduled; publication excludes new bookings for use on/after the effective office-local time, preserving confirmations. Separate deletion refuses unresolved dependencies without cancellation/cascade; report actual completion only after permitted removal. |
+| Delete | Retirement is immediate or scheduled; publication excludes new bookings for use on/after the effective office-local time, preserving confirmations. Unconfirmed holds/offers cannot confirm excluded use. Separate deletion refuses unresolved dependencies without cancellation/cascade; report actual completion only after permitted removal. |
 | Drift | Expose out-of-band changes, source ownership and effective values accurately enough for the provider to compare state. |
 
 **Fact:** HashiCorp recommends refreshing all possible values so that Terraform

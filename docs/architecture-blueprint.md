@@ -97,7 +97,8 @@ from Workplace operational mapping activation, validated against Booking invento
 | Notifications | In-app messages, delivery preferences, message-specific Teams opt-in and asynchronous delivery attempts. | Deliver committed outcomes to intended recipients without altering the booking outcome. |
 
 Composition wires the modules and runtime roles. Shared platform facilities cover
-transactions, job leases/outbox delivery, configuration, clocks and telemetry;
+transactions, job leases/outbox delivery, operational incident declarations,
+configuration, clocks and telemetry;
 business rules stay with their owning module. Reporting reads its own projections
 or published queries rather than acquiring unrestricted access to every table.
 
@@ -182,7 +183,7 @@ booking/check-in health distinct from degraded Exchange or notification delivery
 | Desk allocation, direct requests and waitlist promotion | Booking serialises competing claims; enforce mandatory features, dated neighbourhood membership, one overlapping desk per person and existing waitlist priority. Confirmed assignments are protected. |
 | Required desk plus parking | Secure both in one Booking transaction or confirm neither. A transfer acquires replacement capacity and releases the old claims together. |
 | Main allocation run | Plan outside long transactions using a versioned snapshot. Commit each group's placement atomically, including required parking; replan only affected uncommitted groups on conflicts. |
-| Workplace retirement/reactivation/deletion | Published immediate/scheduled retirement excludes new use on/after the office-local effective time, including descendants. Booking compares requested use with the lifecycle revision. Reactivation revalidates definitions/calendars/inventory while retaining identity/history; confirmations remain manageable and deletion never silently cancels/cascades. |
+| Workplace retirement/reactivation/deletion | Published immediate/scheduled retirement excludes new use on/after the office-local effective time, including descendants. Booking compares requested use with the lifecycle revision. Reactivation revalidates definitions/calendars/inventory while retaining identity/history; unconfirmed holds/offers cannot confirm excluded use and late Exchange effects reconcile. Confirmations remain manageable and deletion never silently cancels/cascades. |
 | Operational plan activation | Plans approves immutable assets; Workplace owns geometry-to-stable-space mappings. Booking validates dated inventory and confirmed-claim impact under version guards before activation. Approval and activation have distinct public outcomes. |
 | Check-in, no-show and vacancy | Booking decides the transition against current state/policy. A personal check-in wins only if the allocation remains valid. Anonymous occupancy cannot reserve a released desk. Sensor outages do not establish vacancy. |
 | Room requests and reconciliation | Booking owns local holds/claims and transitions; Exchange owns provider observations/progress. Confirm only after acceptance and capacity revalidation. Keep external observations even if they conflict with local claims; reconcile rather than discarding provider truth. |
@@ -304,7 +305,13 @@ explain the supported integration.
 
 A confirmed application outage preventing check-in or offer acceptance pauses
 affected no-show releases and waitlist-offer expiries. Persist the protected
-incident/time interval so workers agree, then apply configured recovery grace.
+incident/time interval through shared operational facilities so workers agree.
+Booking and Events consume the same authoritative declaration through narrow
+private reads and retain their own protected deadline state; Policy owns the
+configured rules. Declaration publication is ordered against affected expiry.
+The [incident contract](research/api-surfaces/operational-incidents.md) covers
+that shared custody and request-recovery extensions; a lagging projection cannot
+authorise expiry. Then apply configured recovery grace.
 Preserve already committed reassignment outcomes; do not resurrect an earlier
 claim over a later confirmed booking. Protection cannot extend desk usage beyond
 its actual booking period. Anonymous occupancy is not an outage declaration.

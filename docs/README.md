@@ -49,6 +49,10 @@ here. Decision records live in `docs/adr/`.
   distinguish approved immutable assets from operational geometry mappings and
   validate dated-inventory impact before activation.
 
+- [Confirmed outages and deadline protection](research/api-surfaces/operational-incidents.md):
+  share operational declarations while keeping deadline state with Booking and
+  Events and configurable rules with Policy.
+
 - [Allocate advance desk intents together](adr/0001-allocate-advance-desk-intents-together.md):
   consider attendance demand together to place groups by team proximity.
 
@@ -146,3 +150,7 @@ here. Decision records live in `docs/adr/`.
 - [Separate plan approval from operational mapping activation](adr/0030-separate-plan-approval-from-operational-mapping-activation.md):
   Plans approves assets, Workplace publishes mappings and Booking validates
   dated-inventory and commitment impact.
+
+- [Share incident declarations with owning deadline workflows](adr/0031-share-incident-declarations-with-owning-deadline-workflows.md):
+  give operational facilities custody of confirmed outage scope/times, with
+  Booking and Events retaining their own transition authority.

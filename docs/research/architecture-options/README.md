@@ -159,7 +159,9 @@ layouts without selecting a repository style.
   the loss budget. Fence prior writers and test whole-system recovery.
 - Confirmed app outages preventing check-in/offer acceptance pause affected
   no-show/offer timeouts and allow configurable recovery grace. Existing
-  reassignments remain protected.
+  reassignments remain protected. Shared operational facilities retain the
+  declaration; Booking and Events own protected deadline state and Policy owns
+  configurable rules. Publication and expiry have guarded ordering.
 
 ## Common comparison scenarios
 
@@ -202,22 +204,21 @@ Every candidate still needs PostgreSQL capacity protection, retry-safe durable
 work, source-aware authorisation, provider reconciliation and whole-system
 recovery exercises. Those concerns are not solved by changing directory names.
 
-## Remaining shared design questions
+## Shared incident and lifecycle contracts
 
-Confirmed outage-record custody still needs one logical decision across the set.
-The layered example currently stores incidents with Work, Clean stores confirmed
-windows with Policy, and the hexagonal/modular examples place protection records
-in Booking. These are unresolved ownership proposals, not differences justified
-by repository style. Separate a durable incident declaration from each owner's
-protected deadline state and from Policy's configurable rules; resolve custody
-before implementation. All affected actions must retain consistent protection
-through retries and recovery regardless of where code is organised.
+Shared operational facilities own confirmed outage declarations describing
+scope, offices, actions and times. Booking and Events consume the same declared
+facts and control their own deadline state; Policy owns configurable rules.
+Declaration publication and affected expiry require guarded ordering, including
+retries and recovery. A job runner, health probe or delayed event projection
+cannot independently authorise expiry. The [incident contract](../api-surfaces/operational-incidents.md)
+defines the common requirement without adding another business module or service.
 
-Retirement protects existing confirmations, but treatment of pre-existing
-unconfirmed holds and offers still needs a shared rule, including late Exchange
-acceptance. No candidate may silently treat that open policy as a completed
-booking or deletion decision. The [lifecycle contract](../api-surfaces/workplace-lifecycle.md)
-records the settled use-time and reactivation requirements.
+Retirement protects existing confirmations. Pre-existing unconfirmed holds and
+offers revalidate at confirmation and cannot confirm use excluded by the
+published retirement schedule. Return a clear unavailable outcome and reconcile
+late Exchange effects through the owning workflows. The [lifecycle contract](../api-surfaces/workplace-lifecycle.md)
+applies equally to every candidate.
 
 ## How to review the set
 

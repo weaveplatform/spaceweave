@@ -39,6 +39,7 @@ are confined to the [current-system inventory](current-surfaces.md).
 | [Event workflows](event-workflows.md) | Registration, venue recovery, exclusive offers, reconfirmation and admission. |
 | [Workplace lifecycle](workplace-lifecycle.md) | Scheduled retirement, identity-preserving reactivation and dependency-checked deletion. |
 | [Plan publication](plan-publication.md) | Asset approval versus operational mapping activation and dated-inventory validation. |
+| [Operational incidents](operational-incidents.md) | Shared outage declarations and owner-controlled deadline protection. |
 | [Idempotency and concurrency](idempotency-and-concurrency.md) | HTTP semantics, durable acceptance, replay safety and retention tradeoffs. |
 | [API contract engineering](api-contract-engineering.md) | Primary guidance for specifications, generation, admission, backpressure and clients. |
 | [Protocol contracts](protocol-contracts.md) | HTTP, OAuth, errors, pagination and compatibility facts. |
@@ -371,7 +372,9 @@ access and temporary failure. A Terraform client must not drop state after a
 scope checks before lookup can return a uniform denial without exposing whether
 a particular object exists. Published retirement, immediate or scheduled, excludes
 new bookings for use on/after its office-local effective time while keeping
-existing confirmations manageable. Authorised reactivation revalidates definitions,
+existing confirmations manageable. Pre-existing unconfirmed holds/offers cannot
+confirm excluded use; revalidate at confirmation and reconcile late Exchange
+effects. Authorised reactivation revalidates definitions,
 calendars and inventory while retaining identity/history. Separate deletion reports unresolved bookings,
 children or other dependencies and refuses removal without cancelling/cascading.
 Retired state remains readable/importable and is not absence. The

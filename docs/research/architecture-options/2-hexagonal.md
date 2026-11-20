@@ -81,33 +81,35 @@ SQL-ownership and real-transaction checks as well.
 
 ```text
 spaceweave/
-  cmd/spaceweave/          main.go: executable and process exit only
-  internal/
-    app/                  composition and independently scaled runtime roles
-    buildinfo/            existing version information
-    config/               strict YAML deployment settings, Cobra overrides
-    core/                 model, pure rules/geometry, ports and services
-    adapter/              driving/ and driven/ technology boundaries
-    contract/             reusable driven-port test suites
-    layout/               dependency and SQL-ownership checks
-    tooling/              OpenAPI bundling/generation checks
-  pkg/client/             generated Go transport clients, when consumers need them
-  api/                    proposed OpenAPI sources, bundles and generator configs
-  web/
-    staff/                React/TypeScript staff and mobile-web entrypoint
-    admin/                separate React/TypeScript administration entrypoint
-    shared/               UI, client wrappers, renderer integration
-    floorplan-iso/        existing D3 renderer and its geometry/render tests
-  test/                   real-dependency acceptance, concurrency and recovery suites
-  deploy/                 proposed container/Kubernetes/Collector configuration
-  docs/                   scope, decisions, policies, research and runbooks
-  tools/                  existing drawing/render checks plus generation scripts
-  .github/                existing quality/release workflows and ownership
-  CLAUDE.md GLOSSARY.md    existing conventions and product language
-  Makefile                existing checks; proposed generation/acceptance targets
-  .golangci.yml           existing blocking linter, adds dependency restrictions
-  .testcoverage.yml       existing total/per-package coverage gates
-  go.mod go.sum           existing module; dependencies added with implementation
+├── cmd/spaceweave/     main.go: executable and process exit only
+├── internal/
+│   ├── app/            composition and independently scaled runtime roles
+│   ├── buildinfo/      existing version information
+│   ├── config/         strict YAML deployment settings, Cobra overrides
+│   ├── core/           model, pure rules/geometry, ports and services
+│   ├── adapter/        driving/ and driven/ technology boundaries
+│   ├── contract/       reusable driven-port test suites
+│   ├── layout/         dependency and SQL-ownership checks
+│   └── tooling/        OpenAPI bundling/generation checks
+├── pkg/client/         generated Go transport clients, when consumers need them
+├── api/                proposed OpenAPI sources, bundles and generator configs
+├── web/
+│   ├── staff/          React/TypeScript staff and mobile-web entrypoint
+│   ├── admin/          separate React/TypeScript administration entrypoint
+│   ├── shared/         UI, client wrappers, renderer integration
+│   └── floorplan-iso/  existing D3 renderer and its geometry/render tests
+├── test/               real-dependency acceptance, concurrency and recovery suites
+├── deploy/             proposed container/Kubernetes/Collector configuration
+├── docs/               scope, decisions, policies, research and runbooks
+├── tools/              existing drawing/render checks plus generation scripts
+├── .github/            existing quality/release workflows and ownership
+├── CLAUDE.md
+├── GLOSSARY.md         existing conventions and product language
+├── Makefile            existing checks; proposed generation/acceptance targets
+├── .golangci.yml       existing blocking linter, adds dependency restrictions
+├── .testcoverage.yml   existing total/per-package coverage gates
+├── go.mod
+└── go.sum              existing module; dependencies added with implementation
 ```
 
 Today's implementation is the floor-plan tool, not a booking
@@ -128,306 +130,469 @@ made explicit. SQL migrations are one ordered stream with logical ownership.
 The structural counts later use this block only, without counting examples twice.
 
 ```text
-cmd/
-  spaceweave/
-    main.go
-internal/
-  app/
-    app.go runtime.go services.go
-    adapters.go http.go roles.go
-    subscriptions.go shutdown.go
-  buildinfo/
-    buildinfo.go
-  config/
-    config.go roles.go
-  layout/
-    layout_test.go ownership_test.go
-  core/
-    model/
-      identity.go access.go workplace.go
-      policy.go intent.go allocation.go
-      booking.go room.go delegation.go
-      drawing.go visit.go event.go
-      attendance.go notification.go work.go
-      errors.go
-    geometry/
-      cad/
-        cad.go walk.go
-      dwg/
-        dwg.go entities.go
-      dxf/
-        dxf.go entities.go
-      floorgraph/
-        graph.go build.go
-      plan/
-        trace.go convert.go
-      raster/
-        raster.go measure.go
-      svgdraw/
-        svgdraw.go path.go
-      vector/
-        vector.go raster.go
-      profile/
-        profile.go layers.go
-    rules/
-      access/
-        capabilities.go delegation.go
-      allocation/
-        constraints.go groups.go
-        packing.go objective.go
-        repair.go
-      attendance/
-        evidence.go deadlines.go
-      calendar/
-        merge.go occurrences.go
-      identity/
-        correlation.go effective.go
-      privacy/
-        retention.go
-    port/
-      driving/
-        identity_access.go identity_people.go provisioning.go
-        workplace.go policy.go booking.go
-        allocation.go rooms.go exchange.go
-        plans.go visitors.go events.go
-        reporting.go notifications.go work.go
-      driven/
-        unitofwork.go identity_people_store.go identity_access_store.go
-        workplace_store.go policy_store.go capacity_store.go
-        exchange_store.go plan_store.go visitor_store.go
-        event_store.go reporting_store.go notification_store.go
-        work_store.go blob.go exchange.go
-        identity.go tracing.go delivery.go
-        clock.go solver.go
-    service/
-      identity/
-        identity.go access.go sessions.go delegation.go
-        scim.go workday.go eligibility.go native_delegation.go
-      workplace/
-        workplace.go changes.go retirement.go mapping.go
-      policy/
-        policy.go publish.go
-      booking/
-        booking.go inventory.go intents.go
-        allocation.go commit_group.go transfer.go
-        waitlist.go checkin.go release.go evidence.go
-        rooms.go venue.go outages.go
-      exchange/
-        exchange.go reconcile.go outbound.go
-        acceptance.go subscriptions.go
-      plans/
-        plans.go processing.go
-        review.go publish.go
-      visitors/
-        visitors.go verify.go
-        retention.go
-      events/
-        events.go venue.go
-        tickets.go admission.go
-      reporting/
-        reporting.go
-        project.go retention.go
-      notifications/
-        notifications.go preferences.go
-        deliver.go
-      work/
-        work.go outbox.go
-        leases.go
-  adapter/
-    driving/
-      cli/
-        cli.go serve.go
-        worker.go plans.go
-        migrate.go
-      http/
-        server.go middleware.go
-        errors.go
-        gen/
-          staff/
-            server.gen.go
-          admin/
-            server.gen.go
-          scim/
-            server.gen.go
-        session/
-          login.go cookies.go
-          csrf.go
-        booking/
-          booking.go checkin.go
-          rooms.go
-        workplace/
-          workplace.go
-        plans/
-          plans.go uploads.go
-        people/
-          staff.go delegation.go
-        scim/
-          users.go groups.go
-          protocol.go
-        visitors/
-          visits.go verification.go
-        events/
-          events.go tickets.go
-          admission.go
-        reports/
-          attendance.go
-        preferences/
-          notifications.go
-      scheduler/
-        scheduler.go
-      jobs/
-        runner.go handlers.go
-      occupancy/
-        receiver.go
-      exchangehook/
-        notifications.go lifecycle.go
-      inbox/
-        watcher.go
-      web/
-        assets.go
-    driven/
-      solver/
-        solver.go
-      postgres/
-        postgres.go unitofwork.go retry.go
-        identity_people.go identity_access.go workplace.go
-        policy.go capacity.go allocation.go evidence.go
-        waitlist.go rooms.go exchange.go
-        plans.go visitors.go events.go
-        reporting.go notifications.go jobs.go
-        outbox.go migrations.go
-        ownership.yaml
-        migrations/
-          0001_identity.sql
-          0002_workplace_policy.sql
-          0003_booking_capacity.sql
-          0004_work_outbox.sql
-          0005_exchange.sql
-          0006_plans.sql
-          0007_visitors_events.sql
-          0008_reporting_notifications.sql
-      blob/
-        azure/
-          azure.go
-        gcs/
-          gcs.go
-        verified/
-          verified.go reconcile.go
-      graphcalendar/
-        client.go events.go
-        delta.go permissions.go
-      entra/
-        oidc.go tokens.go
-      workday/
-        client.go workers.go
-        mappings.go
-      teams/
-        personal.go conversations.go
-      smtp/
-        smtp.go
-      tracing/
-        automatic/
-          automatic.go
-          cadfront/
-            build.go spaces.go
-          rasterfront/
-            build.go
-          score/
-            score.go
-          synth/
-            synth.go
-        claude/
-          agent.go tools.go
-      drawingconvert/
-        convert.go
-      nodevalidator/
-        validator.go
-      profilefiles/
-        library.go
-      telemetry/
-        telemetry.go logging.go
-      fakeclaude/
-        fakeclaude.go
-  contract/
-    storetest/
-      storetest.go capacity.go
-      leases.go
-    blobtest/
-      blobtest.go
-    exchangetest/
-      exchangetest.go
-    scimtest/
-      scimtest.go
-    tracingtest/
-      tracingtest.go
-    deliverytest/
-      deliverytest.go
-  tooling/
-    openapi/
-      bundle.go check.go
-pkg/
-  client/
-    staff/
-      client.gen.go
-    admin/
-      client.gen.go
+spaceweave/
+├── cmd/
+│   └── spaceweave/
+│       └── main.go
+├── internal/
+│   ├── app/
+│   │   ├── app.go
+│   │   ├── runtime.go
+│   │   ├── services.go
+│   │   ├── adapters.go
+│   │   ├── http.go
+│   │   ├── roles.go
+│   │   ├── subscriptions.go
+│   │   └── shutdown.go
+│   ├── buildinfo/
+│   │   └── buildinfo.go
+│   ├── config/
+│   │   ├── config.go
+│   │   └── roles.go
+│   ├── layout/
+│   │   ├── layout_test.go
+│   │   └── ownership_test.go
+│   ├── core/
+│   │   ├── model/
+│   │   │   ├── identity.go
+│   │   │   ├── access.go
+│   │   │   ├── workplace.go
+│   │   │   ├── policy.go
+│   │   │   ├── intent.go
+│   │   │   ├── allocation.go
+│   │   │   ├── booking.go
+│   │   │   ├── room.go
+│   │   │   ├── delegation.go
+│   │   │   ├── drawing.go
+│   │   │   ├── visit.go
+│   │   │   ├── event.go
+│   │   │   ├── attendance.go
+│   │   │   ├── notification.go
+│   │   │   ├── work.go
+│   │   │   ├── incident.go
+│   │   │   └── errors.go
+│   │   ├── geometry/
+│   │   │   ├── cad/
+│   │   │   │   ├── cad.go
+│   │   │   │   └── walk.go
+│   │   │   ├── dwg/
+│   │   │   │   ├── dwg.go
+│   │   │   │   └── entities.go
+│   │   │   ├── dxf/
+│   │   │   │   ├── dxf.go
+│   │   │   │   └── entities.go
+│   │   │   ├── floorgraph/
+│   │   │   │   ├── graph.go
+│   │   │   │   └── build.go
+│   │   │   ├── plan/
+│   │   │   │   ├── trace.go
+│   │   │   │   └── convert.go
+│   │   │   ├── raster/
+│   │   │   │   ├── raster.go
+│   │   │   │   └── measure.go
+│   │   │   ├── svgdraw/
+│   │   │   │   ├── svgdraw.go
+│   │   │   │   └── path.go
+│   │   │   ├── vector/
+│   │   │   │   ├── vector.go
+│   │   │   │   └── raster.go
+│   │   │   └── profile/
+│   │   │       ├── profile.go
+│   │   │       └── layers.go
+│   │   ├── rules/
+│   │   │   ├── access/
+│   │   │   │   ├── capabilities.go
+│   │   │   │   └── delegation.go
+│   │   │   ├── allocation/
+│   │   │   │   ├── constraints.go
+│   │   │   │   ├── groups.go
+│   │   │   │   ├── packing.go
+│   │   │   │   ├── objective.go
+│   │   │   │   └── repair.go
+│   │   │   ├── attendance/
+│   │   │   │   ├── evidence.go
+│   │   │   │   └── deadlines.go
+│   │   │   ├── calendar/
+│   │   │   │   ├── merge.go
+│   │   │   │   └── occurrences.go
+│   │   │   ├── identity/
+│   │   │   │   ├── correlation.go
+│   │   │   │   └── effective.go
+│   │   │   └── privacy/
+│   │   │       └── retention.go
+│   │   ├── port/
+│   │   │   ├── driving/
+│   │   │   │   ├── identity_access.go
+│   │   │   │   ├── identity_people.go
+│   │   │   │   ├── provisioning.go
+│   │   │   │   ├── workplace.go
+│   │   │   │   ├── policy.go
+│   │   │   │   ├── booking.go
+│   │   │   │   ├── allocation.go
+│   │   │   │   ├── rooms.go
+│   │   │   │   ├── exchange.go
+│   │   │   │   ├── plans.go
+│   │   │   │   ├── visitors.go
+│   │   │   │   ├── events.go
+│   │   │   │   ├── reporting.go
+│   │   │   │   ├── notifications.go
+│   │   │   │   ├── work.go
+│   │   │   │   └── incidents.go
+│   │   │   └── driven/
+│   │   │       ├── unitofwork.go
+│   │   │       ├── identity_people_store.go
+│   │   │       ├── identity_access_store.go
+│   │   │       ├── workplace_store.go
+│   │   │       ├── policy_store.go
+│   │   │       ├── capacity_store.go
+│   │   │       ├── exchange_store.go
+│   │   │       ├── plan_store.go
+│   │   │       ├── visitor_store.go
+│   │   │       ├── event_store.go
+│   │   │       ├── reporting_store.go
+│   │   │       ├── notification_store.go
+│   │   │       ├── work_store.go
+│   │   │       ├── incident_store.go
+│   │   │       ├── blob.go
+│   │   │       ├── exchange.go
+│   │   │       ├── identity.go
+│   │   │       ├── tracing.go
+│   │   │       ├── delivery.go
+│   │   │       ├── clock.go
+│   │   │       └── solver.go
+│   │   └── service/
+│   │       ├── identity/
+│   │       │   ├── identity.go
+│   │       │   ├── access.go
+│   │       │   ├── sessions.go
+│   │       │   ├── delegation.go
+│   │       │   ├── scim.go
+│   │       │   ├── workday.go
+│   │       │   ├── eligibility.go
+│   │       │   └── native_delegation.go
+│   │       ├── workplace/
+│   │       │   ├── workplace.go
+│   │       │   ├── changes.go
+│   │       │   ├── retirement.go
+│   │       │   └── mapping.go
+│   │       ├── policy/
+│   │       │   ├── policy.go
+│   │       │   └── publish.go
+│   │       ├── booking/
+│   │       │   ├── booking.go
+│   │       │   ├── inventory.go
+│   │       │   ├── intents.go
+│   │       │   ├── allocation.go
+│   │       │   ├── commit_group.go
+│   │       │   ├── transfer.go
+│   │       │   ├── waitlist.go
+│   │       │   ├── checkin.go
+│   │       │   ├── release.go
+│   │       │   ├── evidence.go
+│   │       │   ├── rooms.go
+│   │       │   ├── venue.go
+│   │       │   └── outages.go
+│   │       ├── exchange/
+│   │       │   ├── exchange.go
+│   │       │   ├── reconcile.go
+│   │       │   ├── outbound.go
+│   │       │   ├── acceptance.go
+│   │       │   └── subscriptions.go
+│   │       ├── plans/
+│   │       │   ├── plans.go
+│   │       │   ├── processing.go
+│   │       │   ├── review.go
+│   │       │   └── publish.go
+│   │       ├── visitors/
+│   │       │   ├── visitors.go
+│   │       │   ├── verify.go
+│   │       │   └── retention.go
+│   │       ├── events/
+│   │       │   ├── events.go
+│   │       │   ├── venue.go
+│   │       │   ├── tickets.go
+│   │       │   ├── admission.go
+│   │       │   └── protection.go
+│   │       ├── reporting/
+│   │       │   ├── reporting.go
+│   │       │   ├── project.go
+│   │       │   └── retention.go
+│   │       ├── notifications/
+│   │       │   ├── notifications.go
+│   │       │   ├── preferences.go
+│   │       │   └── deliver.go
+│   │       ├── operations/
+│   │       │   └── incidents.go
+│   │       └── work/
+│   │           ├── work.go
+│   │           ├── outbox.go
+│   │           └── leases.go
+│   ├── adapter/
+│   │   ├── driving/
+│   │   │   ├── cli/
+│   │   │   │   ├── cli.go
+│   │   │   │   ├── serve.go
+│   │   │   │   ├── worker.go
+│   │   │   │   ├── plans.go
+│   │   │   │   └── migrate.go
+│   │   │   ├── http/
+│   │   │   │   ├── server.go
+│   │   │   │   ├── middleware.go
+│   │   │   │   ├── errors.go
+│   │   │   │   ├── incidents.go
+│   │   │   │   ├── gen/
+│   │   │   │   │   ├── staff/
+│   │   │   │   │   │   └── server.gen.go
+│   │   │   │   │   ├── admin/
+│   │   │   │   │   │   └── server.gen.go
+│   │   │   │   │   └── scim/
+│   │   │   │   │       └── server.gen.go
+│   │   │   │   ├── session/
+│   │   │   │   │   ├── login.go
+│   │   │   │   │   ├── cookies.go
+│   │   │   │   │   └── csrf.go
+│   │   │   │   ├── booking/
+│   │   │   │   │   ├── booking.go
+│   │   │   │   │   ├── checkin.go
+│   │   │   │   │   └── rooms.go
+│   │   │   │   ├── workplace/
+│   │   │   │   │   └── workplace.go
+│   │   │   │   ├── plans/
+│   │   │   │   │   ├── plans.go
+│   │   │   │   │   └── uploads.go
+│   │   │   │   ├── people/
+│   │   │   │   │   ├── staff.go
+│   │   │   │   │   └── delegation.go
+│   │   │   │   ├── scim/
+│   │   │   │   │   ├── users.go
+│   │   │   │   │   ├── groups.go
+│   │   │   │   │   └── protocol.go
+│   │   │   │   ├── visitors/
+│   │   │   │   │   ├── visits.go
+│   │   │   │   │   └── verification.go
+│   │   │   │   ├── events/
+│   │   │   │   │   ├── events.go
+│   │   │   │   │   ├── tickets.go
+│   │   │   │   │   └── admission.go
+│   │   │   │   ├── reports/
+│   │   │   │   │   └── attendance.go
+│   │   │   │   └── preferences/
+│   │   │   │       └── notifications.go
+│   │   │   ├── scheduler/
+│   │   │   │   └── scheduler.go
+│   │   │   ├── jobs/
+│   │   │   │   ├── runner.go
+│   │   │   │   └── handlers.go
+│   │   │   ├── occupancy/
+│   │   │   │   └── receiver.go
+│   │   │   ├── exchangehook/
+│   │   │   │   ├── notifications.go
+│   │   │   │   └── lifecycle.go
+│   │   │   ├── inbox/
+│   │   │   │   └── watcher.go
+│   │   │   └── web/
+│   │   │       └── assets.go
+│   │   └── driven/
+│   │       ├── solver/
+│   │       │   └── solver.go
+│   │       ├── postgres/
+│   │       │   ├── postgres.go
+│   │       │   ├── unitofwork.go
+│   │       │   ├── retry.go
+│   │       │   ├── identity_people.go
+│   │       │   ├── identity_access.go
+│   │       │   ├── workplace.go
+│   │       │   ├── policy.go
+│   │       │   ├── capacity.go
+│   │       │   ├── allocation.go
+│   │       │   ├── evidence.go
+│   │       │   ├── waitlist.go
+│   │       │   ├── rooms.go
+│   │       │   ├── exchange.go
+│   │       │   ├── plans.go
+│   │       │   ├── visitors.go
+│   │       │   ├── events.go
+│   │       │   ├── reporting.go
+│   │       │   ├── notifications.go
+│   │       │   ├── jobs.go
+│   │       │   ├── outbox.go
+│   │       │   ├── incidents.go
+│   │       │   ├── migrations.go
+│   │       │   ├── ownership.yaml
+│   │       │   └── migrations/
+│   │       │       ├── 0001_identity.sql
+│   │       │       ├── 0002_workplace_policy.sql
+│   │       │       ├── 0003_booking_capacity.sql
+│   │       │       ├── 0004_work_outbox.sql
+│   │       │       ├── 0005_exchange.sql
+│   │       │       ├── 0006_plans.sql
+│   │       │       ├── 0007_visitors_events.sql
+│   │       │       ├── 0008_reporting_notifications.sql
+│   │       │       └── 0009_incidents.sql
+│   │       ├── blob/
+│   │       │   ├── azure/
+│   │       │   │   └── azure.go
+│   │       │   ├── gcs/
+│   │       │   │   └── gcs.go
+│   │       │   └── verified/
+│   │       │       ├── verified.go
+│   │       │       └── reconcile.go
+│   │       ├── graphcalendar/
+│   │       │   ├── client.go
+│   │       │   ├── events.go
+│   │       │   ├── delta.go
+│   │       │   └── permissions.go
+│   │       ├── entra/
+│   │       │   ├── oidc.go
+│   │       │   └── tokens.go
+│   │       ├── workday/
+│   │       │   ├── client.go
+│   │       │   ├── workers.go
+│   │       │   └── mappings.go
+│   │       ├── teams/
+│   │       │   ├── personal.go
+│   │       │   └── conversations.go
+│   │       ├── smtp/
+│   │       │   └── smtp.go
+│   │       ├── tracing/
+│   │       │   ├── automatic/
+│   │       │   │   ├── automatic.go
+│   │       │   │   ├── cadfront/
+│   │       │   │   │   ├── build.go
+│   │       │   │   │   └── spaces.go
+│   │       │   │   ├── rasterfront/
+│   │       │   │   │   └── build.go
+│   │       │   │   ├── score/
+│   │       │   │   │   └── score.go
+│   │       │   │   └── synth/
+│   │       │   │       └── synth.go
+│   │       │   └── claude/
+│   │       │       ├── agent.go
+│   │       │       └── tools.go
+│   │       ├── drawingconvert/
+│   │       │   └── convert.go
+│   │       ├── nodevalidator/
+│   │       │   └── validator.go
+│   │       ├── profilefiles/
+│   │       │   └── library.go
+│   │       ├── telemetry/
+│   │       │   ├── telemetry.go
+│   │       │   └── logging.go
+│   │       └── fakeclaude/
+│   │           └── fakeclaude.go
+│   ├── contract/
+│   │   ├── storetest/
+│   │   │   ├── storetest.go
+│   │   │   ├── capacity.go
+│   │   │   └── leases.go
+│   │   ├── blobtest/
+│   │   │   └── blobtest.go
+│   │   ├── exchangetest/
+│   │   │   └── exchangetest.go
+│   │   ├── scimtest/
+│   │   │   └── scimtest.go
+│   │   ├── tracingtest/
+│   │   │   └── tracingtest.go
+│   │   └── deliverytest/
+│   │       └── deliverytest.go
+│   └── tooling/
+│       └── openapi/
+│           ├── bundle.go
+│           └── check.go
+└── pkg/
+    └── client/
+        ├── staff/
+        │   └── client.gen.go
+        └── admin/
+            └── client.gen.go
 ```
 
 The frontend and runtime files are deliberately outside that Go-package count:
 
 ```text
-api/
-  src/staff.yaml
-  src/admin.yaml
-  src/scim.yaml
-  staff.openapi.yaml
-  admin.openapi.yaml
-  scim.openapi.yaml
-  oapi-server-staff.yaml
-  oapi-server-admin.yaml
-  oapi-server-scim.yaml
-  typescript-client.yaml
-web/
-  staff/src/main.tsx
-  staff/src/routes.tsx
-  staff/src/booking/AttendanceDates.tsx
-  staff/src/booking/DeskMap.tsx
-  staff/src/rooms/RoomRequest.tsx
-  staff/src/events/Ticket.tsx
-  admin/src/main.tsx
-  admin/src/routes.tsx
-  admin/src/allocation/RunReview.tsx
-  admin/src/workplace/FloorEditor.tsx
-  admin/src/reception/VisitDesk.tsx
-  admin/src/events/EventEditor.tsx
-  admin/src/operations/RecoveryStatus.tsx
-  shared/src/api/generated/staff.ts
-  shared/src/api/generated/admin.ts
-  shared/src/api/client.ts
-  shared/src/session/SessionProvider.tsx
-  shared/src/renderer/FloorPlan.tsx
-  shared/src/ui/OfficePicker.tsx
-  floorplan-iso/js/render.js
-  floorplan-iso/test/invariants.test.js
-deploy/
-  Dockerfile
-  kubernetes/http.yaml
-  kubernetes/allocation.yaml
-  kubernetes/exchange.yaml
-  kubernetes/tracing.yaml
-  kubernetes/maintenance.yaml
-  kubernetes/migrate-job.yaml
-  kubernetes/serviceaccounts.yaml
-  collector/config.yaml
-test/
-  acceptance/booking_test.go
-  acceptance/scim_test.go
-  concurrency/capacity_test.go
-  concurrency/checkin_test.go
-  concurrency/venue_test.go
-  integration/exchange_test.go
-  recovery/regional_test.go
-  performance/booking_test.go
+spaceweave/
+├── api/
+│   ├── src/
+│   │   ├── staff.yaml
+│   │   ├── admin.yaml
+│   │   └── scim.yaml
+│   ├── staff.openapi.yaml
+│   ├── admin.openapi.yaml
+│   ├── scim.openapi.yaml
+│   ├── oapi-server-staff.yaml
+│   ├── oapi-server-admin.yaml
+│   ├── oapi-server-scim.yaml
+│   └── typescript-client.yaml
+├── web/
+│   ├── staff/
+│   │   └── src/
+│   │       ├── main.tsx
+│   │       ├── routes.tsx
+│   │       ├── booking/
+│   │       │   ├── AttendanceDates.tsx
+│   │       │   └── DeskMap.tsx
+│   │       ├── rooms/
+│   │       │   └── RoomRequest.tsx
+│   │       └── events/
+│   │           └── Ticket.tsx
+│   ├── admin/
+│   │   └── src/
+│   │       ├── main.tsx
+│   │       ├── routes.tsx
+│   │       ├── allocation/
+│   │       │   └── RunReview.tsx
+│   │       ├── workplace/
+│   │       │   └── FloorEditor.tsx
+│   │       ├── reception/
+│   │       │   └── VisitDesk.tsx
+│   │       ├── events/
+│   │       │   └── EventEditor.tsx
+│   │       └── operations/
+│   │           └── RecoveryStatus.tsx
+│   ├── shared/
+│   │   └── src/
+│   │       ├── api/
+│   │       │   ├── generated/
+│   │       │   │   ├── staff.ts
+│   │       │   │   └── admin.ts
+│   │       │   └── client.ts
+│   │       ├── session/
+│   │       │   └── SessionProvider.tsx
+│   │       ├── renderer/
+│   │       │   └── FloorPlan.tsx
+│   │       └── ui/
+│   │           └── OfficePicker.tsx
+│   └── floorplan-iso/
+│       ├── js/
+│       │   └── render.js
+│       └── test/
+│           └── invariants.test.js
+├── deploy/
+│   ├── Dockerfile
+│   ├── kubernetes/
+│   │   ├── http.yaml
+│   │   ├── allocation.yaml
+│   │   ├── exchange.yaml
+│   │   ├── tracing.yaml
+│   │   ├── maintenance.yaml
+│   │   ├── migrate-job.yaml
+│   │   └── serviceaccounts.yaml
+│   └── collector/
+│       └── config.yaml
+└── test/
+    ├── acceptance/
+    │   ├── booking_test.go
+    │   └── scim_test.go
+    ├── concurrency/
+    │   ├── capacity_test.go
+    │   ├── checkin_test.go
+    │   └── venue_test.go
+    ├── integration/
+    │   └── exchange_test.go
+    ├── recovery/
+    │   └── regional_test.go
+    └── performance/
+        └── booking_test.go
 ```
 
 ## API surfaces and consumers
@@ -525,13 +690,14 @@ pretending to coordinate distributed transactions.
 | Identity | staff/source facts, teams, SCIM, sessions, capabilities/scopes and delegation evidence | Identity-owned people/access facets inside the shared adapter |
 | Workplace | office/building/floor/space definitions, calendars, baseline bundles, lifecycle schedules and active geometry mappings | `workplace` |
 | Policy | revisioned policies, office overrides, publication/effective records | `policy` |
-| Booking | intents/cycles/groups/proposals, dated inventory, claims/holds, waitlist/offers, check-ins, validated operational occupancy evidence, outage protection | `booking` only |
+| Booking | intents/cycles/groups/proposals, dated inventory, claims/holds, waitlist/offers, check-ins, validated operational occupancy evidence and own protected deadline state | `booking` only |
 | Exchange | mailbox/event mappings, desired/observed revisions, acceptance facts, subscriptions/cursors | `exchange` |
 | Plans | drawing packages, processing attempts, immutable revisions, blob/recovery/publication metadata | `plans` |
 | Visitors | visitor identities, hosted visits, verified-link grants, reception records | `visitors` |
 | Events | event/audience/capacity, named tickets, admission records, venue association | `events` |
 | Reporting | derived attendance/report projections and separately configured reporting retention | `reporting` |
 | Notifications | preferences, Teams message consent, in-app messages, delivery attempts | `notifications` |
+| Operational facilities | confirmed incident declarations, scope/times/revisions and ordering guards | `operations` through its incident-store facet; no business expiry writes |
 | Work | job/outbox rows, leases, consumer checkpoints, retry/failure records | `work` through transactional facets |
 
 `postgres/ownership.yaml` maps each table and migration section to that owner.
@@ -591,10 +757,13 @@ direct requests share the same guards and eligibility checks. If an offer holds
 capacity, it is a versioned Booking hold with a persisted expiry, not a browser
 timer. Acceptance rechecks the current offer, linked parking and owner state.
 
-`outages.go` persists confirmed affected intervals and recovery grace. Expiry
-workers consult those records before no-show release or offer expiry; health
-observations alone do not declare an incident. Registering an incident and
-expiring protected claims share a scope/date guard to give a defined ordering.
+`core/service/operations/incidents.go` owns declarations through the driving
+incident contract and driven incident-store facet. Booking
+`outages.go` applies relevant declarations and configured grace to its own deadline
+state; Events `protection.go` does the same for event offers/reconfirmation. Expiry
+workers use narrow guarded incident reads; health observations alone do not
+declare an incident. Registering an incident and expiring protected claims share
+a scope/date guard to give a defined ordering.
 An already committed reassignment remains valid: recovery never resurrects a
 former claim over its replacement. Grace ends at the booking's usable boundary.
 The [policy record](../../policy-defaults.md#outage-protection) has no agreed
@@ -962,7 +1131,10 @@ for use on/after that point, including descendant spaces; confirmed commitments
 remain readable and manageable. Booking compares requested use with the published
 lifecycle revision at claim commit. A stale snapshot cannot bypass the schedule.
 Authorised reactivation revalidates definitions, calendars and dated inventory,
-preserving the same identity, commitments and history. Deletion reports blocking bookings,
+preserving the same identity, commitments and history. Pre-existing unconfirmed
+holds/offers revalidate at confirmation and cannot confirm excluded use. Return
+a clear unavailable outcome and reconcile late Exchange side effects; existing
+confirmations remain protected. Deletion reports blocking bookings,
 children or other dependencies and never silently retires, cancels or cascades.
 Retired resources remain present for authorised read/refresh/import, including
 Terraform. The [workplace lifecycle contract](../api-surfaces/workplace-lifecycle.md)
@@ -986,9 +1158,17 @@ cannot succeed. The [mapping publication contract](../api-surfaces/plan-publicat
 and [operational evidence decision](../../adr/0029-keep-operational-occupancy-evidence-in-booking.md)
 apply in this candidate's directory style. Version guards, atomic visibility and
 retry outcomes need transaction-level validation; this owner agreement does not
-choose a repository architecture. Confirmed outage-record custody is a separate
-[shared ownership question](README.md#remaining-shared-design-questions); existing
-incident placement below remains a proposal until that decision is resolved.
+choose a repository architecture.
+
+Shared operational facilities retain confirmed outage declarations, including
+affected offices/actions/times and revisions. Booking and Events consume narrow
+private incident reads and own their respective protected deadline state; Policy
+owns configurable rules. Declaration publication is ordered against expiry
+through the guarded read/transition protocol, rather than relying on delayed
+notifications. Job execution supplies mechanics without choosing business expiry.
+The [incident contract](../api-surfaces/operational-incidents.md) also preserves
+incident-scoped request-recovery extensions. These owners apply independently of
+repository style.
 
 ## Walkthroughs
 
@@ -1144,15 +1324,15 @@ packages are included. They are not implementation-effort estimates.
 
 | Measure | Printed candidate |
 | --- | --- |
-| Named Go package directories, including command/client/test-only packages | 85 |
-| Core packages | 29 |
-| Core service packages | 11 |
+| Named Go package directories, including command/client/test-only packages | 86 |
+| Core packages | 30 |
+| Core service packages | 12 |
 | Driving adapter packages | 21 |
 | Driven adapter packages | 21 |
 | Reusable contract packages | 6 |
-| Driving-port source files | 15 |
-| Driven-port source files | 20 |
-| Named PostgreSQL migration files | 8 |
+| Driving-port source files | 16 |
+| Driven-port source files | 21 |
+| Named PostgreSQL migration files | 9 |
 | Generated Go packages | 5: three server, two client |
 | Named runtime role Deployment manifests | 5 |
 | Explicit dependency rules | 10, including the CLI composition exception |

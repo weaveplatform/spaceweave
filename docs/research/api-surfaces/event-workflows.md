@@ -59,7 +59,11 @@ enabled waitlist policy; without a waitlist, normal registration rules apply.
 Public resource views show both the deadline and the outcome. The initial notice
 period remains unselected. A confirmed application outage pauses affected
 reconfirmation deadlines and preserves those tickets/seats while response is
-impossible. Publish a recovery grace period within the event's usable attendance
+impossible. Shared operational facilities retain the confirmed declaration;
+Events consumes its office/action/time scope and controls its own deadline state,
+using Policy's configured rules. The [incident contract](operational-incidents.md)
+orders declaration publication against expiry. Publish a recovery grace period
+within the event's usable attendance
 window; event times and organiser-controlled registration cutoffs remain in force.
 
 Existing offers remain held during venue recovery, with their expiry clocks

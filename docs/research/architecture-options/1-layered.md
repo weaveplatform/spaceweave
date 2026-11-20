@@ -143,6 +143,7 @@ internal/
 │   ├── reporting.go                  evidence kinds and projection freshness
 │   ├── notification.go               message kinds, recipients and per-message preferences
 │   ├── work.go                       durable task envelopes, outbox facts and retry identity
+│   ├── incident.go                   confirmed operational scope/times/revision values
 │   └── failure.go                    unavailable/stale/pending/forbidden/dependency results
 ├── support/
 │   ├── clock/
@@ -320,6 +321,7 @@ internal/
 │   │   ├── events.go                 event/audience/access and organiser management
 │   │   ├── venue.go                  coordinate venue and issued-ticket capacity atomically
 │   │   ├── registration.go           named staff/visitor ticket issue and duplicate requests
+│   │   ├── protection.go             apply shared incidents to Events-owned deadlines
 │   │   ├── admission.go              one successful entry scan per usable ticket
 │   │   └── handover.go               assisted leaver ownership/venue recovery work
 │   ├── reporting/
@@ -334,7 +336,7 @@ internal/
 │   │   └── teams.go                  eligibility and private conversation prerequisites
 │   ├── operations/
 │   │   ├── workplace.go              coordinate asset approval, mapping and Booking validation
-│   │   ├── incidents.go              persist affected outage windows and recovery grace
+│   │   ├── incidents.go              own confirmed declarations; owners apply deadline policy
 │   │   └── recovery.go               lag/readiness assessment and explicit failover evidence
 │   └── jobs/
 │       ├── jobs.go                   enqueue/claim/retry primitives and registered handlers
@@ -355,7 +357,8 @@ internal/
     │   ├── visitors.go               visit links and reception/retention state
     │   ├── reporting.go              derived projections and scoped read queries
     │   ├── notifications.go          preferences, inbox and delivery identities
-    │   ├── work.go                   jobs/outbox/leases/incidents/idempotency records
+    │   ├── incidents.go              operational declaration writer and guarded readers
+    │   ├── work.go                   jobs/outbox/leases/idempotency records
     │   ├── postgres/
     │   │   ├── postgres.go           pool lifecycle and facet implementation constructors
     │   │   ├── transaction.go        commit/rollback; shared handle validation and retries
@@ -373,6 +376,7 @@ internal/
     │   │   ├── visitors.go           visit association, arrival/departure and purge state
     │   │   ├── reporting.go          derived projections and paged scope-filtered reports
     │   │   ├── notifications.go      deliveries/preferences and attempt uniqueness
+    │   │   ├── incidents.go          operational declarations and scope ordering guards
     │   │   ├── jobs.go               due claims, leases, backoff and failed-job inspection
     │   │   ├── outbox.go             same-transaction append and consumer checkpoints
     │   │   ├── migrate.go            one ordered migration runner and ownership manifest
@@ -389,7 +393,8 @@ internal/
     │   │       ├── 0009_events.sql    Events/tickets/admissions
     │   │       ├── 0010_reporting.sql Reporting projections and purge progress
     │   │       ├── 0011_messages.sql  Notifications preferences/inbox/attempts
-    │   │       └── 0012_work.sql      durable jobs/outbox/incidents and retry records
+    │   │       ├── 0012_work.sql      durable jobs/outbox and retry records
+    │   │       └── 0013_incidents.sql operational declaration ownership
     │   └── storetest/
     │       ├── booking.go            concurrent claim/transfer/check-in contract suite
     │       └── workflows.go          event/visit/identity/shared-transaction contract suite
@@ -569,7 +574,8 @@ job claiming, not the inventory query deciding who can book.
 | Plans | drawing packages, processing/review/publication | plans SQL and asset/revision/profile tables |
 | Visitors / Events | visits/reception / event/tickets/admission | visitors SQL / events SQL, respectively |
 | Reporting / Notifications | derived projections/report retention / preferences/delivery | reporting SQL / notifications SQL, respectively |
-| Policy / Jobs | version publications / durable execution mechanics | policy SQL / jobs/outbox/incidents, respectively |
+| Operational facilities | confirmed incident declarations, scope/times/revisions and guarded reads | operations/incidents service and incidents SQL; no business deadline writers |
+| Policy / Jobs | version publications / durable execution mechanics | policy SQL / jobs/outbox, respectively |
 
 `owners.yaml` lists table/query/migration owners and approved references.
 Architecture checks inspect imports, facet selectors and queries; schema review
@@ -600,9 +606,10 @@ occupancy cannot establish attendance or prevent no-show release. After personal
 check-in, fresh sustained vacancy may release capacity; missing signals mean unknown.
 
 Expiry workers read current booking version, policy and protected outage
-intervals under the same transition locks as check-in. An operator-declared
-incident records affected actions/offices/times durably; a worker-local health
-flag cannot decide everybody's expiry policy. Confirmed app outages preventing
+intervals under the same transition locks as check-in. The Operations service
+records an operator-confirmed incident through its own incidents facet/SQL,
+including affected actions/offices/times; a worker-local health flag cannot
+decide everybody's expiry policy. Confirmed app outages preventing
 check-in/offer acceptance pause those deadlines, followed by configured recovery
 grace. They do not extend actual space use past the booking period. An old
 allocation is never resurrected over a committed reassignment.
@@ -892,7 +899,10 @@ for use on/after that point, including descendant spaces; confirmed commitments
 remain readable and manageable. Booking compares requested use with the published
 lifecycle revision at claim commit. A stale snapshot cannot bypass the schedule.
 Authorised reactivation revalidates definitions, calendars and dated inventory,
-preserving the same identity, commitments and history. Deletion reports blocking bookings,
+preserving the same identity, commitments and history. Pre-existing unconfirmed
+holds/offers revalidate at confirmation and cannot confirm excluded use. Return
+a clear unavailable outcome and reconcile late Exchange side effects; existing
+confirmations remain protected. Deletion reports blocking bookings,
 children or other dependencies and never silently retires, cancels or cascades.
 Retired resources remain present for authorised read/refresh/import, including
 Terraform. The [workplace lifecycle contract](../api-surfaces/workplace-lifecycle.md)
@@ -916,9 +926,17 @@ cannot succeed. The [mapping publication contract](../api-surfaces/plan-publicat
 and [operational evidence decision](../../adr/0029-keep-operational-occupancy-evidence-in-booking.md)
 apply in this candidate's directory style. Version guards, atomic visibility and
 retry outcomes need transaction-level validation; this owner agreement does not
-choose a repository architecture. Confirmed outage-record custody is a separate
-[shared ownership question](README.md#remaining-shared-design-questions); existing
-incident placement below remains a proposal until that decision is resolved.
+choose a repository architecture.
+
+Shared operational facilities retain confirmed outage declarations, including
+affected offices/actions/times and revisions. Booking and Events consume narrow
+private incident reads and own their respective protected deadline state; Policy
+owns configurable rules. Declaration publication is ordered against expiry
+through the guarded read/transition protocol, rather than relying on delayed
+notifications. Job execution supplies mechanics without choosing business expiry.
+The [incident contract](../api-surfaces/operational-incidents.md) also preserves
+incident-scoped request-recovery extensions. These owners apply independently of
+repository style.
 
 ## Walkthroughs
 
@@ -1074,8 +1092,8 @@ sketches and walkthrough paths are not counted again.
 | Internal Go packages | 78 |
 | Application packages | 13 |
 | Persistence packages | 23 |
-| Representative Go files, including generated servers and architecture tests | 226 |
-| Initial named SQL migrations | 12; one ordered sequence, individually owned |
+| Representative Go files, including generated servers and architecture tests | 230 |
+| Initial named SQL migrations | 13; one ordered sequence, individually owned |
 | Dependency/ownership rules | 8; application edges and SQL owner manifest expand their checks |
 | Independent runtime roles from one release | 5 |
 | Explicit shared business transaction workflows | 2: venue/ticket capacity and visitor ticket/visit link |

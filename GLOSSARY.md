@@ -274,6 +274,11 @@ use of a particular desk.
 **Desk release**:
 Ending a desk allocation so its capacity returns to the bookable pool.
 
+**Confirmed application outage**:
+A verified interruption that prevents specified application actions in affected
+offices during a defined period. Protection applies to the affected deadlines;
+a missing occupancy signal alone does not establish an application outage.
+
 **No-show**:
 A desk allocation whose assigned staff member has not checked in within its
 check-in grace period.

@@ -66,13 +66,15 @@ Dependency rules for this candidate:
    provider SDKs, Chi or generated transport. Small modules may keep rules,
    stores and handlers in a few flat packages. Uniform layering inside every
    module would add ceremony without strengthening ownership.
-4. Gateways call module APIs and own response composition, portal assets and
-   transport mapping. They own no tables and cannot create transactions across
+4. Gateways call module APIs and approved operational facility interfaces, and
+   own response composition, portal assets and transport mapping. They own no
+   tables and cannot create transactions across
    modules. The gateway never decides availability or authorisation by joining
    another module's tables.
 5. Platform and kernel import no business module. Platform supplies mechanisms
    such as PostgreSQL connections, named transaction scopes, outbox storage,
-   jobs, HTTP support and telemetry. Kernel contains only stable identifiers,
+   jobs, confirmed incident declarations, HTTP support and telemetry. Kernel
+   contains only stable identifiers,
    principal context, time ranges and paging; no Staff, Booking or global Store.
 6. App constructs modules and adapters, mounts Chi routes and registers durable
    handlers. Only app and command entrypoints import module constructors.
@@ -175,6 +177,9 @@ spaceweave/
 │   │   │   ├── pool.go
 │   │   │   ├── roles.go
 │   │   │   └── migrate.go
+│   │   ├── incident/
+│   │   │   ├── incident.go           confirmed declaration scope/times/revision
+│   │   │   └── store.go              declaration writer and guarded read interface
 │   │   ├── tx/
 │   │   │   ├── runner.go
 │   │   │   └── scopes.go
@@ -188,7 +193,8 @@ spaceweave/
 │   │   │   └── receipts.go
 │   │   ├── migrations/
 │   │   │   ├── embed.go
-│   │   │   └── 0001_jobs_outbox.sql
+│   │   │   ├── 0001_jobs_outbox.sql
+│   │   │   └── 0002_incidents.sql
 │   │   ├── httpkit/
 │   │   │   ├── middleware.go
 │   │   │   ├── errors.go
@@ -345,6 +351,7 @@ spaceweave/
 │   │   │   ├── revoke.go
 │   │   │   ├── visit_link.go
 │   │   │   ├── admit.go
+│   │   │   ├── protection.go         apply shared incidents to Events-owned deadlines
 │   │   │   └── port/
 │   │   │       └── store.go
 │   │   └── adapters/
@@ -509,6 +516,7 @@ spaceweave/
 │   │   │   └── assets.go
 │   │   └── operations/
 │   │       ├── queues.go
+│   │       ├── incidents.go          authorised declarations; no business expiry policy
 │   │       ├── retention.go
 │   │       └── recovery.go
 │   ├── transport/
@@ -769,10 +777,10 @@ migrations install their own tables, indexes and constraints.
 
 | Owner/schema | Representative tables | Migration responsibility |
 | --- | --- | --- |
-| Platform | `jobs`, `job_attempts`, `leases`, `outbox`, `consumer_receipts`, `schema_versions` | Durable mechanisms, not booking state or staff models. |
+| Platform | `jobs`, `job_attempts`, `leases`, `outbox`, `consumer_receipts`, `schema_versions`, `incident_declarations`, `incident_scope_guards` | Shared mechanisms and operational declarations; no business deadline, claim or ticket mutation authority. |
 | Identity | `staff`, `source_links`, `source_checkpoints`, `workforce_facts`, `groups`, `memberships`, `sessions`, `capabilities`, `delegation_grants`, `scim_resources` | Correlation, source authority, access and lifecycle in one owned transaction. |
 | Workplace | `offices`, `buildings`, `floors`, `space_definitions`, `office_calendars`, `baseline_neighbourhoods`, `definition_versions`, `plan_mappings`, `lifecycle_schedules` | Definitions and operational mapping publication; no dated active claim writes. |
-| Booking | `inventory_days`, `dated_bundles`, `resource_guards`, `owner_guards`, `claims`, `parking_segments`, `waitlist_entries`, `offers`, `checkins`, `occupancy_evidence`, `protection_windows` | All claim/timeout transitions and validated operational occupancy evidence; commit facts for Attendance. |
+| Booking | `inventory_days`, `dated_bundles`, `resource_guards`, `owner_guards`, `claims`, `parking_segments`, `waitlist_entries`, `offers`, `checkins`, `occupancy_evidence`, `protected_deadlines` | All claim/timeout transitions and validated operational occupancy evidence; commit facts for Attendance. |
 | Booking, continued | `room_requests`, `handover_reviews`, `cycles`, `attendance_intents`, `travel_exceptions`, `collaboration_requests`, `allocation_groups`, `runs`, `proposals` | Business room intentions plus planning, demand and group progress under the same claim owner. |
 | Events | `events`, `event_audiences`, `tickets`, `admissions` | Event lifecycle, registration, ticket capacity and admission, coordinated with Booking's venue state. |
 | Exchange | `exchange_links`, `provider_observations`, `provider_desired_state`, `sync_cursors`, `subscriptions`, `reconciliation_progress` | Provider correlation, desired/observed calendar state and reconciliation; apply business transitions through Booking. |
@@ -921,11 +929,14 @@ priority. Offer acceptance atomically consumes the active offer and claim,
 including both-required parking. An offer without suitable linked capacity is
 not eligible. Fairness decisions are recorded so operators can explain them.
 
-Booking owns confirmed app-outage protection records because those records
-change its timeout decisions. An authorised operator action can target affected
-offices and operations, with start/end and recovery-grace policy. Expiry reads
-that state under the protection guard. A telemetry gap alone does not infer a
-confirmed outage, and an outage cannot extend a booking beyond its useful
+`platform/incident` owns confirmed outage declarations, including affected
+offices/actions/times and revision; the authorised operations gateway invokes
+its declaration interface. Booking owns protected booking deadlines and Events
+owns protected event deadlines. Their private core ports consume incident reads,
+keeping module API packages dependent only on kernel/standard-library values.
+Policy owns configurable recovery rules. Expiry reads the incident scope/revision
+and its owning deadline state under the ordered protection guard. A telemetry
+gap alone does not infer a confirmed outage, and an outage cannot extend a booking beyond its useful
 window. Existing reassignments stay protected. See
 [outage policy](../../policy-defaults.md#outage-protection).
 
@@ -1301,7 +1312,10 @@ for use on/after that point, including descendant spaces; confirmed commitments
 remain readable and manageable. Booking compares requested use with the published
 lifecycle revision at claim commit. A stale snapshot cannot bypass the schedule.
 Authorised reactivation revalidates definitions, calendars and dated inventory,
-preserving the same identity, commitments and history. Deletion reports blocking bookings,
+preserving the same identity, commitments and history. Pre-existing unconfirmed
+holds/offers revalidate at confirmation and cannot confirm excluded use. Return
+a clear unavailable outcome and reconcile late Exchange side effects; existing
+confirmations remain protected. Deletion reports blocking bookings,
 children or other dependencies and never silently retires, cancels or cascades.
 Retired resources remain present for authorised read/refresh/import, including
 Terraform. The [workplace lifecycle contract](../api-surfaces/workplace-lifecycle.md)
@@ -1325,9 +1339,17 @@ cannot succeed. The [mapping publication contract](../api-surfaces/plan-publicat
 and [operational evidence decision](../../adr/0029-keep-operational-occupancy-evidence-in-booking.md)
 apply in this candidate's directory style. Version guards, atomic visibility and
 retry outcomes need transaction-level validation; this owner agreement does not
-choose a repository architecture. Confirmed outage-record custody is a separate
-[shared ownership question](README.md#remaining-shared-design-questions); existing
-incident placement below remains a proposal until that decision is resolved.
+choose a repository architecture.
+
+Shared operational facilities retain confirmed outage declarations, including
+affected offices/actions/times and revisions. Booking and Events consume narrow
+private incident reads and own their respective protected deadline state; Policy
+owns configurable rules. Declaration publication is ordered against expiry
+through the guarded read/transition protocol, rather than relying on delayed
+notifications. Job execution supplies mechanics without choosing business expiry.
+The [incident contract](../api-surfaces/operational-incidents.md) also preserves
+incident-scoped request-recovery extensions. These owners apply independently of
+repository style.
 
 ## Walkthroughs
 
@@ -1391,8 +1413,10 @@ the benefit is no choreography across independent Desk and Parking modules.
    establish the owner's presence or block no-show release. Missing sensors
    cannot be interpreted as vacancy; only fresh sustained vacancy after a valid
    personal check-in can trigger that different policy.
-5. For a confirmed application outage, `protection/outages.go` records affected
-   offices and check-in/offer operations under the protection guard. A release
+5. An authorised operations command records the shared declaration through
+   `platform/incident`. Booking `protection/outages.go` reads its affected
+   offices/actions/revision under the protection guard and applies its own
+   deadline consequences; Events applies event protection independently. A release
    obtaining the guard afterward observes the pause and reschedules. An already
    committed reassignment is preserved, including when the incident's evidence
    later establishes an earlier start.
@@ -1616,9 +1640,9 @@ unit tests are excluded. Root overview and prose examples are not counted.
 | --- | --- |
 | Business modules | 10 |
 | Gateway packages | 2 |
-| Go packages | 114 |
-| Named Go files, including generated and test files | 239 |
-| Named SQL migration files | 14 |
+| Go packages | 115 |
+| Named Go files, including generated and test files | 243 |
+| Named SQL migration files | 15 |
 | Named non-Go frontend files | 19 |
 | Named Kubernetes manifest files | 7 |
 | Packages under Booking | 19 |
