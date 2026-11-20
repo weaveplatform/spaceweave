@@ -281,7 +281,7 @@ internal/
 │   │   │   └── planner.go                    pure grouping/packing objective, no persistence
 │   │   ├── claim/
 │   │   │   ├── claim.go                      booking lifecycle and owned resource claims
-│   │   │   ├── requestset.go                 linked desk/parking intent and both-required rule
+│   │   │   ├── requestset.go                 pair identity, required kind and cancellation scope
 │   │   │   └── transition.go                 room holds, check-in, no-show, vacancy and cancellation
 │   │   ├── waitlist/
 │   │   │   ├── request.go                    eligible unmet demand and priority
@@ -302,7 +302,7 @@ internal/
 │   │   ├── checkin.go                        owner-only personal transition
 │   │   ├── protection.go                     apply shared incidents to Booking-owned deadlines
 │   │   ├── ingest.go                         validate scope/provenance, deduplicate and commit evidence
-│   │   ├── release.go                        no-show/vacancy timers and outage protection
+│   │   ├── release.go                        pre-start pair cancellation; timed desk-only release
 │   │   ├── promote.go                        reserve/accept/expire eligible waitlist offers
 │   │   ├── room.go                           reconcile acceptance and external room intentions
 │   │   └── venue.go                          event-governed capacity participant
@@ -562,6 +562,7 @@ just to change one desk.
 | --- | --- | --- |
 | Every placement in one allocation group commits together | Independent claims/resource capacity belong to several roots. | Booking's `commit_group.go` validates the affected roots and commits all affected claims/capacity guards/outbox records in one bounded transaction. |
 | Required desk plus parking both confirm or neither does | A request-set root alone cannot prevent another request-set claiming the same desk/pool capacity. | Shared Booking transaction coordinates request-set and competing resource/staff guards. |
+| Before either starts, both-required pair cancellation ends both bookings or neither | The pair contains separate Booking claim roots. | Booking's release handler resolves the pair from either ID and revalidates link/start state, authority and resource/pool guards; both claims, retry outcome and facts commit together. |
 | A person has no overlapping desks across offices | Independent office/date aggregates cannot alone enforce the global interval invariant. | A canonical Booking claim protocol and PostgreSQL staff-overlap protection apply to every writer. |
 | Venue capacity remains at least active issued tickets | Venue claim is Booking-owned; registration/tickets are Events-owned. | Events' named venue coordinator uses both published interfaces in one local transaction and serialises ticket issuance against venue changes. |
 | A visit created for registration commits with its ticket or neither does | Events and Visitors own separate records. | Events' registration coordinator joins Visitors' published participant in one local transaction; failed issuance preserves any reused existing valid visit. |
@@ -587,6 +588,18 @@ loads policy/definition versions and relevant current state, validates the
 domain command, acquires capacity/staff guards in a consistent order, rechecks
 affected versions, saves Booking-owned records and appends committed facts.
 No context saves a `BookingClaim` by calling a shared generic repository.
+
+Before either linked booking starts, explicit cancellation of either component
+of a both-required desk/parking pair cancels both in one Booking transaction.
+Optional links allow independent cancellation. The command resolves and
+revalidates the persisted pair, start times, current authority and claim state
+under the normal guards; its receipt, affected claims and follow-up facts commit
+together. Automatic desk no-show or vacancy release instead ends the desk claim
+only. Parking remains booked until its own end or explicit release, including
+in bay/pool capacity calculations. Desk-use evidence cannot establish that a car
+has left. The [linked-booking contract](../api-surfaces/linked-bookings.md)
+defines the public outcomes and concurrency validation; explicit cancellation
+after either booking starts remains a separate product decision.
 
 PostgreSQL range exclusion can protect overlapping intervals for a specific
 resource/person. Capacity pools need additional coordinated count/guard logic;
@@ -917,8 +930,9 @@ repository style.
    committed state decides whether the check-in is valid or the desk was released.
 4. An anonymous occupancy observation never marks the allocation taken or blocks
    return to the pool. A confirmed service incident pauses affected expiry.
-5. Release appends capacity-available work; waitlist promotion claims it through
-   Booking before exposing it to fresh direct requests.
+5. Automatic desk release leaves linked parking booked until its own end or
+   explicit release. Append desk-capacity work; waitlist promotion uses only
+   actually released capacity before exposing it to fresh direct requests.
 6. A stale timer or late check-in cannot take a desk from its new confirmed owner.
 
 ### A PA books a room and Outlook changes it
@@ -1015,7 +1029,7 @@ staffing or runtime. Counts describe the representative tree in this document.
 | Explicit Go-bearing package paths | 112: one per parent directory with a named `.go` file in the full tree. |
 | Explicit representative Go filenames | 199, including generated examples; co-located tests and unprinted retained engine files are excluded. |
 | Shared-kernel packages shown | 4: IDs, principal envelope, interval values and clock. |
-| Explicit booking multi-aggregate operations | Group placement, required linked claim and office transfer. |
+| Explicit booking multi-aggregate operations | Group placement, required linked claim, pre-start both-required pair cancellation and office transfer. |
 | Explicit cross-context transaction families | Event venue/capacity through Events and Booking; registration-created visit/ticket through Events and Visitors. |
 | Runtime role families | 5: HTTP, allocation, Exchange, tracing and maintenance. |
 | Blob provider implementations | 2: Azure and GCS, selected per deployment. |

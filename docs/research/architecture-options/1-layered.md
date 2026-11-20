@@ -134,7 +134,7 @@ internal/
 │   ├── policy.go                     policy revision and pinned operational values
 │   ├── intent.go                     attendance date, travel, requirements, collaboration
 │   ├── allocation.go                 cycles, per-date groups, snapshots and proposals
-│   ├── booking.go                    claims, linked parking, holds and booking versions
+│   ├── booking.go                    claims, pair identity/required kind, holds and versions
 │   ├── deskuse.go                    allocated/taken/released states and personal check-in
 │   ├── calendar.go                   desired/observed room changes and reconciliation state
 │   ├── plans.go                      drawing package and immutable asset revision metadata
@@ -261,7 +261,7 @@ internal/
 │   │   ├── adjustment.go             dated movement of unallocated neighbourhood desks
 │   │   ├── checkin.go                only assignee can mark live allocation taken
 │   │   ├── evidence.go               validate/deduplicate operational evidence; commit facts
-│   │   ├── release.go                cancellation/no-show/vacancy and linked claim policy
+│   │   ├── release.go                pre-start pair cancellation; timed desk-only release
 │   │   ├── waitlist.go               eligibility, ordering and offer creation
 │   │   ├── offer.go                  versioned acceptance, expiry and next candidate
 │   │   ├── rooms.go                  pending local holds and room acceptance transitions
@@ -346,7 +346,7 @@ internal/
     ├── store/
     │   ├── store.go                  aggregate factory and narrow read/write facets
     │   ├── tx.go                     explicit transaction handle and bounded Tx callback
-    │   ├── booking.go                Booking claims/evidence; allocation snapshot contracts
+    │   ├── booking.go                Booking claims/pair cancellation/evidence; allocation snapshots
     │   ├── identity_people.go        Identity staff/source/effective-state facets
     │   ├── identity_access.go        Identity sessions, grants and delegation facets
     │   ├── workplace.go              versioned definitions and calendars
@@ -546,6 +546,18 @@ The transaction covers claims, required parking, waitlist state, audit/retry
 results and follow-up facts. Planning/provider calls stay outside. Transfers
 lock old/replacement keys in stable order and commit acquisition/release together;
 failure retains the old allocation.
+
+Before either linked booking starts, explicit cancellation of either component
+of a both-required desk/parking pair cancels both in one Booking transaction.
+Optional links allow independent cancellation. The command resolves and
+revalidates the persisted pair, start times, current authority and claim state
+under the normal guards; its receipt, affected claims and follow-up facts commit
+together. Automatic desk no-show or vacancy release instead ends the desk claim
+only. Parking remains booked until its own end or explicit release, including
+in bay/pool capacity calculations. Desk-use evidence cannot establish that a car
+has left. The [linked-booking contract](../api-surfaces/linked-bookings.md)
+defines the public outcomes and concurrency validation; explicit cancellation
+after either booking starts remains a separate product decision.
 
 Propose half-open time ranges and database overlap constraints for individual
 resources and one overlapping desk per person. PostgreSQL supports exclusion
@@ -964,7 +976,9 @@ repository style.
    booking transition and protected incident interval.
 3. If valid check-in commits first, the later no-show job observes taken state
    and does nothing. If release commits first, stale check-in cannot restore it.
-4. The source receiver calls Booking to validate/deduplicate/store operational
+4. Automatic no-show/vacancy release returns desk capacity only; linked parking
+   remains booked until its own end or explicit release. The source receiver
+   calls Booking to validate/deduplicate/store operational
    evidence and commit facts. Reporting projects those facts; anonymous occupancy
    cannot stop the no-show capacity returning to the pool.
 5. Booking promotes eligible waitlist demand and holds capacity for an offer.

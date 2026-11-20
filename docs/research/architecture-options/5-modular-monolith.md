@@ -271,7 +271,7 @@ spaceweave/
 │   │   │   └── planning.go
 │   │   ├── core/
 │   │   │   ├── model/
-│   │   │   │   ├── claim.go
+│   │   │   │   ├── claim.go             persisted pair/required kind and release cause
 │   │   │   │   ├── versions.go
 │   │   │   │   └── outcome.go
 │   │   │   ├── port/
@@ -289,7 +289,7 @@ spaceweave/
 │   │   │   │   ├── book.go
 │   │   │   │   ├── transfer.go
 │   │   │   │   ├── checkin.go
-│   │   │   │   └── release.go
+│   │   │   │   └── release.go           pre-start pair cancellation; timed desk-only release
 │   │   │   ├── waitlist/
 │   │   │   │   ├── priority.go
 │   │   │   │   ├── promote.go
@@ -666,7 +666,7 @@ resources it owns; a shared PostgreSQL pool belongs to app.
 | `identity/api.People` | Read verified staff snapshots and effective team/office facts; receive lifecycle events. |
 | `identity/api.Delegation` | Evaluate app-managed grants and fresh native delegation evidence through Identity-owned authority adapters. |
 | `workplace/api.Definitions` | Read/version definitions, retire/reactivate resources and publish approved geometry mappings after Booking validates dated impact. |
-| `booking/api.Claims` | Query authoritative availability; create/cancel claims; transfer desk and linked parking. |
+| `booking/api.Claims` | Query availability, create claims, resolve linked cancellation from either booking ID, and transfer desk/parking. Pre-start both-required cancellation ends both atomically; optional links cancel independently. |
 | `booking/api.Allocations` | Read planning snapshot; commit one group with expected inputs; return precise stale/conflict causes. |
 | `booking/api.Desks` | Personal check-in, eligible waitlist submission/acceptance, validated operational evidence ingestion and protected expiry; commit facts for Attendance projections. |
 | `booking/api.Rooms` | Commit business room intentions/holds, expose desired revisions, and apply provider observations through capacity-safe booking transitions. |
@@ -714,6 +714,18 @@ can lag without creating a cross-module Planning authority.
 `TransferDesk` acquires replacement desk/required parking and retires previous
 claims in one transaction, checking the final one-desk-per-owner invariant.
 Rollback preserves the previous arrangement when replacement capacity fails.
+
+Before either linked booking starts, explicit cancellation of either component
+of a both-required desk/parking pair cancels both in one Booking transaction.
+Optional links allow independent cancellation. The command resolves and
+revalidates the persisted pair, start times, current authority and claim state
+under the normal guards; its receipt, affected claims and follow-up facts commit
+together. Automatic desk no-show or vacancy release instead ends the desk claim
+only. Parking remains booked until its own end or explicit release, including
+in bay/pool capacity calculations. Desk-use evidence cannot establish that a car
+has left. The [linked-booking contract](../api-surfaces/linked-bookings.md)
+defines the public outcomes and concurrency validation; explicit cancellation
+after either booking starts remains a separate product decision.
 The [allocation](../../adr/0014-use-explicit-allocation-cycles-and-atomic-group-placement.md)
 and [dated-inventory](../../adr/0013-separate-workplace-definitions-from-dated-booking-inventory.md)
 decisions apply to direct and background callers alike.
@@ -1424,10 +1436,12 @@ the benefit is no choreography across independent Desk and Parking modules.
    within the booking's usable period. Offer acceptance and expiry follow the
    same pause rules; Exchange downtime alone is not automatically a confirmed
    app check-in outage.
-7. When release is permitted, `waitlist/promote.go` selects the next eligible
-   request while the capacity guard remains locked, secures its required linked
-   parking and creates an offer in the release transaction. A fresh caller
-   cannot jump into the gap between release and asynchronous notification.
+7. Automatic desk release keeps linked parking booked until its own end or
+   explicit release. `waitlist/promote.go` selects eligible demand against actually
+   available desk/parking capacity under the existing guards, retaining the old
+   parking claim in bay/pool usage. It secures any required available parking and
+   creates the offer in the release transaction; a fresh caller cannot jump
+   into the gap before asynchronous notification.
 8. Notification delivery follows commit. A delivery retry never creates another
    offer, and a delayed old acceptance cannot override a newer offer generation.
    Attendance later consumes the personal check-in or occupancy as separately

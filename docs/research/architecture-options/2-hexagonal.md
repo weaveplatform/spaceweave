@@ -287,7 +287,7 @@ spaceweave/
 │   │       │   ├── transfer.go
 │   │       │   ├── waitlist.go
 │   │       │   ├── checkin.go
-│   │       │   ├── release.go
+│   │       │   ├── release.go          pre-start pair cancellation; timed desk-only release
 │   │       │   ├── evidence.go
 │   │       │   ├── rooms.go
 │   │       │   ├── venue.go
@@ -672,6 +672,18 @@ desks between bundles, never silently revoke a confirmed claim. A desk transfer
 locks old and replacement resources in a canonical order, obtains the replacement
 desk/required parking and releases the former claims in the same transaction.
 The owner cannot acquire overlapping desk claims in different offices.
+
+Before either linked booking starts, explicit cancellation of either component
+of a both-required desk/parking pair cancels both in one Booking transaction.
+Optional links allow independent cancellation. The command resolves and
+revalidates the persisted pair, start times, current authority and claim state
+under the normal guards; its receipt, affected claims and follow-up facts commit
+together. Automatic desk no-show or vacancy release instead ends the desk claim
+only. Parking remains booked until its own end or explicit release, including
+in bay/pool capacity calculations. Desk-use evidence cannot establish that a car
+has left. The [linked-booking contract](../api-surfaces/linked-bookings.md)
+defines the public outcomes and concurrency validation; explicit cancellation
+after either booking starts remains a separate product decision.
 These are baseline requirements from
 [ADR 0014](../../adr/0014-use-explicit-allocation-cycles-and-atomic-group-placement.md)
 and the [allocation policies](../../policy-defaults.md#agreed-allocation-rules).
@@ -1180,8 +1192,10 @@ repository style.
    inventory/intents/team/workplace inputs and records their revisions.
 3. `rules/allocation` forms groups and packs a proposal outside a write
    transaction, including every both-required parking dependency.
-4. A cancellation goes through `driving.Booking.Cancel`, releases its claim
-   under Booking guards and creates waitlist work in the same transaction.
+4. `driving.Booking.Cancel` resolves the pair under Booking guards and creates
+   committed waitlist work.
+   Before either starts, a both-required cancellation ends both atomically; an
+   optional link cancels only the selected booking.
    A premature ordinary direct request becomes intent; after the main run it
    still cannot jump eligible waitlisted demand.
 5. `CommitGroup` locks resource/owner/pool guards in canonical order, reloads
@@ -1200,8 +1214,10 @@ repository style.
 3. If check-in commits while valid, the expiry observes taken state and does
    nothing. If release/reassignment committed first, check-in returns its current
    unavailable outcome; it cannot steal the replacement's booking.
-4. Release selects/promotes eligible waitlist demand atomically or reserves its
-   guarded next action. Fresh direct requests use the same protocol.
+4. Automatic desk release retains linked parking until its own end or explicit
+   release. Promote eligible waitlist demand only against actually released
+   capacity, atomically or through a guarded next action. Fresh direct requests
+   use the same protocol.
 5. The driving occupancy adapter calls Booking, which validates/deduplicates
    operational evidence, persists it and commits facts for Reporting. Anonymous
    occupancy is not owner check-in and cannot stop a no-show release. A missing

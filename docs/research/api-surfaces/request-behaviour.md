@@ -52,7 +52,11 @@ limits and exact mismatch responses remain implementation-contract work.
 Persist receipt uniqueness, the accepted domain outcome and follow-up job/outbox
 records in one bounded PostgreSQL transaction. An office transfer includes its
 replacement claims and old releases; required desk/parking claims confirm both
-or neither. Commit success before acknowledging acceptance. A lost response then
+or neither. Before either booking starts, explicit cancellation of either part
+of a both-required pair ends both in that transaction; optional links permit
+independent cancellation. Automatic desk no-show/vacancy release leaves parking
+booked until its own end or explicit release. The [linked-booking contract](linked-bookings.md)
+distinguishes those outcomes. Commit success before acknowledging acceptance. A lost response then
 leaves a recoverable result rather than an unrecorded business mutation.
 [Atomic receipt decision](../../adr/0022-commit-retry-receipts-with-command-acceptance.md).
 

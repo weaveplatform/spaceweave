@@ -238,7 +238,7 @@ internal/usecase/
 │   ├── commit.go
 │   ├── direct.go
 │   ├── transfer.go
-│   ├── release.go
+│   ├── release.go          pre-start pair cancellation; timed desk-only release
 │   ├── checkin.go
 │   ├── offer.go
 │   ├── room.go
@@ -702,7 +702,7 @@ internal/usecase/booking/
 ├── commit.go              whole allocation-group validation and one transaction
 ├── direct.go              post-main-run direct desk/parking requests; waitlist priority
 ├── transfer.go            acquire replacements and release old claims together
-├── release.go             owner cancellation, leaver cleanup, no-show and vacancy release
+├── release.go             explicit pair/optional cancellation versus automatic desk-only release
 ├── checkin.go             personal assignee check-in under current claim lock
 ├── evidence.go            validate/deduplicate/store operational observations; commit facts
 ├── protection.go          read shared incidents; apply Booking-owned deadline protection
@@ -818,6 +818,18 @@ Specific parking bays use ordinary resource claims; capacity-only parking uses
 the pooled path. A linked request without the both-required flag may succeed
 independently for each resource, with separate availability and explicit
 outcomes. Requirements such as EV charging still determine eligibility.
+
+Before either linked booking starts, explicit cancellation of either component
+of a both-required desk/parking pair cancels both in one Booking transaction.
+Optional links allow independent cancellation. The command resolves and
+revalidates the persisted pair, start times, current authority and claim state
+under the normal guards; its receipt, affected claims and follow-up facts commit
+together. Automatic desk no-show or vacancy release instead ends the desk claim
+only. Parking remains booked until its own end or explicit release, including
+in bay/pool capacity calculations. Desk-use evidence cannot establish that a car
+has left. The [linked-booking contract](../api-surfaces/linked-bookings.md)
+defines the public outcomes and concurrency validation; explicit cancellation
+after either booking starts remains a separate product decision.
 
 Versioned workplace changes create dated inventory changes through booking.
 Removing a space or lowering capacity with affected confirmations returns an
@@ -1429,8 +1441,9 @@ repository style.
    If valid release wins, a late check-in cannot reclaim reassigned capacity.
 4. Anonymous occupancy cannot block release. A confirmed affected app outage
    pauses eligible expiry time and adds configured recovery grace on resumption.
-5. Release writes waitlist-match work atomically. Before fresh direct bookings
-   can consume the capacity, booking evaluates eligible queued demand.
+5. Automatic desk release preserves linked parking until its own end or explicit
+   release. Write desk waitlist-match work atomically; evaluate eligible queued
+   demand against actually released capacity before fresh direct bookings.
 6. Same-day promotion creates a ten-minute default offer hold, not an automatic
    personal check-in. Acceptance/expiry share guards and outage protection.
 7. After acceptance and check-in, a sensor outage preserves taken status;

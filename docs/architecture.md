@@ -236,6 +236,11 @@ technical guidance and design tradeoffs.
   - Established: effective-dated office/team changes update unconfirmed derived
     planning defaults while preserving explicit travel and confirmed bookings.
     Notify owners when existing arrangements need attention.
+  - Established: before either booking starts, explicit cancellation of either
+    component of a both-required desk/parking pair cancels both atomically;
+    optional pairs permit independent cancellation. Automatic desk no-show or
+    vacancy release retains parking until its own end or explicit release.
+    All five layouts extend their existing Booking transition/store paths.
   - Established: automatically release leavers' future personal desk/parking
     bookings. Route rooms/events through assisted ownership-handover review;
     this does not assume Exchange permits an in-place organiser change.

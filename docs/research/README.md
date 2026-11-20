@@ -43,6 +43,8 @@ rather than proving its correctness or performance.
    mapping activation and Booking dated-inventory validation across all layouts.
 8. [Operational incidents](api-surfaces/operational-incidents.md): confirmed outage
    declarations, guarded expiry and business-owned deadline protection.
+9. [Linked bookings](api-surfaces/linked-bookings.md): pre-start paired cancellation
+   and automatic desk release that preserves parking capacity.
 
 The catalogue links specialised research on authentication, role-based access,
 Entra groups, Conditional Access, MCP/Terraform and provider protocols. The

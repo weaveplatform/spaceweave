@@ -96,6 +96,21 @@ protections do not extend a booking beyond its actual usable period.
 For event offers, outage grace also respects the registration cutoff; later
 acceptance requires an explicit organiser extension of registration.
 
+## Linked desk and parking release
+
+Before either booking starts, explicit cancellation of either component of a
+both-required desk/parking pair cancels both atomically. Optional links permit
+independent cancellation. Revalidate the pair, current state, authority and start
+times when the command commits; a stale page cannot establish eligibility.
+
+Automatic desk no-show or vacancy release returns desk capacity only. Linked
+parking remains booked until its own end or explicit release, including in
+specific-bay and pooled-capacity calculations. Desk evidence cannot establish
+that the vehicle has left. Acquisition/transfer atomicity remains unchanged.
+The [linked-booking contract](research/api-surfaces/linked-bookings.md) records
+consumer outcomes and validation. Explicit cancellation after either booking
+starts remains a separate product decision.
+
 ## Agreed allocation rules
 
 Among plans accommodating the same number of people, prioritise explicit

@@ -169,6 +169,12 @@ a parking area. Staff can link desk and parking bookings for the same attendance
 day and manage them together, while each retains its own availability and rules.
 They may mark a linked request as both required, so neither booking is confirmed
 unless both can be secured. Otherwise, their availability is handled independently.
+Before either starts, explicitly cancelling either booking in a both-required pair
+cancels both atomically; optional links permit independent cancellation. Automatic
+desk no-show or vacancy release leaves parking booked until its own end or
+explicit release. Desk-use evidence does not establish that a car has left.
+The [linked-booking contract](docs/research/api-surfaces/linked-bookings.md) defines
+the shared cancellation and release behaviour.
 
 Meeting rooms use start/end times, with staff finding suitable rooms by capacity
 and facilities. Their calendar integration is with Microsoft Exchange Online:

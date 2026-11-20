@@ -74,7 +74,11 @@ layouts without selecting a repository style.
   confirmed bookings; ordinary direct desk booking opens after the main run.
 - Enforce one overlapping desk per person. Required desk/parking claims confirm
   both or neither; office transfers acquire replacements and release old claims
-  atomically. Eligible waitlisted demand precedes fresh direct requests.
+  atomically. Before either booking starts, explicit cancellation of either part
+  of a both-required pair cancels both atomically; optional links cancel
+  independently. Automatic desk no-show/vacancy release retains parking until
+  its own end or explicit release. The [linked-booking contract](../api-surfaces/linked-bookings.md)
+  applies to all five layouts. Eligible waitlisted demand precedes fresh requests.
 - Allocation means allocated; the owner's personal check-in means taken. A PA
   cannot check in the owner's desk. Anonymous occupancy never establishes the
   owner's attendance or withholds a no-show desk from the pool. Optional sensors

@@ -77,7 +77,11 @@ apply the declared scope to their own deadlines, with rules owned by Policy.
 One owner arbitrates dated capacity. Allocation calculates against a versioned
 snapshot outside long transactions; the owner revalidates and commits each group,
 including required parking. Direct requests, waitlist promotion, check-in and
-release use the same claim protocol. PostgreSQL constraints and locking protect
+release use the same claim protocol. Before either linked booking starts,
+explicit cancellation of a both-required pair ends both atomically; optional
+links permit independent cancellation. Automatic desk no-show/vacancy release
+retains parking until its own end or explicit release, so only actually released
+capacity enters promotion. PostgreSQL constraints and locking protect
 competing writers; transaction isolation choices require retry handling and
 concurrency evidence. [PostgreSQL transaction isolation](https://www.postgresql.org/docs/current/transaction-iso.html),
 [constraints](https://www.postgresql.org/docs/current/ddl-constraints.html).

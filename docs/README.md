@@ -49,6 +49,10 @@ here. Decision records live in `docs/adr/`.
   distinguish approved immutable assets from operational geometry mappings and
   validate dated-inventory impact before activation.
 
+- [Linked desk and parking lifecycle](research/api-surfaces/linked-bookings.md):
+  cancel a both-required pair atomically before either starts; automatic desk
+  release preserves parking until its own end or explicit release.
+
 - [Confirmed outages and deadline protection](research/api-surfaces/operational-incidents.md):
   share operational declarations while keeping deadline state with Booking and
   Events and configurable rules with Policy.
@@ -154,3 +158,7 @@ here. Decision records live in `docs/adr/`.
 - [Share incident declarations with owning deadline workflows](adr/0031-share-incident-declarations-with-owning-deadline-workflows.md):
   give operational facilities custody of confirmed outage scope/times, with
   Booking and Events retaining their own transition authority.
+
+- [Separate linked cancellation from automatic desk release](adr/0032-separate-linked-cancellation-from-automatic-desk-release.md):
+  keep deliberate paired cancellation atomic while retaining parking when desk
+  evidence cannot establish vehicle departure.

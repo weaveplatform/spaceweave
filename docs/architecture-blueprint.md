@@ -182,6 +182,7 @@ booking/check-in health distinct from degraded Exchange or notification delivery
 | --- | --- |
 | Desk allocation, direct requests and waitlist promotion | Booking serialises competing claims; enforce mandatory features, dated neighbourhood membership, one overlapping desk per person and existing waitlist priority. Confirmed assignments are protected. |
 | Required desk plus parking | Secure both in one Booking transaction or confirm neither. A transfer acquires replacement capacity and releases the old claims together. |
+| Linked booking cancellation/release | Before either booking starts, explicit cancellation of either part of a both-required pair cancels both atomically; optional links permit independent cancellation. Automatic desk no-show/vacancy release leaves parking booked until its own end or explicit release, retaining bay/pool usage. |
 | Main allocation run | Plan outside long transactions using a versioned snapshot. Commit each group's placement atomically, including required parking; replan only affected uncommitted groups on conflicts. |
 | Workplace retirement/reactivation/deletion | Published immediate/scheduled retirement excludes new use on/after the office-local effective time, including descendants. Booking compares requested use with the lifecycle revision. Reactivation revalidates definitions/calendars/inventory while retaining identity/history; unconfirmed holds/offers cannot confirm excluded use and late Exchange effects reconcile. Confirmations remain manageable and deletion never silently cancels/cascades. |
 | Operational plan activation | Plans approves immutable assets; Workplace owns geometry-to-stable-space mappings. Booking validates dated inventory and confirmed-claim impact under version guards before activation. Approval and activation have distinct public outcomes. |
@@ -328,7 +329,7 @@ API/worker upgrades. Retain rollback compatibility until the old release drains.
 
 | Validation | Evidence required before relying on the design |
 | --- | --- |
-| Booking correctness | Race allocation/direct claims/waitlist, personal check-in/no-show, linked parking, office transfers, venue changes/ticket issuance and duplicate ticket scans against real transactions. |
+| Booking correctness | Race allocation/direct claims/waitlist, personal check-in/no-show, linked parking acquisition/cancellation, timed desk release retaining parking, office transfers, venue changes/ticket issuance and duplicate ticket scans against real transactions. |
 | Identity and authorisation | Exercise SCIM provisioning/deactivation/reactivation/deletion, ambiguous matches, effective workforce changes, source outages, scope/delegation revocation and existing-session denial. |
 | Exchange behaviour | Use an authorised test environment to exercise owner/delegate create/edit/cancel, delayed/late acceptance, missed notifications, duplicate/stale updates and incompatible changes. Verify conditional-write and room-replacement behaviour rather than assuming it. |
 | Personal Teams delivery | Verify message-specific opt-in, installation, correct private recipient, opt-out before dispatch, throttling and blocked/uninstalled cases without affecting bookings. |

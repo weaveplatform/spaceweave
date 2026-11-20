@@ -209,6 +209,11 @@ The deadline for including attendance intent in a cycle's main allocation run.
 A request associating desk and parking bookings for the same attendance day.
 It may require both bookings to be secured together before either is confirmed.
 
+**Linked booking pair**:
+A desk booking and parking booking associated with the same attendance day.
+The link may require both bookings to be secured together or allow each to be
+secured independently.
+
 **Allocation group**:
 A group of staff formed within SpaceWeave for assignment to a neighbourhood's
 desks, separate from externally defined teams.
