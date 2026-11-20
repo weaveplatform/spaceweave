@@ -86,15 +86,20 @@ not with floor definitions or a new public copy of worker internals:
 | DDD | Identity context owns source membership, current eligibility, sessions and roles/assignments under one owner. |
 | Modular monolith | Identity module owns roles/assignments, source correlations, sessions and delegation through distinct published interfaces. |
 
-Recurring room creation/management is an explicitly granted capability for
-selected people, not an entitlement of all staff. Check actual actor capability,
-current office/resource/owner scope and delegation for a PA's requested action.
-Organiser/authorised-attendee occurrence check-in has a different purpose and
-eligibility; it does not require the creating PA to attend. Automated non-use and
-leaver cancellation use explicit system workflow authority and cannot be blocked
-merely because the former creator has lost access. The
-[recurring-room contract](recurring-rooms-and-leavers.md) records these distinctions;
-app permission alone does not establish native Outlook resource policy.
+Application capabilities control access to series and room operations; supported
+Exchange policies govern native resource admission across Outlook and SpaceWeave.
+Keep actual application actor, organiser and provider-recognised requester
+provenance distinct. Do not replace native principal/delegate semantics with an
+actual-author-only recurring rule or claim that app RBAC configures Outlook.
+
+Room check-in uses the supported native flow and eligibility with the required
+user context. Native panel/chat/device outcomes remain valid even when they do
+not match an app-specific attendee set. A platform workload cannot substitute
+app-only credentials for a delegated-only native operation. Private offboarding
+workers use supported cancellation authority rather than impersonating a leaver.
+The [room contract](recurring-rooms-and-leavers.md) and
+[native policy research](outlook-room-policy-enforcement.md) record exact
+boundaries and unverified requested capabilities.
 
 These placements show how each architecture candidate can own the same access
 model. Library selection and final module boundaries remain separate decisions.

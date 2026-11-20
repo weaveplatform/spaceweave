@@ -38,6 +38,11 @@ the underlying operational record.
 
 ## Ordering and recovery
 
+Native Exchange room check-in and autorelease follow provider policy. A local
+application incident does not establish a pause or extension of that native
+deadline; observe the actual outcome and use supported native check-in channels.
+The [room contract](recurring-rooms-and-leavers.md) records this boundary.
+
 Declaration publication and an affected expiry must have a defined ordering.
 The expiry command checks current incident scope/revision through its private
 read contract alongside its own state/guards; a lagging asynchronous projection

@@ -119,9 +119,10 @@ bundles, preserving existing bookings. Staff can request another neighbourhood
 for particular days; their desk demand is counted in that neighbourhood for those
 days. Collaboration requests identify the people the requester needs to sit near,
 as well as the requested neighbourhood, to guide physical placement. Assigned
-groups receive priority access to the neighbourhood's meeting rooms, with
-remaining availability open to other staff through a configurable room-booking
-policy. Explicit collaboration priority can override general team proximity;
+groups' desired priority access to bundled meeting rooms is subject to supported
+native Exchange admission; an app-only neighbourhood preference is not enforced
+in Outlook. Any remaining room availability follows the effective native policy.
+Explicit collaboration priority can override general team proximity;
 the staff member deliberately sets that priority on their request.
 Among placement plans accommodating the same number of people, prioritise
 explicit collaboration, then general team proximity, then previously unfulfilled
@@ -180,12 +181,15 @@ explicit release. Desk-use evidence does not establish that a car has left.
 The [linked-booking contract](docs/research/api-surfaces/linked-bookings.md) defines
 the shared cancellation and release behaviour.
 
-Recurring room creation/management is restricted to people granted the configured
-capability. The organiser or an authorised attendee checks in to an occurrence;
-the creating PA need not attend. A configurable number of consecutive unused
-occurrences cancels the remaining meetings in Exchange and notifies attendees;
-verified use resets the count. The [recurring-room and leaver contract](docs/research/api-surfaces/recurring-rooms-and-leavers.md)
-defines the policy, ownership and remaining timing/enforcement choices.
+Managed-room admission, recurrence, check-in and autorelease follow supported
+Exchange/Microsoft Places behaviour across Outlook and SpaceWeave. The app
+uses supported native check-in contracts and reflects the effective native grace
+and release outcome; it does not run a second room-expiry policy. Recurring-only
+per-person entitlements, exact invitation effects and consecutive-miss series
+cancellation remain capability gaps where native support is unverified. The
+[room-use/leaver contract](docs/research/api-surfaces/recurring-rooms-and-leavers.md)
+and [native-policy research](docs/research/api-surfaces/outlook-room-policy-enforcement.md)
+record supported behaviour and validation needs.
 
 Meeting rooms use start/end times, with staff finding suitable rooms by capacity
 and facilities. Their calendar integration is with Microsoft Exchange Online:

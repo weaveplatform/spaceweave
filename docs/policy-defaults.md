@@ -14,7 +14,7 @@ times use the office calendar and timezone.
 | Desk no-show grace | 60 minutes after booking start | Assignee must personally check in before expiry. |
 | Post-check-in vacancy | 30 minutes | Require fresh, sustained vacancy evidence; missing signals mean unknown. |
 | Same-day desk waitlist offer | 10 minutes | Acceptance deadline before offering desk capacity to the next eligible person. |
-| Automatic room acceptance hold | 15 minutes | Default for automatically processed rooms; approval-based rooms require an explicit longer workflow deadline. |
+| Application room-request provisional hold | 15 minutes | Local coordination bound, distinct from native acceptance/check-in policy. Native pending/acceptance outcomes remain authoritative; approval-based workflows require explicit supported coordination. |
 
 The delegation verification limit of fifteen minutes is already agreed and
 configurable. Retention periods remain explicitly configured by the organisation
@@ -123,15 +123,20 @@ validation succeed. Events-managed venues retain their own recovery workflow.
 The [room recovery contract](research/api-surfaces/room-recovery.md) separates
 product outcomes from provider compensation mechanics requiring validation.
 
-## Recurring-room non-use and leavers
+## Native room policy and leavers
 
-Recurring room creation/management requires an explicitly granted capability;
-ordinary staff membership is insufficient. The organiser or an authorised
-attendee can personally check in to the occurrence, independently of who created
-the series. Count consecutive eligible unused occurrences and reset after
-verified use. At the configurable threshold, cancel the remaining meetings in
-Exchange and notify attendees. No numerical initial threshold or room check-in/
-evaluation deadline has been agreed; configure them before automatic enforcement.
+Exchange's supported room policy, check-in eligibility and autorelease govern
+both Outlook and SpaceWeave room requests, including one-offs and series.
+Read/manage supported native configuration through authorised provider paths;
+show desired, pending and effective values truthfully. There is no separate
+SpaceWeave room-expiry timer, grace default or incident-based native deadline
+extension. Desk and Event policy defaults remain application-owned.
+
+Recurring-only per-person admission and cancellation after consecutive misses
+remain unverified native capability gaps; do not enable custom enforcement to
+supply them. Exact native invitation/series release effects and feature
+availability require validation. The [provider research](research/api-surfaces/outlook-room-policy-enforcement.md)
+records supported settings/APIs and boundaries.
 
 A confirmed effective workforce departure cancels all remaining room meetings and
 series owned by that organiser. Other-owner meetings created by a departing PA

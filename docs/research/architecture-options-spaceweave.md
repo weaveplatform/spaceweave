@@ -72,12 +72,14 @@ apply the declared scope to their own deadlines, with rules owned by Policy.
 [Proposed architecture decision](../adr/0009-use-a-domain-first-modular-monolith.md),
 [five candidate layouts](architecture-options/README.md).
 
-Restricted recurring-room authoring, organiser/attendee occurrence check-in and
-consecutive-use evaluation remain Booking-owned. A configured non-use threshold
-cancels the remaining series in Exchange with attendee notification; confirmed
-effective leavers cancel their organiser-owned room meetings rather than enter
-room handover. A departing PA's other-owner meetings remain.
-[Recurring-room and leaver contract](api-surfaces/recurring-rooms-and-leavers.md).
+Native Exchange room policy/check-in/autorelease governs both entry channels;
+Booking owns local intentions/outcome references and Exchange owns provider
+integration. No independent app room timer, actual-author-only admission rule or
+unverified consecutive-miss series canceller is selected. Confirmed effective
+leavers still cancel organiser-owned room meetings through supported operations;
+a departing PA's other-owner meetings remain.
+[Room-use/leaver contract](api-surfaces/recurring-rooms-and-leavers.md),
+[native policy research](api-surfaces/outlook-room-policy-enforcement.md).
 
 ## Transaction and workflow ownership
 

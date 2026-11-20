@@ -53,9 +53,12 @@ here. Decision records live in `docs/adr/`.
   cancel a both-required pair atomically before either starts, select explicit
   post-start scope, and preserve parking after automatic desk release.
 
-- [Recurring rooms, usage and leavers](research/api-surfaces/recurring-rooms-and-leavers.md):
-  restrict series authoring, verify occurrence use, cancel abandoned series and
-  cancel leavers' organiser-owned room meetings with Exchange reconciliation.
+- [Room use, recurring bookings and leavers](research/api-surfaces/recurring-rooms-and-leavers.md):
+  follow native Exchange admission/check-in/autorelease and reconcile owner-based
+  departure cancellation.
+
+- [Exchange room-policy research](research/api-surfaces/outlook-room-policy-enforcement.md):
+  native controls and delegated check-in APIs, provider boundaries and gaps.
 
 - [Meeting-room changes and recovery](research/api-surfaces/room-recovery.md):
   retain meeting/attendees after failed replacement, show actual room state and
@@ -175,10 +178,13 @@ here. Decision records live in `docs/adr/`.
   preserve meeting continuity with explicit room recovery and current acceptance
   before confirming a replacement.
 
-- [Restrict recurring rooms and cancel unused series](adr/0034-restrict-recurring-room-bookings-and-cancel-unused-series.md):
-  use scoped authority and organiser/attendee check-in to enforce a configurable
-  consecutive non-use threshold with Exchange cancellation.
+- [Superseded app-specific recurring-room enforcement](adr/0034-restrict-recurring-room-bookings-and-cancel-unused-series.md):
+  historical proposal replaced by Exchange-led room policy and native check-in.
 
 - [Cancel leavers' owned room bookings](adr/0035-cancel-leavers-owned-room-bookings.md):
   cancel future organiser-owned room meetings/series while preserving other-owner
   bookings created by departing delegates and retaining Event handover.
+
+- [Follow Exchange room policy and native check-in](adr/0036-follow-exchange-room-policy-and-native-check-in.md):
+  use provider-native admission, eligibility and autorelease across entry paths;
+  retain unsupported requested behaviour as explicit capability gaps.

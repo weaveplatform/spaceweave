@@ -137,7 +137,7 @@ internal/
 │   ├── booking.go                    claims, pair identity/required kind, holds and versions
 │   ├── deskuse.go                    allocated/taken/released states and personal check-in
 │   ├── calendar.go                   desired/observed room changes and reconciliation state
-│   ├── room.go                       series/occurrence identity, use and cancellation state
+│   ├── room.go                       series/occurrence identity, native outcome refs and cancellation
 │   ├── plans.go                      drawing package and immutable asset revision metadata
 │   ├── visitor.go                    restricted visitor identity, hosted visit and reception
 │   ├── event.go                      audience, registration, tickets and admissions
@@ -266,8 +266,8 @@ internal/
 │   │   ├── waitlist.go               eligibility, ordering and offer creation
 │   │   ├── offer.go                  versioned acceptance, expiry and next candidate
 │   │   ├── rooms.go                  pending local holds and room acceptance transitions
-│   │   ├── series.go                 restricted series commands and cancellation fence
-│   │   ├── roomuse.go                attendee/organiser check-in; consecutive-miss evaluation
+│   │   ├── series.go                 native-policy series requests and cancellation fence
+│   │   ├── roomuse.go                native check-in orchestration and observed room release
 │   │   ├── roomchange.go             room changes, no-secured-room recovery and retained meeting
 │   │   ├── venue.go                  venue mutation inside Events' named transaction
 │   │   ├── lifecycle.go              owner-based desk/parking/room leaver cancellation
@@ -368,8 +368,8 @@ internal/
     │   │   ├── booking.go            booking claims and transitions; no business bypass API
     │   │   ├── capacity.go           stable lock rows and overlap/capacity constraints
     │   │   ├── allocation.go         snapshot/cycle/group/proposal rows
-    │   │   ├── evidence.go           Booking-owned desk evidence and occurrence check-ins
-    │   │   ├── rooms.go              series/occurrences, use evaluation and cancellation fences
+    │   │   ├── evidence.go           Booking-owned desk evidence; native room outcome refs
+    │   │   ├── rooms.go              series/occurrences, native outcome refs and cancellation fences
     │   │   ├── identity_people.go    Identity source observations and effective facts
     │   │   ├── identity_access.go    Identity session/grant/token persistence
     │   │   ├── workplace.go          definition revisions and immutable references
@@ -586,7 +586,7 @@ job claiming, not the inventory query deciding who can book.
 
 | Logical owner | Application decisions | Persistence files/tables it alone mutates |
 | --- | --- | --- |
-| Booking | claims/planning, room series/occurrences, organiser/attendee use, consecutive misses and owner-based cancellation | booking/capacity/allocation/rooms/evidence SQL; only Booking mutates its claim/use/cancellation state |
+| Booking | claims/planning, room intentions/occurrences, native outcome refs and owner-based cancellation | booking/capacity/allocation/rooms/evidence SQL; only Booking mutates its claim/use/cancellation state |
 | Workplace | baseline definitions, calendars, lifecycle schedules and active geometry mappings | workplace SQL and definition/mapping tables |
 | Identity | canonical IDs/source facts, SCIM, sessions, capabilities and delegation | Identity-owned people/access facets and migration files under the shared SQL layer |
 | Exchange | correspondence, provider observations, progress | exchange SQL and mapping/cursor/subscription tables |
@@ -971,43 +971,49 @@ The [incident contract](../api-surfaces/operational-incidents.md) also preserves
 incident-scoped request-recovery extensions. These owners apply independently of
 repository style.
 
-### Recurring rooms, verified use and leaver cancellation
+### Exchange-led room policy, check-in and leavers
 
-`application/booking/{series,roomuse,lifecycle}.go` owns these workflows; flat model values and restricted store facets cross the horizontal layers, with room persistence in `store/postgres/rooms.go`.
+`application/booking/{series,roomuse,lifecycle}.go` orchestrates room intentions/native outcomes and leaver cleanup across the horizontal layers. Exchange application/provider facets own native policy and delegated check-in integration; `store/postgres/rooms.go` stores Booking-owned intent/outcome references.
 
-Series creation/management requires the configured recurring-room capability
-and current scope/delegation. Series permission and check-in eligibility are
-distinct: the organiser or an authorised attendee can personally check in to an
-occurrence; the creating PA need not attend. Booking owns series/occurrence
-identity, revision, use evidence, consecutive-miss progress and cancellation
-fences. Exchange owns provider master/occurrence/exception correspondence and
-reconciliation, while Attendance projects committed facts.
+Exchange's supported resource policies govern room acceptance, recurrence,
+principal/delegate admission, native check-in and autorelease for both Outlook
+and SpaceWeave requests. App RBAC protects application operations; it does not
+replace native resource admission with a stricter actual-author-only or
+recurring-only rule. Unsupported requested granularity remains a capability gap.
+Native recurrence/conflict outcomes must remain representable; a local conflict
+is not a native decline. Any room-specific neighbourhood priority must also be
+expressible through supported native policy rather than an app-only gate.
 
-Verified occurrence use resets the miss count. Eligible consecutive unused
-occurrences reach a configurable threshold that cancels the remaining meetings
-in Exchange and notifies attendees. Evaluation is durable and ordered by
-occurrence; retries cannot add misses. The initial threshold number and use
-window/evaluation deadline remain unselected. Automatic early release of an
-individual room occurrence has not been agreed.
+Room occurrences include one-off bookings and series instances/exceptions.
+SpaceWeave can adapt its check-in surface to the documented native create/read
+contracts using the required delegated user context and native eligibility.
+An app-only worker cannot impersonate that context. Keep request acceptance,
+native result and local observation progress distinct; a missing claim read is
+not proof of non-use, and native claims do not identify a named person.
 
-A confirmed effective leaver cancels the organiser/owner's remaining room
-meetings and series, alongside personal desk/parking cleanup. Meetings a PA
-created for other owners remain. Disable, SCIM deletion and partial imports
-cannot invent departure. Events retains its own handover/venue authority.
-Commit cancellation intent/fence and durable work first; reconcile provider
-outcomes after commit and expose pending/failure/completion distinctly. Bounded
-occurrence expansion and stale provider replay cannot recreate a cancelled
-series; cleanup must cover future bookings beyond the local window.
+The effective native grace governs autorelease. Apply observed resource outcomes
+through Booking and promise availability only from current native/local state;
+do not add a second expiry timer or pause Exchange using an app-local incident.
+Exact invitation/future-series effects must match validated native behaviour.
+The previously proposed consecutive-miss series cancellation is unverified as a
+native feature; no independent application counter/canceller is selected.
 
-Existing HTTP roles accept the commands/check-ins; maintenance roles run
-bounded occurrence evaluation and cleanup jobs, with Exchange roles reconciling
-provider work. Observe evaluation lag, pending cancellation age, source freshness
-and cleanup completion independently of access revocation.
+A confirmed effective leaver still triggers supported Exchange cancellation of
+organiser-owned room meetings/series, alongside personal desk/parking cleanup.
+Other-owner meetings created by a departing PA remain. Disable, SCIM deletion
+and incomplete imports do not establish departure; Events retains handover.
+Cancellation fences and bounded progress prevent recurrence expansion or stale
+provider observations from recreating cancelled local commitments.
 
-The [recurring-room and leaver contract](../api-surfaces/recurring-rooms-and-leavers.md)
-defines these shared outcomes, source limitations and remaining policy choices.
-Physical-unavailability detection and administrative declarations remain
-unselected; they are not supplied by these room-use and leaver rules.
+HTTP roles accept requests; Exchange roles reconcile supported provider work and
+Booking handlers apply committed outcomes. Native check-in reads require the
+supported user context rather than an assumed app-only polling permission.
+Observe native-policy freshness, pending outcomes and cleanup completion.
+
+The [native-policy research](../api-surfaces/outlook-room-policy-enforcement.md)
+and [room-use/leaver contract](../api-surfaces/recurring-rooms-and-leavers.md)
+record source facts, permission boundaries and delivery gaps. Physical
+unavailability inputs/declarations remain unselected.
 
 ## Walkthroughs
 
@@ -1066,7 +1072,7 @@ unselected; they are not supplied by these room-use and leaver rules.
    stale evidence or use an independently valid app grant. Existing booking
    ownership and PA audit survive; app-managed authority does not change Outlook
    permissions. Desk check-in remains personal to its assignee; room check-in
-   requires the actual actor's organiser/attendee eligibility.
+   follows native eligibility through the supported delegated user context.
 
 ### 4. Smaller venue, competing ticket and visitor admission
 

@@ -6,6 +6,10 @@ unavailable. If a room replacement fails after the previous room has been lost,
 retain the meeting and attendees, show a clear no-secured-room outcome, notify
 the organiser, and offer available replacements or explicit cancellation.
 This agreed product behaviour applies across all five repository candidates.
+Recovery follows the current native meeting state: it cannot recreate a meeting
+that Exchange has cancelled or force different check-in/autorelease effects.
+The [Exchange-led room contract](recurring-rooms-and-leavers.md) governs those
+native outcomes and records unverified requested behaviour separately.
 
 ## Consumers and outcomes
 
@@ -50,9 +54,10 @@ authority and provider reconciliation workflow.
 
 Recovery rechecks the latest meeting intention and provider state. A genuine
 organiser cancellation or superseding change remains effective; stale failure
-or acceptance work cannot revive it. Separately authorised non-use and leaver
-policies can cancel meetings through the [recurring-room and leaver workflow](recurring-rooms-and-leavers.md);
-room recovery must respect those cancellation fences.
+or acceptance work cannot revive it. Supported organiser/leaver cancellation
+uses the [room/leaver workflow](recurring-rooms-and-leavers.md); room recovery
+respects its cancellation fences. Unverified consecutive-miss cancellation is
+not an independently implemented app policy.
 
 Events-managed venue changes continue through the separate
 [event recovery contract](event-workflows.md); generic room recovery cannot

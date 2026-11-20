@@ -247,11 +247,11 @@ technical guidance and design tradeoffs.
     reconciling Exchange and notifying attendees. A departing PA's other-owner
     bookings remain. Events retains its own handover; disable or missing source
     data alone does not establish departure.
-  - Established: recurring room series creation/management requires an explicit
-    configured capability. Organiser or authorised-attendee occurrence check-in
-    establishes use; consecutive unused occurrences meet a configurable threshold
-    that cancels remaining meetings in Exchange with attendee notification.
-    Verified use resets the count; initial threshold and use deadline are unselected.
+  - Established: native Exchange room policy, check-in eligibility and autorelease
+    are authoritative across Outlook and SpaceWeave. The app adapts supported
+    user-context check-in and observes native outcomes without a second timer.
+    Recurring-only per-person admission, exact invitation effects and consecutive-
+    miss cancellation remain unverified native capability gaps, not custom rules.
   - Established: organisation-wide policies, identity mappings and integration
     administration require explicit global capabilities beyond office scope.
   - Then: tenant-specific integration mappings/permissions and protocol validation.
@@ -270,7 +270,7 @@ technical guidance and design tradeoffs.
     explicitly migrated.
   - Established: [the initial defaults](policy-defaults.md) are accepted starting
     values, all configurable, including weekday, local time and duration values.
-  - Established: a confirmed application outage preventing check-in or offer
+  - Established: a confirmed application outage preventing desk check-in or offer
     acceptance pauses affected no-show releases and waitlist-offer expiries,
     followed by a configurable recovery grace period.
   - Then: typed policy validation, effective dates, publication and migrations.

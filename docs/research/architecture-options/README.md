@@ -58,8 +58,9 @@ layouts without selecting a repository style.
   buildings/floors/plans. Neighbourhoods belong to one building, can span its
   floors, and bundle desks plus optional meeting rooms; unallocated desks may
   move between dated bundles without disrupting confirmed claims. Assigned
-  groups receive priority access to bundled rooms, with remaining availability
-  governed by configurable policy.
+  groups' desired priority for bundled rooms requires native Exchange
+  expressibility; an app-only neighbourhood gate is not equivalent native
+  admission. Remaining room availability follows the effective native policy.
 - Desks, meeting rooms, specific-bay/pooled parking, event venues, hosted visits
   and free named event tickets. Separate staff/mobile-web and admin portals.
 - Staff choose attendance dates and explicit travel exceptions. No attendance
@@ -92,12 +93,12 @@ layouts without selecting a repository style.
   validates definitions, calendars and dated inventory with the same identity
   and history. Deletion is separate and refuses protected dependencies without
   silent cancellation or cascade.
-- Recurring rooms support series and occurrence actions, restricted by explicit
-  capability. Organiser/authorised-attendee check-in establishes use. Consecutive
-  unused occurrences reach a configurable threshold that cancels remaining
-  meetings in Exchange with attendee notification; verified use resets the count.
-  The [recurring-room contract](../api-surfaces/recurring-rooms-and-leavers.md)
-  applies across all five layouts; no timing/count default is assumed.
+- Managed-room admission, recurrence, check-in and autorelease follow effective
+  native Exchange policy across both entry channels. Supported user-context
+  check-in and native observations replace independent room timers/counters.
+  Native recurring-only entitlement, invitation effects and consecutive-miss
+  cancellation gaps remain explicit in the [room contract](../api-surfaces/recurring-rooms-and-leavers.md)
+  and [provider research](../api-surfaces/outlook-room-policy-enforcement.md).
 - Bidirectional Exchange Online room create/edit/cancel. App requests hold local
   capacity pending room acceptance; compatible changes reconcile automatically.
   Failed replacement after old-room loss retains meeting/attendees with no

@@ -1,156 +1,157 @@
-# Recurring rooms, usage and leaver cancellation
+# Exchange-led room use, recurring bookings and leavers
 
-Recurring room bookings can outlive the need for the meeting and consume
-capacity for months. SpaceWeave supports series and individual-occurrence
-creation, changes and cancellation, restricts series authoring to explicitly
-permitted people, and cancels abandoned series using verified occurrence-use
-outcomes. Confirmed leavers' owned room bookings are cancelled rather than sent
-for room-ownership handover. These requirements constrain all five repository
-architecture candidates without selecting a repository style.
+Exchange Online and its supported Microsoft Places room capabilities govern
+managed-room admission, check-in and autorelease across SpaceWeave and Outlook.
+SpaceWeave records booking intentions, maintains local consistency and reflects
+provider decisions through supported integrations. It does not run a second
+room-admission policy or expiry authority. This requirement applies to all five
+repository architecture candidates; the repository-style decision remains pending.
 
 ## Consumers and authority
 
 | Consumer | Contract |
 | --- | --- |
-| Staff/mobile-web author | Create/manage series only with the configured recurring-room capability and applicable office/resource scope. Series permission is not granted to every staff member. |
-| PA/delegate | Retain actual actor and organiser/booking owner. Recurring-room capability and current delegation are checked for the requested action; creating the series does not make the PA its owner. |
-| Organiser or authorised attendee | Check in to the specific occurrence under current verified identity and meeting authority. Series-authoring permission is separate from eligibility to check in. |
-| SDK, script and user-context MCP | Use the same supported REST capabilities and constraints. A consumer label or an owner ID cannot bypass the recurring-room restriction. |
-| Booking workers | Evaluate committed occurrence-use outcomes, enforce the configured threshold, and accept owner-based leaver cleanup through private owning interfaces. |
-| Exchange workers | Reconcile series/occurrence/exception identities, desired cancellation and observed provider state; report actual cancellation progress. |
-| Administrator/operator | Configure permitted roles/assignments and policy, inspect scoped series/use/cleanup outcomes and repair visible failures through owning commands. |
+| Staff/mobile-web client | Request one-off or recurring rooms through supported application commands; distinguish request acceptance from native resource acceptance. |
+| PA/delegate | Retain actual application actor and organiser/booking owner; pass supported provider context and follow native principal/delegate admission semantics. |
+| Room check-in client | Use the supported native check-in flow with the required user context. Native eligibility and the native result govern whether the room is claimed. |
+| SDK, script and user-context MCP | Use the same public contracts under actual identity and app permissions; a client label grants no additional native authority. |
+| Booking workers | Apply observed native room outcomes to owned local state; preserve current versions and cancellation fences. They do not invent room no-shows or native check-in success. |
+| Exchange workers | Own native policy/correspondence/progress and reconcile provider observations through Booking; use only the permissions supported by each provider operation. |
+| Administrator/operator | Manage application RBAC separately from supported native room configuration; expose desired, effective and pending provider configuration truthfully. |
 
-Existing configurable RBAC supplies the recurring-room capability through scoped
-assignments; no separate permission service or hard-coded list is required.
-The capability is assigned to selected people; unattended applications do not
-inherit it from general booking grants.
-Commands revalidate current authority. Private policy/leaver workers execute
-their explicit workflow authority rather than impersonating a PA or requiring
-the departed organiser to log in. Existing independent machine-grant rules still
-apply; exposing a REST operation grants no new application authority.
+Application RBAC controls access to SpaceWeave operations and scoped delegation.
+It does not substitute for Exchange room admission or create an equivalent
+Outlook restriction. A recurring-only, actual-author-only entitlement must not
+be presented as natively enforceable unless that exact behaviour is supported
+and validated. Existing app-managed delegation authorises an application request;
+it does not guarantee native room acceptance.
 
-## Series and occurrence state
+## One-off and recurring state
 
-Booking owns series identity/revision, recurrence/timezone, organiser/owner,
-creating actor, individual occurrence identity/revision, claims/holds, check-in,
-evaluation outcome, consecutive-miss progress and cancellation reason/state.
-An occurrence changed independently retains its relationship to the series.
-Exchange owns provider series-master/occurrence/exception correspondence and
-desired/observed progress; it cannot write Booking's claims or usage decisions.
+Booking owns local room intentions, series/occurrence business identities,
+versions, capacity commitments and references to observed provider outcomes.
+A room occurrence may be a one-off booking or a series instance/exception.
+Exchange owns native series/master/occurrence correspondence, resource policy
+observations, Places/reservation mappings, native check-in claims and
+reconciliation progress. Native claim data is not a Booking-owned replacement
+for provider policy.
 
-Creation and edits distinguish whole-series versus individual-occurrence scope,
-use the normal retry/version contract, and return actual acceptance/capacity
-outcomes. Recurrence expansion is bounded work with durable progress and
-configurable limits. A bounded expansion or calendar-view window is not the
-entire lifetime of a series.
+Native accepted/conflicting outcomes must remain representable. A local
+consistency conflict is not a native decline, and an application constraint
+cannot discard provider truth or silently replace a configured native rule.
+Room-specific neighbourhood priority also needs native expressibility; an
+app-only preference must not be presented as admission enforced in Outlook.
 
-Usage evaluation covers managed-room series already present in Exchange as well
-as app-created series. Activate the policy explicitly with a verified evidence
-baseline; missing historical check-in data cannot be backfilled as non-use.
+Series creation/changes distinguish whole-series and individual-occurrence
+scope, use the normal retry/version contract and expose native acceptance or
+decline outcomes. Expansion is bounded durable work; a local calendar window is
+not the complete lifetime of a series. SpaceWeave reflects the effective native
+recurrence, conflict and booking-horizon settings rather than choosing different
+application admission semantics.
 
-## Establishing use and cancelling abandoned series
+## Native check-in and autorelease
 
-The organiser or an authorised attendee personally checks in to an occurrence.
-The PA who created it need not attend. Booking validates the occurrence, current
-actor/attendee authority, version and configured check-in window before committing
-use evidence. A QR reference identifies the occurrence/room and does not grant
-authority. A repeated check-in must not count the occurrence twice.
+The supported native check-in/autorelease policy applies to ordinary one-off
+rooms and recurring occurrences where the provider feature is enabled and
+applicable. The effective native grace and eligibility govern release. Native
+channels may establish a valid check-in outside an app-specific attendee rule;
+SpaceWeave must observe that accepted native claim rather than override it.
 
-Commit valid use, its consecutive-count reset, retry outcome and facts together.
-Evaluation/cancellation revalidates current series and occurrence state under
-the same version/guard protocol; stale evaluation cannot erase a committed
-check-in, and late work cannot reopen a cancelled series. An application actor
-cannot substitute its own credentials or a supplied owner ID for the required
-person's check-in.
+Graph documents native check-in create/read operations requiring work/school
+user-delegated permission, without application permission. A SpaceWeave action
+can adapt to those operations using supported user context and provider mapping;
+an app-only worker is not a substitute for that context. Map the application
+occurrence to the correct native room/reservation identity, including its
+provider calendar-event identifier. The [provider research](outlook-room-policy-enforcement.md)
+records the exact API and permission contracts.
 
-Usage of the room does not establish that every invitee or the organiser was
-personally present. Attendance/reporting consumes committed facts with provenance;
-its projections do not authorise the cancellation decision.
-Series/use/cancellation views enforce existing owner, delegation and operational
-data scopes. Routine availability does not expose general identified attendance
-or raw check-in evidence.
+Record request acceptance and retry recovery separately from the native result.
+Provider calls occur outside application database transactions. After an
+uncertain submission, use the documented native read contract where authorised
+to establish the reservation's current claimed state; this is not proof of which
+caller created it or a documented POST replay guarantee. Access failures or an
+absent response do not establish non-use.
 
-For each eligible occurrence, Booking records the use-evaluation outcome and
-applicable policy version. Consecutive unused occurrences increment the series
-count; verified check-in resets it. Evaluation uses occurrence order and durable
-outcomes, so scheduler retries or out-of-order delivery cannot invent extra
-misses. Cancelled, unaccepted or otherwise unusable occurrences and confirmed
-application-outage protection require explicit eligibility handling rather than
-being counted as evidence of abandonment.
+Native claim data does not identify a named person. Keep any application request
+audit separate, and do not derive individual attendance or attendee presence
+from a room claim. Native check-in status and resource availability require
+appropriate source freshness and permitted data projections.
 
-At the configured threshold, commit a series cancellation decision and durable
-Exchange work, cancel the remaining meetings and notify attendees. This cancels
-the remaining meeting series rather than merely removing room bookings.
-Preserve historical outcomes and the reason for cancellation. The initial
-threshold number and check-in/evaluation deadline remain unselected and must be
-configured before automatic enforcement is enabled.
+When Exchange autoreleases a room, apply the authoritative resource outcome
+through Booking before promising usable local capacity. Public status separates
+pending observation, known native release and uncertainty. A stale check-in or
+callback cannot reclaim a room already reassigned. Waitlist/direct requests use
+only capacity actually available under current native and local constraints.
+Observe supported resource availability as well as organiser-event state; a
+retained invitation alone establishes neither a held nor an available room.
 
-Automatic early release of an individual occurrence merely because nobody has
-checked in has not yet been agreed. That is distinct from the consecutive-miss
-series policy. Enforcement of recurring-room authoring restrictions for series
-created directly in Outlook is also a separate provider-policy decision; an
-app permission does not itself configure Exchange resource admission.
+The desired outcome is room release while retaining the meeting invitation.
+The reviewed native documentation does not specify every organiser/attendee-copy
+or future-series effect, so validate those exact outcomes in the tenant; do not
+force the desired result with an independent calendar rewrite. Native release
+is not evidence that remaining recurring meetings have been cancelled.
+
+## Outlook admission and capability gaps
+
+The same supported Exchange admission policy governs Outlook-originated and
+SpaceWeave-originated room requests. Exchange integration supplies observed
+policy and supported requester/principal evidence. An organiser field alone
+must not be treated as proof of the actual author; where message provenance is
+available, preserve and correlate it according to its documented semantics.
+Never invent a native actor or a permission result when evidence is missing.
+
+The [native-policy research](outlook-room-policy-enforcement.md) distinguishes
+resource-wide settings, principal/delegate admission, native check-in APIs and
+unverified combinations. Application-only role checks or cancellation after an
+already accepted native request do not prove equivalent native admission.
+No tenant configuration or custom admission algorithm is selected by this note.
+
+The requested policy that counts consecutive unused occurrences and cancels the
+remaining meetings has not been verified as a native capability. It remains a
+requirement gap; SpaceWeave will not implement an independent counter or automatic
+series-cancellation rule to fill it. Likewise, a recurring-only per-person native
+entitlement requires proof of expressibility. A missing documented capability is
+not proof that Microsoft can never support it.
 
 ## Leaver cancellation
 
 Identity supplies a confirmed, effective workforce departure for a stable staff
-identity. Booking cancels that person's remaining room bookings, including
-single meetings and recurring series, using organiser/booking-owner identity.
-The target is meetings that reserve managed rooms; the cleanup is not a general
-instruction to cancel unrelated roomless calendar meetings.
-Meetings created by a departing PA for other owners remain with those owners.
-Source disable, SCIM deletion, team changes or an incomplete import do not
-invent a workforce departure. Preserve known state during source outages.
+identity. The leaver workflow cancels remaining managed-room meetings and series
+owned by that organiser through supported Exchange cancellation operations.
+Other-owner meetings created by a departing PA remain. Account disable, SCIM
+deletion, team changes or incomplete imports do not establish departure.
 
-The room-cancellation workflow replaces assisted room handover. Events retains
-its own handover and venue/ticket authority; ordinary room cleanup cannot bypass
-those owning interfaces. Historical records and identifying copies continue to
-follow their access and retention contracts.
+This is an explicit offboarding workflow using supported provider cancellation,
+not a replacement admission or no-show policy. Booking records cancellation
+intent/fences and Exchange performs provider work after commit, exposing pending,
+failed and reconciled outcomes. Cover future series beyond the locally expanded
+window without assuming that a broad native cancellation command has exactly
+the required room-only/current/future scope.
 
-Cleanup includes Exchange-originated room bookings and future series occurrences
-outside the currently expanded local window. Record a durable cancellation fence
-and progress so recurrence expansion, late acceptance or provider replay cannot
-recreate cancelled commitments. The effective departure determines cleanup;
-access revocation and cancellation progress remain separate observable outcomes.
+Preserve historical records under retention rules and a supported cancellation
+route through mailbox offboarding. Events retains its separate handover and
+venue/ticket authority. Neither source reactivation nor stale native observations
+can resurrect cancelled commitments.
 
-## Cancellation and integration consistency
+## Incidents, configuration and validation
 
-Booking commits the cancellation intention, reason, retry outcome and durable
-follow-up work together. Provider calls occur after commit. Exchange applies the
-provider operation and returns observations through Booking before checkpointing.
-Public status distinguishes accepted cancellation, pending provider work and
-reconciled outcome. Retained provider uncertainty must not be reported as a room
-being free in Exchange. Failures remain retryable/repairable and visible to
-authorised operators; automatic cleanup does not depend on a user's active session.
+Room grace and check-in eligibility come from effective native configuration.
+The native default is not an independently selected SpaceWeave default; expose
+configuration propagation and feature availability. Do not enable independent
+app/native room timers or assume that a local incident declaration pauses
+Exchange autorelease. Existing app-owned desk, event and request-recovery
+protection contracts remain separately applicable.
 
-Meeting cancellations update Exchange and notify attendees through the applicable
-provider workflow; app notices follow existing message preferences. They do not
-expand the individually opted-in Teams booking-raised message permission.
+Validate native permission/licensing/device prerequisites, delegated app
+check-in create/read, other native check-in channels, one-off/series/exception
+release effects, actual room availability, principal/delegate admission,
+reservation correlation, uncertain results and leaver scope. The
+[provider research](outlook-room-policy-enforcement.md) records delivery gates.
+Observe policy freshness, native outcome lag and cleanup progress; a queued
+operation or accepted HTTP mutation alone does not prove room availability.
 
-## Provider facts and implementation validation
-
-Graph distinguishes series masters, occurrences and exceptions; listing a
-master's instances returns occurrences/exceptions within a requested date range.
-Preserve those distinctions and validate series/occurrence changes against
-current provider state. [Event model](https://learn.microsoft.com/en-us/graph/api/resources/event?view=graph-rest-1.0),
-[List instances](https://learn.microsoft.com/en-us/graph/api/event-list-instances?view=graph-rest-1.0).
-
-Exchange's documented administrative future-meeting cancellation targets the
-organiser and requires its mailbox to remain able to send cancellation messages.
-A matching recurring instance can cancel the whole series, and the query window
-is bounded. This is a provider capability to evaluate, not a selected adapter or
-a drop-in filter for only managed-room meetings; its documented scope includes
-other meetings with attendees/resources. [Remove-CalendarEvents](https://learn.microsoft.com/en-us/powershell/module/exchangepowershell/remove-calendarevents?view=exchange-ps).
-
-Validate provider scope, mailbox-deprovisioning order, series/exception coverage,
-attendee notifications and uncertain-result recovery in an authorised tenant.
-Exercise restricted authors, delegated creation, organiser/attendee check-in,
-consecutive misses/reset, duplicate evaluation, threshold/cancellation races,
-leaver-versus-disable, departing PAs, future-window expansion and replay after
-cancellation. Tenant offboarding must preserve a supported cancellation route;
-the precise provider strategy and completion checks remain engineering work.
-
-See the [recurring-room decision](../../adr/0034-restrict-recurring-room-bookings-and-cancel-unused-series.md),
+See the [current decision](../../adr/0036-follow-exchange-room-policy-and-native-check-in.md),
+[superseded app-specific proposal](../../adr/0034-restrict-recurring-room-bookings-and-cancel-unused-series.md),
 [leaver decision](../../adr/0035-cancel-leavers-owned-room-bookings.md),
-[room recovery contract](room-recovery.md), [request contract](request-behaviour.md)
-and [access model](access-channels-and-rbac.md).
+[room recovery](room-recovery.md), [request contract](request-behaviour.md) and
+[access model](access-channels-and-rbac.md).
