@@ -238,7 +238,8 @@ technical guidance and design tradeoffs.
     Notify owners when existing arrangements need attention.
   - Established: before either booking starts, explicit cancellation of either
     component of a both-required desk/parking pair cancels both atomically;
-    optional pairs permit independent cancellation. Automatic desk no-show or
+    optional pairs permit independent cancellation. Once either starts, cancel
+    the selected booking unless both are explicitly chosen. Automatic desk no-show or
     vacancy release retains parking until its own end or explicit release.
     All five layouts extend their existing Booking transition/store paths.
   - Established: automatically release leavers' future personal desk/parking
@@ -573,8 +574,11 @@ establish whether a particular PA is authorised to act for a particular person.
 [Calendar permissions](https://learn.microsoft.com/en-us/graph/permissions-reference#calendarsreadwriteshared).
 
 No verified generic room-swap contract guarantees retention of the old room
-until a replacement accepts. Room/time change handling needs a deliberate
-workflow and validation against provider behaviour.
+until a replacement accepts. The agreed [room recovery contract](research/api-surfaces/room-recovery.md)
+retains the meeting and attendees with no secured room when replacement fails
+after old-room loss, notifies the organiser, and offers replacement choices or
+explicit cancellation. Replacement confirmation requires acceptance/capacity
+validation; exact provider compensation mechanics still require tenant validation.
 [Event updates](https://learn.microsoft.com/en-us/graph/api/event-update?view=graph-rest-1.0).
 
 Room request approval, calendar delegation and the application's mailbox access

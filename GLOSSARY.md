@@ -189,6 +189,10 @@ An individually bookable vehicle parking space within a parking area.
 A space for meetings with a stated capacity and facilities, booked for a start
 and end time.
 
+**Meeting-room recovery**:
+Securing a room for an existing meeting after a room change fails and the
+previous room has been lost.
+
 ### Desk attendance and allocation
 
 **Anchor days**:

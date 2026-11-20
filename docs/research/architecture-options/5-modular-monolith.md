@@ -289,14 +289,14 @@ spaceweave/
 │   │   │   │   ├── book.go
 │   │   │   │   ├── transfer.go
 │   │   │   │   ├── checkin.go
-│   │   │   │   └── release.go           pre-start pair cancellation; timed desk-only release
+│   │   │   │   └── release.go           explicit selected/pair cancellation; timed desk-only release
 │   │   │   ├── waitlist/
 │   │   │   │   ├── priority.go
 │   │   │   │   ├── promote.go
 │   │   │   │   └── accept.go
 │   │   │   ├── rooms/
 │   │   │   │   ├── request.go
-│   │   │   │   ├── apply_observation.go
+│   │   │   │   ├── apply_observation.go  accepted/lost room outcomes and meeting recovery
 │   │   │   │   └── cancel.go
 │   │   │   ├── venues/
 │   │   │   │   └── claims.go
@@ -666,10 +666,10 @@ resources it owns; a shared PostgreSQL pool belongs to app.
 | `identity/api.People` | Read verified staff snapshots and effective team/office facts; receive lifecycle events. |
 | `identity/api.Delegation` | Evaluate app-managed grants and fresh native delegation evidence through Identity-owned authority adapters. |
 | `workplace/api.Definitions` | Read/version definitions, retire/reactivate resources and publish approved geometry mappings after Booking validates dated impact. |
-| `booking/api.Claims` | Query availability, create claims, resolve linked cancellation from either booking ID, and transfer desk/parking. Pre-start both-required cancellation ends both atomically; optional links cancel independently. |
+| `booking/api.Claims` | Query availability, create claims, resolve linked cancellation from either booking ID, and transfer desk/parking. Before either starts, both-required cancellation ends both atomically; once either starts, cancel the selected booking unless both are explicitly chosen. Optional links cancel independently. |
 | `booking/api.Allocations` | Read planning snapshot; commit one group with expected inputs; return precise stale/conflict causes. |
 | `booking/api.Desks` | Personal check-in, eligible waitlist submission/acceptance, validated operational evidence ingestion and protected expiry; commit facts for Attendance projections. |
-| `booking/api.Rooms` | Commit business room intentions/holds, expose desired revisions, and apply provider observations through capacity-safe booking transitions. |
+| `booking/api.Rooms` | Own room intentions/holds and secured/recovery outcomes; retain a meeting after failed replacement with no secured room, and confirm recovery only after acceptance/capacity validation. |
 | `exchange/api.Reconciliation` | Durably accept provider observations, reconcile committed room intentions and expose integration progress; no claim writes. |
 | `booking/api.Venues` | Validate and mutate event-space claims as Booking's participant in the named venue workflow; no event/ticket table access. |
 | `events/api.Events` and `Tickets` | Publish/edit event details, audience and registration; coordinate venue changes; issue/revoke tickets and admit attendees using Events-owned state. |
@@ -724,8 +724,11 @@ together. Automatic desk no-show or vacancy release instead ends the desk claim
 only. Parking remains booked until its own end or explicit release, including
 in bay/pool capacity calculations. Desk-use evidence cannot establish that a car
 has left. The [linked-booking contract](../api-surfaces/linked-bookings.md)
-defines the public outcomes and concurrency validation; explicit cancellation
-after either booking starts remains a separate product decision.
+defines the public outcomes and concurrency validation. Once either booking
+starts, explicit cancellation affects only the selected booking unless the caller
+explicitly chooses both. Retain the other until its own end or explicit
+cancellation. Preserve the requested scope in the command/retry identity;
+revalidation at the first-start boundary cannot silently change affected claims.
 The [allocation](../../adr/0014-use-explicit-allocation-cycles-and-atomic-group-placement.md)
 and [dated-inventory](../../adr/0013-separate-workplace-definitions-from-dated-booking-inventory.md)
 decisions apply to direct and background callers alike.
@@ -793,7 +796,7 @@ migrations install their own tables, indexes and constraints.
 | Identity | `staff`, `source_links`, `source_checkpoints`, `workforce_facts`, `groups`, `memberships`, `sessions`, `capabilities`, `delegation_grants`, `scim_resources` | Correlation, source authority, access and lifecycle in one owned transaction. |
 | Workplace | `offices`, `buildings`, `floors`, `space_definitions`, `office_calendars`, `baseline_neighbourhoods`, `definition_versions`, `plan_mappings`, `lifecycle_schedules` | Definitions and operational mapping publication; no dated active claim writes. |
 | Booking | `inventory_days`, `dated_bundles`, `resource_guards`, `owner_guards`, `claims`, `parking_segments`, `waitlist_entries`, `offers`, `checkins`, `occupancy_evidence`, `protected_deadlines` | All claim/timeout transitions and validated operational occupancy evidence; commit facts for Attendance. |
-| Booking, continued | `room_requests`, `handover_reviews`, `cycles`, `attendance_intents`, `travel_exceptions`, `collaboration_requests`, `allocation_groups`, `runs`, `proposals` | Business room intentions plus planning, demand and group progress under the same claim owner. |
+| Booking, continued | `room_requests`, `handover_reviews`, `cycles`, `attendance_intents`, `travel_exceptions`, `collaboration_requests`, `allocation_groups`, `runs`, `proposals` | Business room intentions and no-secured-room recovery outcomes, plus planning, demand and group progress under the same claim owner. |
 | Events | `events`, `event_audiences`, `tickets`, `admissions` | Event lifecycle, registration, ticket capacity and admission, coordinated with Booking's venue state. |
 | Exchange | `exchange_links`, `provider_observations`, `provider_desired_state`, `sync_cursors`, `subscriptions`, `reconciliation_progress` | Provider correlation, desired/observed calendar state and reconciliation; apply business transitions through Booking. |
 | Visitors | `visitors`, `email_proofs`, `visits`, `visit_restrictions`, `reception_entries` | Verified email, hosts, access windows and visitor-specific retention. |
@@ -1015,6 +1018,16 @@ accepts. Provider cancellation and deleting a room's calendar copy are distinct
 operations. [Event resource](https://learn.microsoft.com/en-us/graph/api/resources/event?view=graph-rest-1.0),
 [event update](https://learn.microsoft.com/en-us/graph/api/event-update?view=graph-rest-1.0),
 [organiser cancellation](https://learn.microsoft.com/en-us/graph/api/event-cancel?view=graph-rest-1.0).
+
+
+If an ordinary meeting's replacement request fails after the previous room is
+lost, retain the meeting and attendees and expose no secured room. Booking owns
+the room intention/claim outcome; Exchange retains provider observations and
+reconciliation progress. Notify the organiser and offer available replacements
+or explicit cancellation. A selected replacement remains pending until current
+room acceptance and Booking capacity validation succeed. The
+[room recovery contract](../api-surfaces/room-recovery.md) distinguishes this
+outcome from uncertain provider state and preserves Events-managed venue rules.
 
 Notifications are wake-up hints; durable delta reconciliation runs every five
 minutes while healthy and records actual age. Calendar-view delta is scoped to
@@ -1476,8 +1489,10 @@ test of three independently correct service methods.
 5. A compatible subject edit merges automatically. A time/room edit reacquires
    local capacity through Booking. If the desired replacement conflicts or the
    provider workflow cannot guarantee a safe replacement, the application shows
-   the real pending/conflict state and seeks resolution; it invents no atomic
-   provider room swap.
+   the real pending/conflict state. Failure after old-room loss retains meeting
+   and attendees with no secured room; notify the organiser and offer available
+   replacements or cancellation. A replacement confirms only after acceptance
+   and Booking capacity validation.
 6. Acceptance after a hold expired cannot recreate released local capacity
    without revalidation. The handler schedules the appropriate reconciliation
    and user-visible resolution rather than overwriting another confirmed claim.

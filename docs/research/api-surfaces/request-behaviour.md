@@ -54,7 +54,9 @@ records in one bounded PostgreSQL transaction. An office transfer includes its
 replacement claims and old releases; required desk/parking claims confirm both
 or neither. Before either booking starts, explicit cancellation of either part
 of a both-required pair ends both in that transaction; optional links permit
-independent cancellation. Automatic desk no-show/vacancy release leaves parking
+independent cancellation. Once either starts, cancel only the selected booking
+unless both are explicitly chosen; preserve the intended scope across start-time
+revalidation and retry. Automatic desk no-show/vacancy release leaves parking
 booked until its own end or explicit release. The [linked-booking contract](linked-bookings.md)
 distinguishes those outcomes. Commit success before acknowledging acceptance. A lost response then
 leaves a recoverable result rather than an unrecorded business mutation.

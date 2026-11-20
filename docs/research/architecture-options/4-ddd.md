@@ -266,7 +266,7 @@ internal/
 ├── booking/
 │   ├── booking.go
 │   ├── api/
-│   │   ├── booking.go                        request/transfer/cancel/check-in/capacity interface
+│   │   ├── booking.go                        claim commands, scoped cancellation and room recovery
 │   │   ├── allocation.go                     snapshot, proposal and group commit interface
 │   │   ├── venue.go                          restricted event-managed venue operations
 │   │   ├── evidence.go                       validate/store operational observations and publish facts
@@ -302,9 +302,9 @@ internal/
 │   │   ├── checkin.go                        owner-only personal transition
 │   │   ├── protection.go                     apply shared incidents to Booking-owned deadlines
 │   │   ├── ingest.go                         validate scope/provenance, deduplicate and commit evidence
-│   │   ├── release.go                        pre-start pair cancellation; timed desk-only release
+│   │   ├── release.go                        explicit selected/pair cancellation; timed desk-only release
 │   │   ├── promote.go                        reserve/accept/expire eligible waitlist offers
-│   │   ├── room.go                           reconcile acceptance and external room intentions
+│   │   ├── room.go                           room intentions, acceptance and retained-meeting recovery
 │   │   └── venue.go                          event-governed capacity participant
 │   └── adapters/
 │       ├── occupancy/
@@ -598,8 +598,11 @@ together. Automatic desk no-show or vacancy release instead ends the desk claim
 only. Parking remains booked until its own end or explicit release, including
 in bay/pool capacity calculations. Desk-use evidence cannot establish that a car
 has left. The [linked-booking contract](../api-surfaces/linked-bookings.md)
-defines the public outcomes and concurrency validation; explicit cancellation
-after either booking starts remains a separate product decision.
+defines the public outcomes and concurrency validation. Once either booking
+starts, explicit cancellation affects only the selected booking unless the caller
+explicitly chooses both. Retain the other until its own end or explicit
+cancellation. Preserve the requested scope in the command/retry identity;
+revalidation at the first-start boundary cannot silently change affected claims.
 
 PostgreSQL range exclusion can protect overlapping intervals for a specific
 resource/person. Capacity pools need additional coordinated count/guard logic;
@@ -668,6 +671,16 @@ contract, and a room replacement is not assumed atomic. Notifications plus
 window-scoped delta reconcile at the agreed five-minute healthy cadence.
 [Event semantics][graph-event], [delta scope][graph-delta],
 [room acceptance][room-policy].
+
+
+If an ordinary meeting's replacement request fails after the previous room is
+lost, retain the meeting and attendees and expose no secured room. Booking owns
+the room intention/claim outcome; Exchange retains provider observations and
+reconciliation progress. Notify the organiser and offer available replacements
+or explicit cancellation. A selected replacement remains pending until current
+room acceptance and Booking capacity validation succeed. The
+[room recovery contract](../api-surfaces/room-recovery.md) distinguishes this
+outcome from uncertain provider state and preserves Events-managed venue rules.
 
 Identity records source-labelled native grants and app-managed grants independently.
 New native-derived actions need fresh verification within the configurable
@@ -946,6 +959,9 @@ repository style.
    observations and compare with durable base/desired state.
 5. Merge compatible edits; revalidate capacity/time changes through Booking.
    Late/stale updates cannot resurrect a cancelled or expired local claim.
+   Failed replacement after old-room loss retains meeting/attendees with no
+   secured room; notify the organiser and offer replacements or cancellation.
+   A selected replacement still requires current acceptance/capacity validation.
 6. A later native-grant revocation removes only that source; a separate app grant
    can still authorise future app actions. Irreconcilable intent becomes visible
    resolution work, not a blanket error on every edit.
@@ -1029,7 +1045,7 @@ staffing or runtime. Counts describe the representative tree in this document.
 | Explicit Go-bearing package paths | 112: one per parent directory with a named `.go` file in the full tree. |
 | Explicit representative Go filenames | 199, including generated examples; co-located tests and unprinted retained engine files are excluded. |
 | Shared-kernel packages shown | 4: IDs, principal envelope, interval values and clock. |
-| Explicit booking multi-aggregate operations | Group placement, required linked claim, pre-start both-required pair cancellation and office transfer. |
+| Explicit booking multi-aggregate operations | Group placement, required linked claim, pre-start both-required pair cancellation, explicitly scoped post-start cancellation and office transfer. |
 | Explicit cross-context transaction families | Event venue/capacity through Events and Booking; registration-created visit/ticket through Events and Visitors. |
 | Runtime role families | 5: HTTP, allocation, Exchange, tracing and maintenance. |
 | Blob provider implementations | 2: Azure and GCS, selected per deployment. |

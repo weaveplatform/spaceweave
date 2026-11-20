@@ -108,8 +108,20 @@ parking remains booked until its own end or explicit release, including in
 specific-bay and pooled-capacity calculations. Desk evidence cannot establish
 that the vehicle has left. Acquisition/transfer atomicity remains unchanged.
 The [linked-booking contract](research/api-surfaces/linked-bookings.md) records
-consumer outcomes and validation. Explicit cancellation after either booking
-starts remains a separate product decision.
+consumer outcomes and validation. Once either booking starts, cancellation
+affects only the selected booking unless both are explicitly chosen; the other
+remains until its own end or explicit cancellation. Revalidation across the
+first-start boundary must preserve the requested cancellation scope.
+
+## Meeting-room recovery
+
+When an ordinary meeting's replacement request fails after the previous room is
+lost, retain the meeting and attendees with an explicit no-secured-room outcome.
+Notify the organiser and offer available replacements or explicit cancellation.
+A replacement remains pending until current room acceptance and Booking capacity
+validation succeed. Events-managed venues retain their own recovery workflow.
+The [room recovery contract](research/api-surfaces/room-recovery.md) separates
+product outcomes from provider compensation mechanics requiring validation.
 
 ## Agreed allocation rules
 

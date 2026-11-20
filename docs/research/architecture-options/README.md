@@ -76,7 +76,8 @@ layouts without selecting a repository style.
   both or neither; office transfers acquire replacements and release old claims
   atomically. Before either booking starts, explicit cancellation of either part
   of a both-required pair cancels both atomically; optional links cancel
-  independently. Automatic desk no-show/vacancy release retains parking until
+  independently. Once either starts, cancel the selected booking unless both
+  are explicitly chosen. Automatic desk no-show/vacancy release retains parking until
   its own end or explicit release. The [linked-booking contract](../api-surfaces/linked-bookings.md)
   applies to all five layouts. Eligible waitlisted demand precedes fresh requests.
 - Allocation means allocated; the owner's personal check-in means taken. A PA
@@ -93,6 +94,10 @@ layouts without selecting a repository style.
   silent cancellation or cascade.
 - Bidirectional Exchange Online room create/edit/cancel. App requests hold local
   capacity pending room acceptance; compatible changes reconcile automatically.
+  Failed replacement after old-room loss retains meeting/attendees with no
+  secured room, organiser notification and replacement/cancellation choices.
+  A chosen replacement confirms only after acceptance/capacity validation; the
+  [room recovery contract](../api-surfaces/room-recovery.md) applies to all layouts.
   Preserve actor versus owner/organiser, source-labelled delegation, revocation
   semantics and configurable native-authority freshness.
 - Entra SSO and actual authenticated SCIM user/mapped-group provisioning;

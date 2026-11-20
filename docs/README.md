@@ -50,8 +50,12 @@ here. Decision records live in `docs/adr/`.
   validate dated-inventory impact before activation.
 
 - [Linked desk and parking lifecycle](research/api-surfaces/linked-bookings.md):
-  cancel a both-required pair atomically before either starts; automatic desk
-  release preserves parking until its own end or explicit release.
+  cancel a both-required pair atomically before either starts, select explicit
+  post-start scope, and preserve parking after automatic desk release.
+
+- [Meeting-room changes and recovery](research/api-surfaces/room-recovery.md):
+  retain meeting/attendees after failed replacement, show actual room state and
+  offer organiser-directed recovery or cancellation.
 
 - [Confirmed outages and deadline protection](research/api-surfaces/operational-incidents.md):
   share operational declarations while keeping deadline state with Booking and
@@ -162,3 +166,7 @@ here. Decision records live in `docs/adr/`.
 - [Separate linked cancellation from automatic desk release](adr/0032-separate-linked-cancellation-from-automatic-desk-release.md):
   keep deliberate paired cancellation atomic while retaining parking when desk
   evidence cannot establish vehicle departure.
+
+- [Retain meetings during room replacement recovery](adr/0033-retain-meetings-during-room-replacement-recovery.md):
+  preserve meeting continuity with explicit room recovery and current acceptance
+  before confirming a replacement.

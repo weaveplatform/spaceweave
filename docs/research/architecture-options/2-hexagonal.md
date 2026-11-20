@@ -287,9 +287,9 @@ spaceweave/
 │   │       │   ├── transfer.go
 │   │       │   ├── waitlist.go
 │   │       │   ├── checkin.go
-│   │       │   ├── release.go          pre-start pair cancellation; timed desk-only release
+│   │       │   ├── release.go          explicit selected/pair cancellation; timed desk-only release
 │   │       │   ├── evidence.go
-│   │       │   ├── rooms.go
+│   │       │   ├── rooms.go            room intentions/holds and no-secured-room recovery
 │   │       │   ├── venue.go
 │   │       │   └── outages.go
 │   │       ├── exchange/
@@ -682,8 +682,11 @@ together. Automatic desk no-show or vacancy release instead ends the desk claim
 only. Parking remains booked until its own end or explicit release, including
 in bay/pool capacity calculations. Desk-use evidence cannot establish that a car
 has left. The [linked-booking contract](../api-surfaces/linked-bookings.md)
-defines the public outcomes and concurrency validation; explicit cancellation
-after either booking starts remains a separate product decision.
+defines the public outcomes and concurrency validation. Once either booking
+starts, explicit cancellation affects only the selected booking unless the caller
+explicitly chooses both. Retain the other until its own end or explicit
+cancellation. Preserve the requested scope in the command/retry identity;
+revalidation at the first-start boundary cannot silently change affected claims.
 These are baseline requirements from
 [ADR 0014](../../adr/0014-use-explicit-allocation-cycles-and-atomic-group-placement.md)
 and the [allocation policies](../../policy-defaults.md#agreed-allocation-rules).
@@ -818,9 +821,19 @@ the observed provider fact rather than discarding it as invalid local data.
 Acceptance after hold expiry cannot blindly confirm: Booking reacquires capacity
 and validates the current desired revision. If capacity was reassigned, retain
 the accepted external event observation, mark divergence and apply the supported
-cancel/rebook/choice workflow. A delayed acceptance for a superseded room request
+reconciliation workflow. A delayed acceptance for a superseded room request
 does not approve its replacement. Pending room changes explicitly expose which
 claim is committed and what is awaiting acceptance.
+
+
+If an ordinary meeting's replacement request fails after the previous room is
+lost, retain the meeting and attendees and expose no secured room. Booking owns
+the room intention/claim outcome; Exchange retains provider observations and
+reconciliation progress. Notify the organiser and offer available replacements
+or explicit cancellation. A selected replacement remains pending until current
+room acceptance and Booking capacity validation succeed. The
+[room recovery contract](../api-surfaces/room-recovery.md) distinguishes this
+outcome from uncertain provider state and preserves Events-managed venue rules.
 
 Graph documents an event
 [version and transaction identifier](https://learn.microsoft.com/en-us/graph/api/resources/event?view=graph-rest-1.0),
@@ -1245,8 +1258,10 @@ repository style.
 6. A native delegation revocation removes that source grant; independent local
    grants remain. New PA edits fail if no current sufficient grant exists.
    System reconciliation retains accepted provider truth and handles compensation.
-7. A conflicting room/time edit requires validation and an explicit transition;
-   no Graph CAS or atomic preservation of an old room is assumed.
+7. A conflicting room/time edit requires an explicit validated transition. If a
+   replacement fails after old-room loss, retain meeting/attendees with no secured
+   room, notify the organiser and offer replacement choices or cancellation.
+   A replacement remains pending until current acceptance and capacity validation.
 
 ### 4. Move an event while issuing a visitor ticket and scanning admission
 

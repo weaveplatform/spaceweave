@@ -261,11 +261,11 @@ internal/
 │   │   ├── adjustment.go             dated movement of unallocated neighbourhood desks
 │   │   ├── checkin.go                only assignee can mark live allocation taken
 │   │   ├── evidence.go               validate/deduplicate operational evidence; commit facts
-│   │   ├── release.go                pre-start pair cancellation; timed desk-only release
+│   │   ├── release.go                explicit selected/pair cancellation; timed desk-only release
 │   │   ├── waitlist.go               eligibility, ordering and offer creation
 │   │   ├── offer.go                  versioned acceptance, expiry and next candidate
 │   │   ├── rooms.go                  pending local holds and room acceptance transitions
-│   │   ├── roomchange.go             revalidate externally observed room/time changes
+│   │   ├── roomchange.go             room changes, no-secured-room recovery and retained meeting
 │   │   ├── venue.go                  venue mutation inside Events' named transaction
 │   │   ├── lifecycle.go              idempotent leaver personal-claim cleanup
 │   │   ├── outage.go                 protected timeout evaluation/recovery grace
@@ -346,7 +346,7 @@ internal/
     ├── store/
     │   ├── store.go                  aggregate factory and narrow read/write facets
     │   ├── tx.go                     explicit transaction handle and bounded Tx callback
-    │   ├── booking.go                Booking claims/pair cancellation/evidence; allocation snapshots
+    │   ├── booking.go                claims, scoped cancellation, room recovery and evidence
     │   ├── identity_people.go        Identity staff/source/effective-state facets
     │   ├── identity_access.go        Identity sessions, grants and delegation facets
     │   ├── workplace.go              versioned definitions and calendars
@@ -556,8 +556,11 @@ together. Automatic desk no-show or vacancy release instead ends the desk claim
 only. Parking remains booked until its own end or explicit release, including
 in bay/pool capacity calculations. Desk-use evidence cannot establish that a car
 has left. The [linked-booking contract](../api-surfaces/linked-bookings.md)
-defines the public outcomes and concurrency validation; explicit cancellation
-after either booking starts remains a separate product decision.
+defines the public outcomes and concurrency validation. Once either booking
+starts, explicit cancellation affects only the selected booking unless the caller
+explicitly chooses both. Retain the other until its own end or explicit
+cancellation. Preserve the requested scope in the command/retry identity;
+revalidation at the first-start boundary cannot silently change affected claims.
 
 Propose half-open time ranges and database overlap constraints for individual
 resources and one overlapping desk per person. PostgreSQL supports exclusion
@@ -663,9 +666,19 @@ before sending and checks again when applying its result.
 Do not infer Graph compare-and-swap from `changeKey`: the update reference does
 not establish that event-specific conditional-write contract. Do not promise an
 atomic provider room swap retaining the old room until replacement acceptance.
-Replacement, organiser handover and compensating cancellation need validated
-workflows. Organiser cancellation and deleting a room calendar copy also remain
+Replacement compensation and organiser handover need provider validation.
+Organiser cancellation and deleting a room calendar copy also remain
 distinct operations. [Event update contract](https://learn.microsoft.com/en-us/graph/api/event-update?view=graph-rest-1.0).
+
+
+If an ordinary meeting's replacement request fails after the previous room is
+lost, retain the meeting and attendees and expose no secured room. Booking owns
+the room intention/claim outcome; Exchange retains provider observations and
+reconciliation progress. Notify the organiser and offer available replacements
+or explicit cancellation. A selected replacement remains pending until current
+room acceptance and Booking capacity validation succeed. The
+[room recovery contract](../api-surfaces/room-recovery.md) distinguishes this
+outcome from uncertain provider state and preserves Events-managed venue rules.
 
 Notifications accelerate discovery; durable reconciliation runs on the agreed
 five-minute healthy cadence and measures actual freshness. Each calendar/window
@@ -998,8 +1011,11 @@ repository style.
 4. An Outlook edit is read through notification-driven/delta reconciliation.
    Exchange compares agreed/local/observed fields; compatible changes merge and
    room/time changes are revalidated through Booking.
-5. Incompatible changes become visible review work without discarding the
-   provider observation or claiming a generic atomic room-swap facility.
+5. Incompatible changes become visible review work, preserving provider facts.
+   If replacement fails after the previous room is lost, retain the meeting and
+   attendees, show no secured room and notify the organiser. Offer replacements
+   or explicit cancellation; a replacement confirms only after room acceptance
+   and capacity validation.
 6. Subsequent native-grant revocation removes that grant. New actions refresh
    stale evidence or use an independently valid app grant. Existing booking
    ownership and PA audit survive; app-managed authority does not change Outlook

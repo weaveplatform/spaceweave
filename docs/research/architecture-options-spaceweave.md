@@ -79,7 +79,8 @@ snapshot outside long transactions; the owner revalidates and commits each group
 including required parking. Direct requests, waitlist promotion, check-in and
 release use the same claim protocol. Before either linked booking starts,
 explicit cancellation of a both-required pair ends both atomically; optional
-links permit independent cancellation. Automatic desk no-show/vacancy release
+links permit independent cancellation. Once either starts, cancel the selected
+booking unless both are explicitly chosen. Automatic desk no-show/vacancy release
 retains parking until its own end or explicit release, so only actually released
 capacity enters promotion. PostgreSQL constraints and locking protect
 competing writers; transaction isolation choices require retry handling and
@@ -98,6 +99,10 @@ room accepts; duplicate/out-of-order observations are reconciled against desired
 and observed revisions. Provider identifiers and tokens use documented semantics,
 not assumptions that every version field is a portable compare-and-swap mechanism.
 [Provider contract research](api-surfaces/provider-contracts.md).
+Failed replacement after old-room loss preserves the meeting/attendees with no
+secured room; notify the organiser and offer available replacements or explicit
+cancellation. Current room acceptance/capacity validation precede recovery
+confirmation; see the [room recovery contract](api-surfaces/room-recovery.md).
 
 Allocation results distinguish unfulfilled capacity demand from technical
 interruption. Cancellation stops additional work at safe boundaries and preserves

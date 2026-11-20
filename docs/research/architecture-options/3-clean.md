@@ -238,10 +238,10 @@ internal/usecase/
 │   ├── commit.go
 │   ├── direct.go
 │   ├── transfer.go
-│   ├── release.go          pre-start pair cancellation; timed desk-only release
+│   ├── release.go          explicit selected/pair cancellation; timed desk-only release
 │   ├── checkin.go
 │   ├── offer.go
-│   ├── room.go
+│   ├── room.go             room intentions/holds and no-secured-room recovery
 │   ├── venue.go
 │   ├── adjustment.go
 │   ├── intent.go
@@ -707,7 +707,7 @@ internal/usecase/booking/
 ├── evidence.go            validate/deduplicate/store operational observations; commit facts
 ├── protection.go          read shared incidents; apply Booking-owned deadline protection
 ├── offer.go               capacity holds, acceptance, decline and protected expiry
-├── room.go                pending holds, acceptance/decline and external observation apply
+├── room.go                pending holds, accepted/lost room outcomes and meeting recovery
 ├── venue.go               Booking-owned venue validation/claim participant in shared scope
 ├── adjustment.go          dated unallocated-desk movement; preserve confirmed claims
 ├── intent.go              collect chosen dates, travel and requirements
@@ -729,7 +729,7 @@ case's `Input` struct:
 
 | Consumer package | Interface it declares | Implementation assigned by app |
 | --- | --- | --- |
-| `roomrequest` | `RoomCommands.Request/Change/Cancel(context, claim.RoomCommand)` | booking interactor |
+| `roomrequest` | `RoomCommands.Request/Change/Cancel(context, claim.RoomCommand)` | Booking interactor owns room intention/claim and no-secured-room recovery outcomes. |
 | `exchangesync` | `RoomObserver.Apply(context, exchange.Observation)` | booking interactor |
 | `manageevent` | `VenueParticipant.Validate/Replace(context, unitofwork.Scope, claim.VenueCommand)` | Booking's owning venue participant; Events keeps its ticket/admission writer. |
 | `identity` | `PersonalClaims.ReleaseFuture(context, staff.Departure)` | booking interactor |
@@ -828,8 +828,11 @@ together. Automatic desk no-show or vacancy release instead ends the desk claim
 only. Parking remains booked until its own end or explicit release, including
 in bay/pool capacity calculations. Desk-use evidence cannot establish that a car
 has left. The [linked-booking contract](../api-surfaces/linked-bookings.md)
-defines the public outcomes and concurrency validation; explicit cancellation
-after either booking starts remains a separate product decision.
+defines the public outcomes and concurrency validation. Once either booking
+starts, explicit cancellation affects only the selected booking unless the caller
+explicitly chooses both. Retain the other until its own end or explicit
+cancellation. Preserve the requested scope in the command/retry identity;
+revalidation at the first-start boundary cannot silently change affected claims.
 
 Versioned workplace changes create dated inventory changes through booking.
 Removing a space or lowering capacity with affected confirmations returns an
@@ -945,10 +948,21 @@ For room/time edits, retain the old local claim while obtaining a candidate hold
 where feasible and expose pending change state. Exchange may not retain the old
 room until the new one accepts; this is a compensating/reconciliation workflow,
 not an atomic room swap. If provider behaviour releases the old room, report the
-actual state and recover deliberately. Organiser cancellation and deletion of
+actual state. A retained local claim cannot establish a secured external room
+after observed loss. Organiser cancellation and deletion of
 a room calendar copy are distinct operations.
 [Cancel event](https://learn.microsoft.com/en-us/graph/api/event-cancel?view=graph-rest-1.0),
 [delete event](https://learn.microsoft.com/en-us/graph/api/event-delete?view=graph-rest-1.0).
+
+
+If an ordinary meeting's replacement request fails after the previous room is
+lost, retain the meeting and attendees and expose no secured room. Booking owns
+the room intention/claim outcome; Exchange retains provider observations and
+reconciliation progress. Notify the organiser and offer available replacements
+or explicit cancellation. A selected replacement remains pending until current
+room acceptance and Booking capacity validation succeed. The
+[room recovery contract](../api-surfaces/room-recovery.md) distinguishes this
+outcome from uncertain provider state and preserves Events-managed venue rules.
 
 Identity's delegation operation imports explicit native calendar-delegate grants with source, owner,
 actions and verification time. A new action relying on native-derived authority
@@ -1463,8 +1477,10 @@ repository style.
    auto-merges compatible changes and asks booking to revalidate room/time.
 6. Acceptance confirms only the still-current compatible request. An obsolete
    acceptance cannot revive an expired/replaced local hold; divergence is visible.
-7. An incompatible change creates review work. Local/provider room swaps remain
-   pending/compensating workflows without a Graph atomic-swap assumption.
+7. An incompatible change creates review work. Failed replacement after old-room
+   loss retains meeting/attendees with no secured room. Notify the organiser and
+   offer replacements or cancellation; a chosen replacement confirms only after
+   current room acceptance and capacity validation.
 8. Revocation removes the native grant for new actions. A separately granted
    app-managed authority remains independent; neither changes Outlook rights.
 

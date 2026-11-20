@@ -11,7 +11,7 @@ automatic desk release.
 
 | Consumer | Required contract |
 | --- | --- |
-| Staff/mobile-web portal | Show the linked bookings and the effect of a cancellation. Before either booking starts, cancelling either part of a both-required pair cancels both atomically. |
+| Staff/mobile-web portal | Show the linked bookings and the effect of a cancellation. Before either starts, a both-required cancellation ends both atomically; once either starts, cancel only the selected booking unless both are explicitly chosen. |
 | Authorised delegates, SDKs, scripts and user-context MCP | Use the same public cancellation command and actual actor/owner authority; do not implement pair cancellation as two client-coordinated requests. |
 | Booking workers | Automatic desk no-show or vacancy release returns desk capacity only; linked parking remains booked until its own end or explicit release. |
 | Waitlist and availability consumers | Treat capacity as available only after its owning claim actually ends. A released desk does not make its linked bay or parking-pool capacity available. |
@@ -32,8 +32,21 @@ state so that all clients can explain the actual outcome.
 Pair cancellation, check-in, transfers, expiry and waitlist promotion use the
 same current-state and resource/pool guard protocol. A stale page or queued
 command cannot establish that both bookings are still before their start times.
-This pre-start agreement does not determine the explicit cancellation policy
-after either booking has started; that remains a separate product decision.
+
+## Explicit cancellation once either booking has started
+
+Once either booking has started, explicit cancellation affects only the selected
+booking unless the person explicitly chooses both. This also applies when the
+parking period has started but the desk period has not. The other booking
+remains until its own end or explicit cancellation, regardless of the pair's
+original both-required acquisition setting.
+
+An instruction to cancel both still validates authority and current state for
+both affected claims. The request and retry identity preserve the intended
+cancellation scope; crossing the first-start boundary must not silently change
+which bookings the accepted command affects. Scope/precondition fields remain
+engineering work under the normal version/conflict contract. Responses expose
+the actual affected claims and the remaining booking state.
 
 ## Automatic desk release
 
@@ -59,8 +72,9 @@ pair cancellation from automatic desk-only release; notifications follow commit
 and cannot decide which capacity is returned.
 
 Validate cancellation initiated from either booking, rollback of a failed paired
-transition, optional independent cancellation, retry after response loss,
-cancellation racing a start/check-in or transfer, specific-bay and pooled
+transition, optional independent cancellation, staggered starts, selected-only
+and explicitly combined cancellation after the first start, retry after response
+loss, cancellation racing a start/check-in or transfer, specific-bay and pooled
 parking, and both automatic desk-release paths retaining parking capacity.
 Allocation, direct booking and waitlist callers must observe the same results.
 See the [decision](../../adr/0032-separate-linked-cancellation-from-automatic-desk-release.md),

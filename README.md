@@ -170,7 +170,9 @@ day and manage them together, while each retains its own availability and rules.
 They may mark a linked request as both required, so neither booking is confirmed
 unless both can be secured. Otherwise, their availability is handled independently.
 Before either starts, explicitly cancelling either booking in a both-required pair
-cancels both atomically; optional links permit independent cancellation. Automatic
+cancels both atomically; optional links permit independent cancellation. Once
+either starts, cancellation affects only the selected booking unless both are
+explicitly chosen. The other retains its own end or explicit cancellation. Automatic
 desk no-show or vacancy release leaves parking booked until its own end or
 explicit release. Desk-use evidence does not establish that a car has left.
 The [linked-booking contract](docs/research/api-surfaces/linked-bookings.md) defines
@@ -184,6 +186,11 @@ changes and cancellations made in either system update the other.
 App-originated room requests remain pending with an expiring local hold until
 the Exchange room accepts; they are then confirmed, declined or expired according
 to the outcome.
+If a replacement request fails after the previous room is lost, retain the
+meeting and attendees with a clear no-secured-room outcome. Notify the organiser
+and offer available replacements or explicit cancellation; a replacement confirms
+only after room acceptance and capacity validation. The [room recovery contract](docs/research/api-surfaces/room-recovery.md)
+defines the shared behaviour.
 Synchronisation automatically merges compatible edits, discards stale updates
 and revalidates room/time changes. People resolve genuinely incompatible
 intentions; ordinary reconciliation proceeds automatically.
