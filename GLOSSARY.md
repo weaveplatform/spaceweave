@@ -228,7 +228,8 @@ general team proximity.
 Unfulfilled desk requests awaiting suitable capacity.
 
 **Waitlist offer**:
-A time-limited invitation to accept newly available desk capacity.
+A time-limited invitation to accept newly available capacity for a waitlisted
+desk request or event registration.
 
 ### Attendance and desk use
 
@@ -287,6 +288,13 @@ venue's capacity.
 **Event ticket**:
 An entitlement for one named attendee to attend a free, capacity-limited event
 held in an event space. A visitor's ticket is linked to their visit record.
+
+**Event reconfirmation**:
+An attendee's explicit acceptance of an event's changed office or time before
+their ticket can be used for admission.
+
+**Event waitlist**:
+An optional list of eligible attendees waiting for tickets to a full event.
 
 **Event check-in**:
 The admission record created when an attendee's ticket is scanned at event entry.

@@ -37,6 +37,10 @@ here. Decision records live in `docs/adr/`.
   application request requirements, retention tradeoffs and primary-source
   research on HTTP/PostgreSQL idempotency, admission and API contract tooling.
 
+- [Event registration and ticket lifecycle](research/api-surfaces/event-workflows.md):
+  venue recovery, attendee reconfirmation, visitor eligibility, cancellation and
+  optional event waitlists across the supported API consumers.
+
 - [Allocate advance desk intents together](adr/0001-allocate-advance-desk-intents-together.md):
   consider attendance demand together to place groups by team proximity.
 

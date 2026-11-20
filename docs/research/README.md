@@ -34,6 +34,8 @@ rather than proving its correctness or performance.
    HTTP/PostgreSQL foundations, atomic acceptance, replay, privacy and retention.
 4. [API contract engineering](api-surfaces/api-contract-engineering.md): OpenAPI,
    generation, enforcement, rate admission, backpressure and consumer validation.
+5. [Event workflows](api-surfaces/event-workflows.md): registration, venue recovery,
+   reconfirmation, visitor eligibility, cancellation and optional event waitlists.
 
 The catalogue links specialised research on authentication, role-based access,
 Entra groups, Conditional Access, MCP/Terraform and provider protocols. The

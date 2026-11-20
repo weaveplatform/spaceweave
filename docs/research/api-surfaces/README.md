@@ -193,6 +193,14 @@ hatch. The application validates transitions regardless of which surface calls.
 Confirmed event venue loss retains tickets pending recovery and pauses both
 admission and new issuance. The organiser explicitly secures a suitable
 replacement or cancels; confirmed changes are communicated to attendees.
+Office/time changes require attendee reconfirmation and linked visit validation.
+A later invalid visit blocks admission while retaining the ticket and seat
+pending authorised repair or explicit cancellation. Attendees can cancel their
+own unused tickets; optional event waitlists receive released capacity before
+fresh registrations through time-limited, eligibility-checked offers. Event
+cancellation also cancels visits whose only remaining valid purpose was that
+event. The [event workflow contract](event-workflows.md) records these rules and
+their remaining offer/reconfirmation policy decisions.
 When registration creates a visit solely for a ticket, Events and Visitors
 commit both or neither; an existing valid reused visit survives failed issuance.
 
@@ -624,6 +632,9 @@ and original preconditions. The recovery guarantee covers the end of that day
 using the relevant office calendar, including weekends/closures, with a published
 deadline. After expiry, reconcile authorised resources before offering a new
 submission; explain inconclusive recovery and require an explicit new attempt.
+An outage spanning the deadline extends affected recovery through the end of
+the next office working day after restoration, retaining evidence and publishing
+the extended deadline.
 Cancellation is requested until execution stops, ordered against commits and
 publication; earlier commits survive. These behaviours are detailed in the
 [request contract](request-behaviour.md).

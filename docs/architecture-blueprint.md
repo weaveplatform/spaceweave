@@ -185,6 +185,15 @@ explicitly secures a suitable replacement or cancels the event, and confirmed
 changes are communicated to attendees. This is the event venue recovery workflow,
 not an instruction to erase tickets or invent replacement capacity.
 
+The [event workflow contract](research/api-surfaces/event-workflows.md) also requires
+attendee reconfirmation for office/time changes and linked visitor host/window
+validation. A later invalid visit blocks admission while preserving the ticket
+and seat pending authorised repair or explicit cancellation. Attendees may cancel
+their own unused tickets; optional event waitlists receive released seats before
+fresh registration through time-limited, eligibility-checked offers. Event
+cancellation also cancels visits whose only remaining valid purpose was that
+event, preserving shared-purpose visits and historical records.
+
 The [visitor-ticket decision](adr/0024-create-event-visitor-visits-with-tickets-atomically.md)
 adds a second narrow transaction across Events and Visitors for registration-created
 visits. It does not roll back an existing independently valid visit when ticket
@@ -208,6 +217,9 @@ working day, through the end of that day in the booking/event office calendar,
 including weekends/closures. Publish the recovery deadline; after expiry,
 reconcile authorised resources before offering an explicit new attempt when
 uncertainty remains. Booking visibility does not depend on retry-receipt retention.
+An outage spanning the deadline extends affected recovery through the end of
+the next office working day after restoration; retain evidence and publish the
+extension while booking periods and capacity keep their normal rules.
 Equivalent retries compare client-supplied JSON values, ignoring property order
 and whitespace while preserving omitted/null distinctions and original
 preconditions. Allocation cancellation stops before another group commit;

@@ -13,7 +13,7 @@ times use the office calendar and timezone.
 | Main allocation run | 30 minutes after cutoff | Plan and commit the cohort; handle later changes incrementally. |
 | Desk no-show grace | 60 minutes after booking start | Assignee must personally check in before expiry. |
 | Post-check-in vacancy | 30 minutes | Require fresh, sustained vacancy evidence; missing signals mean unknown. |
-| Same-day waitlist offer | 10 minutes | Acceptance deadline before offering capacity to the next eligible person. |
+| Same-day desk waitlist offer | 10 minutes | Acceptance deadline before offering desk capacity to the next eligible person. |
 | Automatic room acceptance hold | 15 minutes | Default for automatically processed rooms; approval-based rooms require an explicit longer workflow deadline. |
 
 The delegation verification limit of fifteen minutes is already agreed and
@@ -46,9 +46,25 @@ No numerical initial rate/burst or retry-retention value is adopted yet.
 Booking/ticket recovery covers the end of the next working day in the relevant
 office calendar, including weekends/closures, with a published deadline.
 Post-expiry reconciliation precedes another submission; inconclusive recovery
-requires explained uncertainty and an explicit new attempt. The
+requires explained uncertainty and an explicit new attempt. An outage spanning
+the published deadline extends affected recovery through the end of the next
+office working day after restoration; preserve the evidence and publish the
+extended deadline. Booking periods and capacity keep their normal rules. The
 [request contract](research/api-surfaces/request-behaviour.md) records that
 behaviour and the remaining receipt-duration/expiry-evidence decisions.
+
+## Event ticket policies
+
+Events may enable an attendee waitlist. Released seats go to eligible waitlisted
+attendees before fresh registrations, through time-limited offers with current
+eligibility checked on acceptance. The offer duration and ordering/holding rules
+remain to be selected; the desk waitlist's ten-minute default does not define an
+event offer duration.
+
+Office/time changes require attendee reconfirmation and linked visitor host/window
+validation. Reconfirmation deadlines and nonresponse handling remain open.
+The [event workflow contract](research/api-surfaces/event-workflows.md) records
+ticket cancellation, visitor eligibility and linked-visit lifecycle behaviour.
 
 ## Outage protection
 

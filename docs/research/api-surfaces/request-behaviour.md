@@ -108,6 +108,11 @@ booking/event office's calendar, including weekends and closures. Publish the
 guaranteed recovery deadline so clients do not calculate office-calendar rules.
 This requirement does not select a fixed numeric retention period.
 
+If an application outage spans the published deadline, preserve affected recovery
+evidence and extend the guarantee through the end of the next office working day
+after service returns. Publish the extended deadline. This extends outcome
+recovery; booked periods and physical capacity retain their normal rules.
+
 Specify the supported automatic retry period, delayed recovery and maximum
 lifetime of nonterminal operations. Derive a published receipt-retention policy
 from the agreed recovery promise and validate it against storage, privacy and

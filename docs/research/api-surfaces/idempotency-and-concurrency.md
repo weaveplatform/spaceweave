@@ -244,6 +244,9 @@ promise, bounded supported retries, outage recovery and maximum supported
 nonterminal operation lifetime. For booking/ticket commands, use the relevant
 office calendar through the end of its next working day, including weekends
 and closures, and publish the guaranteed deadline for clients.
+An outage spanning that deadline extends affected recovery through the end of
+the next office working day after service returns. Preserve the evidence and
+publish the extension; booking periods/capacity keep their normal rules.
 Choose when terminal retention starts and ensure an accepted operation's
 identity remains recoverable throughout its supported processing/retry horizon.
 This does not require holding a transaction, physical lock or booking capacity

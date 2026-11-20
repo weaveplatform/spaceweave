@@ -136,6 +136,16 @@ technical guidance and design tradeoffs.
     failed issuance leaves an existing valid reused visit intact. Confirmed venue
     loss retains tickets pending recovery, pauses admission/issuance and requires
     explicit organiser replacement/cancellation with confirmed changes communicated.
+  - Established: an outage spanning the recovery deadline extends affected
+    requests through the end of the next office working day after restoration;
+    preserve evidence and publish the extension without extending booked periods.
+  - Established: event office/time changes require attendee reconfirmation and
+    linked visit validation; later visit ineligibility blocks admission while
+    retaining the ticket/seat pending authorised repair or cancellation.
+  - Established: attendees can cancel unused tickets. Optional event waitlists
+    receive released seats before fresh registration through time-limited offers
+    with current eligibility checked on acceptance. Event cancellation cancels
+    visits whose only remaining valid purpose was that event, preserving others.
   - Then: receipt duration/retained expiry evidence, exact wire details and
     load-validated numeric limits.
   - Then: shared review of the detailed module map and interface contracts in
@@ -266,7 +276,9 @@ relevant office calendar, including weekends/closures. Publish that deadline;
 after expiry, reconcile authorised resources before offering an explicit new
 attempt when uncertainty remains. Cancellation stays requested until work stops
 and is ordered against commits/publication. Receipt duration and retained expiry
-evidence remain engineering decisions; no numeric default is selected.
+evidence remain engineering decisions; no numeric default is selected. An outage
+spanning the deadline extends recovery through the end of the next office working
+day after restoration, preserving evidence and publishing the extension.
 
 The [Events–Booking decision](adr/0023-separate-events-from-venue-booking.md)
 settles that ownership boundary and its narrow capacity transaction. The design
@@ -275,7 +287,10 @@ and the agreed organiser-controlled venue recovery, retaining tickets while
 admission and issuance are paused. Remaining architectural work includes the
 rest of the detailed module/data ownership, operation
 schemas, provider deployment permissions, load-validated limits and recovery
-validation. Numerical proposals become defaults only with an explicit requirement
+validation. The [event workflow contract](research/api-surfaces/event-workflows.md)
+also records reconfirmation, retained seats during visitor ineligibility,
+attendee cancellation, optional event waitlists and purpose-based visit cleanup.
+Numerical proposals become defaults only with an explicit requirement
 and validation rationale. Private Teams delivery is limited to an individually
 opted-in booking-raised message.
 

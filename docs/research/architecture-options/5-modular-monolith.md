@@ -860,6 +860,16 @@ admission and further issuance. Events requires an explicit organiser decision
 to secure a suitable replacement or cancel, and communicates confirmed changes
 to attendees. Prior admission records are retained.
 
+Events also owns attendee reconfirmation, unused-ticket cancellation and optional
+event waitlists under the [event workflow contract](../api-surfaces/event-workflows.md).
+Its admission guard checks required reconfirmation and visitor eligibility;
+later visitor ineligibility retains the ticket/seat pending repair or explicit
+cancellation. Office/time changes revalidate linked visit hosts/windows. Event
+cancellation asks Visitors to cancel visits whose only remaining valid purpose
+was that event, while preserving other-purpose visits and reception history.
+Offer ordering/holding/duration and reconfirmation nonresponse remain open;
+the desk waitlist policy is separate.
+
 ### Desk use, waitlists, outage protection and reporting
 
 Booking distinguishes allocated, personally checked in, released and expired

@@ -194,6 +194,13 @@ to their visitor visit record, with visit arrival and event admission recorded
 separately. Each ticket identifies one attendee and is scanned at event entry to
 record admission and prevent duplicate use.
 
+Attendees can cancel unused tickets. Events may enable waitlists, offering
+released seats to eligible waiting attendees before fresh registrations.
+Changing an event's office or time requires attendee reconfirmation and valid
+linked visits. Venue loss pauses admission and issuance while preserving tickets
+for organiser-led recovery. The [event workflow contract](docs/research/api-surfaces/event-workflows.md)
+defines cancellation, visitor eligibility and visit-purpose handling.
+
 ### Visitors and administration
 
 Staff invite external visitors with a named staff host and a visit window.

@@ -102,6 +102,11 @@ blueprint's detailed module split remains proposed.
   supported public REST; platform workers use private interfaces. User-facing
   Internet access is governed by Conditional Access and application permissions.
   Event visitors include invited guests/speakers attending internal events.
+- The [event workflow contract](../api-surfaces/event-workflows.md) applies to
+  every candidate: material-change reconfirmation, retained ticket/seat during
+  visitor ineligibility, attendee cancellation, purpose-based visit cleanup and
+  optional event waitlists with priority over fresh registration. Event offer
+  ordering/holding/duration and reconfirmation nonresponse rules remain open.
 - Configurable SpaceWeave RBAC; MCP uses user context, while machine-identity
   scripts use a separate channel. No universal login journey follows from the
   consumer label. Authorised UI edits can create Terraform drift; initial public
