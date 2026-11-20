@@ -366,8 +366,12 @@ access and temporary failure. A Terraform client must not drop state after a
 `401`, `403`, throttling or dependency error. Resource contracts that interpret
 `404` as deletion cannot mask an authorisation failure as that same result;
 scope checks before lookup can return a uniform denial without exposing whether
-a particular object exists. Deletion/retirement still respects confirmed
-bookings and returns an explicit impact/conflict or operation outcome.
+a particular object exists. Explicit retirement stops new bookings while keeping
+existing confirmations manageable. Separate deletion reports unresolved bookings,
+children or other dependencies and refuses removal without cancelling/cascading.
+Retired state remains readable/importable and is not absence. The
+[workplace lifecycle contract](workplace-lifecycle.md) supplies these semantics;
+an asynchronous status reference cannot hide a dependency conflict.
 
 Internet-facing human access uses Entra Conditional Access rules and policies
 alongside API authentication, capability, office, owner and delegation checks.

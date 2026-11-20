@@ -1,13 +1,18 @@
 # SpaceWeave architecture blueprint
 
 This blueprint combines the workplace-booking requirements and technology choices
-with a proposed module/data-ownership map. It is intended for technical architects
-and engineers evaluating the local consistency boundaries, enterprise integrations
+with the accepted core ownership boundaries and representative package placement.
+It is intended for technical architects and engineers evaluating the local consistency boundaries, enterprise integrations
 and operating model. The [five architecture candidates](research/architecture-options/README.md)
 compare alternative repository organisations. The
-[Events–Booking boundary](adr/0023-separate-events-from-venue-booking.md) is agreed;
-the rest of this exact module map remains a proposal rather than a requirement
-imposed on every candidate.
+[Events–Booking boundary](adr/0023-separate-events-from-venue-booking.md),
+[combined Identity](adr/0026-combine-workforce-identity-and-access-ownership.md),
+[planning inside Booking](adr/0027-keep-attendance-planning-inside-booking.md) and
+[separate Exchange](adr/0028-separate-exchange-synchronisation-from-booking.md)
+are agreed logical owners across all five options. The repository-architecture
+choice remains pending. Candidates retain their own organisations and dependency
+rules; concrete package names and remaining evidence/publication boundaries
+are still subject to validation.
 
 This is a design record. The existing implementation is the floor-plan tool;
 the booking platform described here has not yet been implemented. The
@@ -37,7 +42,7 @@ the pool, even when physical occupancy is detected. Optional sensors support
 release after sustained vacancy following check-in. Waitlisted demand receives
 released capacity before fresh direct requests.
 
-Retain Go in a domain-first modular monolith, PostgreSQL-owned durable state and
+Retain Go with the repository architecture pending, PostgreSQL-owned durable state and
 jobs/outbox, and Azure/GCP blob adapters for revisioned assets. Separate React/
 TypeScript portal entrypoints share UI and the existing renderer. Go owns SSO
 sessions and provider tokens. OpenAPI defines the REST transport contracts.
@@ -63,23 +68,25 @@ correlation preserves stable internal staff identities. Exchange Online room
 bookings synchronise both ways, with pending local holds until room acceptance
 and automatic reconciliation wherever intentions are compatible.
 
-## Proposed module ownership
+## Logical ownership
 
-Each module owns its state and migrations, publishes a small interface and
-contains its provider/storage adapters where needed. The allocation planner is
+Each logical owner controls its state and migrations through narrow interfaces.
+The candidate architecture determines where its implementation and adapters sit. The allocation planner is
 inside Booking so planning and direct requests share one capacity authority.
 Events is a separate owner for registration, tickets and admission; Booking
-retains the event-space claims. That boundary is agreed independently of the
-remaining proposed module placements.
+retains the event-space claims. Identity combines workforce/source correlation
+with sessions, access and delegation through distinct interfaces. Exchange owns
+calendar integration/reconciliation independently; Identity retains its native
+delegation-evidence adapter. These agreed owners constrain all five comparison layouts without selecting
+a repository style or prescribing every internal package/evidence seam.
 
 | Module | Owned state and behaviour | Interface callers rely on |
 | --- | --- | --- |
-| Directory | Staff identities/source links, effective workforce facts, externally maintained teams/membership, SCIM resource lifecycle and Workday import progress. | Resolve verified staff identities, eligibility and dated workforce/team snapshots; apply source-owned changes without overwriting app preferences. |
-| Access | Staff/visitor sessions, capabilities and office scopes, global grants, app-managed delegation and source-labelled Exchange-derived authority. | Authorise a particular actor, owner, action and office; enforce current eligibility and delegation freshness. |
+| Identity | Staff identities/source links, effective workforce/team facts, SCIM/Workday progress, sessions, capabilities/scopes, global grants and source-labelled delegation. | Separate People, Access and Delegation interfaces resolve current eligibility, source-owned facts, sessions and actor/owner authority under one owner. |
 | Workplace | Offices, buildings, floors, space features, office calendars and baseline neighbourhood definitions. | Read versioned definitions and validate proposed changes against affected booking commitments. |
 | Policy | Versioned operational policies, allowed office overrides, publication/effective dates and organisation retention settings. | Resolve the applicable policy/version and validate a prospective publication. |
 | Booking | Attendance intents/preferences/travel exceptions, allocation cycles/groups/proposals, dated inventory, holds, bookings, waitlists and desk check-in/release transitions. | Request, allocate, confirm, transfer, cancel, check in or release capacity while enforcing the same invariants from every caller. |
-| Exchange | Provider identity mappings, desired/observed calendar state, acceptance observations, delta cursors/subscriptions and reconciliation work. | Reconcile committed room intentions and external changes through Booking; supply native delegation evidence to Access. |
+| Exchange | Provider mappings, desired/observed calendar state, durable observations, delta cursors/subscriptions and reconciliation work. | Consume Booking's committed room intentions and reconcile provider activity through Booking's owning room interface; never write claims directly. |
 | Plans | Drawing packages, tracing/review workflows, immutable plan/render revisions and blob metadata/publication. | Upload, process, review and retrieve a revision; associate approved geometry with stable Workplace space identities. |
 | Visitors | Visitor profiles, hosted visits, visit windows and reception arrival/departure records. | Create/retrieve a visit, record reception activity and apply visitor retention. |
 | Events | Event details/audience, registration, tickets/exclusive offers, reconfirmation, waitlists, admission and venue coordination. | Register, offer, reconfirm, cancel or admit within current event capacity and eligibility, coordinating secured venue changes with Booking. |
@@ -93,12 +100,13 @@ or published queries rather than acquiring unrestricted access to every table.
 
 ## Proposed repository and interface rules
 
+The responsibility sketch below does not select a layout. All five candidates
+provide concrete placement of composition, owning code, shared facilities and
+frontend entrypoints using their own dependency rules.
+
 ```text
 cmd/spaceweave/                 retained executable entrypoint
-internal/app/                  composition, runtime roles and workflow wiring
-internal/<module>/api/         published interface and domain contracts
-internal/<module>/internal/    private implementation and adapters as needed
-internal/platform/             database/jobs/outbox/telemetry infrastructure
+internal/                      owning components, composition and shared facilities in the chosen layout
 web/staff/                     proposed staff/mobile-web entrypoint
 web/admin/                     proposed administrative entrypoint
 web/shared/                    shared UI, generated transport clients and renderer seam
@@ -106,10 +114,11 @@ web/floorplan-iso/             retained renderer during incremental adoption
 api/                           proposed OpenAPI source contracts
 ```
 
-Module factories are imported by composition; other module code crosses the
-published interface. Nested Go `internal` directories and import checks protect
-implementation access. SQL queries and migrations still require ownership
-review. Stable-ID foreign keys may be used deliberately with migration
+Composition constructs owning implementations and exposes only approved
+interfaces. Each candidate defines its import/visibility rules; nested per-owner
+`internal` trees are one enforcement option rather than a prescribed repository
+style. SQL queries and migrations require ownership review. Stable-ID foreign
+keys may be used deliberately with migration
 coordination; sharing a database does not grant arbitrary foreign-table writes.
 
 Retain the existing CAD/geometry packages behind Plans rather than moving every
@@ -170,6 +179,7 @@ booking/check-in health distinct from degraded Exchange or notification delivery
 | Desk allocation, direct requests and waitlist promotion | Booking serialises competing claims; enforce mandatory features, dated neighbourhood membership, one overlapping desk per person and existing waitlist priority. Confirmed assignments are protected. |
 | Required desk plus parking | Secure both in one Booking transaction or confirm neither. A transfer acquires replacement capacity and releases the old claims together. |
 | Main allocation run | Plan outside long transactions using a versioned snapshot. Commit each group's placement atomically, including required parking; replan only affected uncommitted groups on conflicts. |
+| Workplace retirement/deletion | Workplace retires definitions to stop new bookings, including descendant eligibility. Booking orders new claim commitment against that change; existing confirmed bookings remain manageable. Deletion reports unresolved dependencies and never silently cancels or cascades. |
 | Check-in, no-show and vacancy | Booking decides the transition against current state/policy. A personal check-in wins only if the allocation remains valid. Anonymous occupancy cannot reserve a released desk. Sensor outages do not establish vacancy. |
 | Room requests and reconciliation | Booking owns local holds/claims and transitions; Exchange owns provider observations/progress. Confirm only after acceptance and capacity revalidation. Keep external observations even if they conflict with local claims; reconcile rather than discarding provider truth. |
 | Venue changes and ticket issuance | Events coordinates its ticket state with Booking's venue state through owning interfaces in a named shared local transaction where required. Generic booking edits cannot bypass the event venue workflow. |
@@ -241,7 +251,8 @@ results retain normal access/expiry. Cancellation remains requested until work
 stops and is serialized against commit/publication; preserve work committed first
 and prevent the next commit/publication when cancellation wins. Receipt duration,
 retained expiry evidence, wire details and numeric limits remain open. The contract applies across all
-five candidate layouts; the remaining detailed module split is still proposed.
+five candidate layouts; the architecture style and remaining evidence/publication
+boundaries remain under review.
 
 ## Identity, lifecycle and privacy
 
@@ -260,7 +271,7 @@ desk/parking claims; review room/event ownership through assisted handover.
 Provider organiser changes require an appropriate workflow, not an assumed
 in-place Exchange property update.
 
-Access checks app-managed delegation against current local state. New actions
+Identity checks app-managed delegation against current local state. New actions
 relying on native-derived grants require verification within the configurable
 fifteen-minute limit; remove only the revoked source grant. A PA remains the
 recorded actor and cannot personally check in the owner's desk for them.
@@ -307,7 +318,7 @@ API/worker upgrades. Retain rollback compatibility until the old release drains.
 | Validation | Evidence required before relying on the design |
 | --- | --- |
 | Booking correctness | Race allocation/direct claims/waitlist, personal check-in/no-show, linked parking, office transfers, venue changes/ticket issuance and duplicate ticket scans against real transactions. |
-| Directory and authorisation | Exercise SCIM provisioning/deactivation/reactivation/deletion, ambiguous matches, effective workforce changes, source outages, scope/delegation revocation and existing-session denial. |
+| Identity and authorisation | Exercise SCIM provisioning/deactivation/reactivation/deletion, ambiguous matches, effective workforce changes, source outages, scope/delegation revocation and existing-session denial. |
 | Exchange behaviour | Use an authorised test environment to exercise owner/delegate create/edit/cancel, delayed/late acceptance, missed notifications, duplicate/stale updates and incompatible changes. Verify conditional-write and room-replacement behaviour rather than assuming it. |
 | Personal Teams delivery | Verify message-specific opt-in, installation, correct private recipient, opt-out before dispatch, throttling and blocked/uninstalled cases without affecting bookings. |
 | Capacity and responsiveness | Establish a representative peak/site-skew workload for 100,000 staff/60,000 desks; measure one-second p95 initial responses separately from planner completion, queue drain and Exchange acceptance. |

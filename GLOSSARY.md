@@ -81,6 +81,10 @@ The staff member named as the host for a visitor's visit.
 A place that can be booked. In-scope kinds are desks, meeting rooms, car parking
 and event spaces.
 
+**Workplace retirement**:
+Withdrawal of an office, building, floor or space from new bookings while existing
+confirmed commitments remain available to use and manage.
+
 **Space requirement**:
 A mandatory space feature that must be satisfied for a booking request to be
 eligible for that space.

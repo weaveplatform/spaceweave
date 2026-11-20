@@ -1,5 +1,14 @@
 # Option 4: Domain-driven design
 
+The repository-architecture decision is pending. This candidate expresses the
+same agreed logical owners as the other four: combined Identity; attendance
+planning and claim commitment inside Booking; separate Exchange and Events.
+Its package organisation and dependency rules remain specific to this style.
+[Identity](../../adr/0026-combine-workforce-identity-and-access-ownership.md),
+[Booking planning](../../adr/0027-keep-attendance-planning-inside-booking.md) and
+[Exchange](../../adr/0028-separate-exchange-synchronisation-from-booking.md)
+record those ownership decisions independently of repository style.
+
 SpaceWeave's booking, workforce identity, workplace configuration, visitor and
 event capabilities use different models and consistency rules. This candidate
 uses domain-driven design (DDD) to make those boundaries explicit inside one Go
@@ -70,7 +79,7 @@ query/migration review enforces SQL ownership. [Go import rules][go-imports].
 ```text
 spaceweave/
   cmd/spaceweave/                  retained executable; Cobra drives app composition
-  internal/                       eleven contexts, kernel, shared, composition
+  internal/                       ten contexts, kernel, shared, composition
   pkg/                            reserved for deliberate public clients/helpers
   api/
     src/app/                      OpenAPI fragments organised by owning context
@@ -147,68 +156,61 @@ internal/
         app.gen.go                generated HTTP wire types/handler contracts
       provisioning/
         scim.gen.go               generated wire shapes where tooling supports them
-  directory/
-    directory.go                  composition factory
+  identity/
+    identity.go                   one context factory; distinct People/Access/Delegation
     api/
-      directory.go                verified identity/eligibility and dated snapshots
-      events.go                   StaffEligibilityChanged, WorkforceFactsChanged
+      people.go                   verified source/eligibility and dated workforce views
+      access.go                   actor/owner/action/office and session authority
+      delegation.go               local grants and fresh native delegation checks
+      events.go                   source, eligibility, access and grant facts
     domain/
       staff/
         staff.go                  internal identity and verified source links
-        eligibility.go            separate account/provisioning/workforce inputs
+        eligibility.go            independent account/provisioning/workforce inputs
       workforce/
         assignment.go             effective office/structure/team facts
       team/
-        team.go                   external team/membership model
-      repository.go               staff/team/source-progress repositories
-      events.go                   internal domain facts
-    application/
-      provision.go                SCIM lifecycle commands
-      import_workday.go           apply source-owned effective workforce facts
-      correlate.go                approved identifier matching, ambiguity review
-      reconcile.go                complete-source reconciliation without outage deletion
-      queries.go                  eligibility and dated snapshot views
-    adapters/
-      http/
-        scim.go                   authenticated Users/Groups resources
-        directory.go              administrative correlation queries/actions
-      workday/
-        client.go                 provider queries and paging
-        translate.go              anti-corruption mapping to workforce facts
-      postgres/
-        staff.go                  staff/source IDs and effective facts
-        teams.go                  team memberships and mapping records
-        migrations/
-          0001_directory.sql
-  access/
-    access.go
-    api/
-      access.go                   authorise actor/owner/action/office
-      events.go                   delegation/global-grant changes
-    domain/
+        team.go                   external membership model
       scope/
-        scope.go                  office scope and global capability semantics
+        scope.go                  office/global authority semantics
       delegation/
-        grant.go                  source, owner, actions and verification age
+        grant.go                  provenance, owner, actions and verification age
       session/
         session.go                staff/visitor session lifecycle
-      repository.go
+      repository.go               Identity-owned people/session/grant repositories
+      events.go                   internal domain facts
     application/
-      login.go                    SSO and verified visitor link sessions
-      decide.go                   current eligibility, action and scope checks
-      delegation.go               local grants and native-derived refresh/revocation
-      revoke.go                   invalidate sessions on known effective ineligibility
+      provision.go                SCIM lifecycle and mapped groups
+      import_workday.go           source-owned effective workforce facts
+      correlate.go                verified matching and ambiguity review
+      reconcile.go                complete-source reconciliation
+      queries.go                  current eligibility and dated facts
+      login.go                    SSO and restricted visitor sessions
+      decide.go                   current own eligibility/action/scope checks
+      delegation.go               app-managed grants and native evidence evaluation
+      native_delegation.go        freshness refresh through authority adapter
+      revoke.go                   observed disablement plus session/access invalidation
     adapters/
-      entra/
-        oidc.go                   confidential server sign-in, provider tokens server-side
       http/
+        scim.go                   provisioning resources
+        people.go                 correlation queries/actions
         login.go
         middleware.go
         delegation.go
+      workday/
+        client.go
+        translate.go
+      entra/
+        oidc.go
+      exchangeauthority/
+        permissions.go            fresh explicit native delegation evidence
       postgres/
+        staff.go
+        teams.go
         access.go
         migrations/
-          0001_access.sql
+          0001_identity_people.sql
+          0002_identity_access.sql
   workplace/
     workplace.go
     api/
@@ -224,6 +226,7 @@ internal/
     application/
       configure.go                validation and committed-booking impact checks
       queries.go                  versioned workplace snapshots
+      retirement.go               stop new use and report deletion dependencies
     adapters/
       http/
         workplace.go
@@ -279,6 +282,7 @@ internal/
     application/
       submit_intent.go            app-owned preferences and dated travel choices
       plan_cycle.go               assemble immutable snapshot and run planner
+      solver.go                   consumed solver interface; calculation outside tx
       commit_group.go             named multi-aggregate local transaction
       direct.go                   post-run direct request and waitlist priority
       transfer.go                 named acquire-replacement/release-old transaction
@@ -288,6 +292,8 @@ internal/
       room.go                     reconcile acceptance and external room intentions
       venue.go                    event-governed capacity participant
     adapters/
+      solver/
+        solver.go                 replaceable search using domain constraints/objective
       http/
         booking.go
         intents.go
@@ -302,7 +308,7 @@ internal/
   exchange/
     exchange.go
     api/
-      exchange.go                 desired/observed state and source-authority refresh
+      exchange.go                 provider desired/observed state and reconciliation
     domain/
       conversation/
         reconciliation.go         durable desired/base/observed event intentions
@@ -313,12 +319,10 @@ internal/
       on_room_intent.go           committed app intention to provider work
       reconcile.go                compatible edits, stale work and irreconcilable cases
       observe.go                  retain provider facts and call Booking
-      delegation.go               publish verified native authority to Access
     adapters/
       graph/
         calendar.go               create/edit/cancel with supported provider semantics
         delta.go                  subscriptions plus durable window reconciliation
-        permissions.go            explicit native calendar-delegate evidence
       http/
         notifications.go          provider callback validation and enqueue
       postgres/
@@ -454,8 +458,8 @@ internal/
   buildinfo/                       retained build metadata
 ```
 
-The eleven context roots are Go factories rather than global registries. The
-tree does not multiply the current CAD package inventory into eleven contexts.
+The ten context roots are Go factories rather than global registries. The
+tree does not multiply the current CAD package inventory into ten contexts.
 Source import/package claims above are checked against the current
 [server][server], [catalogue][catalogue], [worker][worker] and [drawing pipeline][autotrace].
 
@@ -469,9 +473,9 @@ two meanings of publication are deliberately distinct.
 | Consumer/surface | Kind and authority | Context/wire binding |
 | --- | --- | --- |
 | UI, MCP, SDK, scripts, contract tests and Terraform | Shared supported public REST with capability-specific fields/actions. | Owning contexts' HTTP adapters and app routing call application handlers; no aggregate or complete context API is serialized wholesale. |
-| Human users and enrolled applications | Internet-accessible public REST with applicable Conditional Access plus current application grants. | Credential/profile checks at the edge; Access and the command owner preserve real actor/client/owner identity. Machine grants are separate from human delegation. |
+| Human users and enrolled applications | Internet-accessible public REST with applicable Conditional Access plus current application grants. | Credential/profile checks at the edge; Identity and the command owner preserve real actor/client/owner identity. Machine grants are separate from human delegation. |
 | Internal-event visitors, such as guest speakers | External invitation/verification and limited visitor event/visit/ticket operations. | Visitors/Events projections preserve the verified-email visitor scope; no general public event catalogue is established. |
-| Entra, Graph, Teams and source clients | Native authenticated provisioning/callback/ingestion contracts. | Directory, Exchange, Notifications and Attendance adapters retain protocol-specific semantics and caller validation. |
+| Entra, Graph, Teams and source clients | Native authenticated provisioning/callback/ingestion contracts. | Identity, Exchange, Notifications and Attendance adapters retain protocol-specific semantics and caller validation. |
 | Platform workers and application contexts | Private Go interfaces and versioned committed facts/jobs. | Workers call context application handlers directly; context API and repository/provider ports do not become remote endpoints. |
 | Operators and platform dependencies | Private probes/telemetry; authorised public repair commands where supported. | Restricted operational routing plus owning commands; public repair capability does not expose SQL, repositories or transaction participation. |
 
@@ -486,7 +490,7 @@ domain event. Private context/fact contracts can evolve with the application,
 subject to persisted-version/replay compatibility. Human/application authority is
 distinct; Terraform initially manages long-lived configuration; first-party
 MCP/provider delivery follows the core platform/SDKs. Public versions evolve
-independently of the UI. Access owns configurable RBAC; MCP uses user context
+independently of the UI. Identity owns configurable RBAC; MCP uses user context
 and machine-identity scripts use a different channel. UI drift is permitted and
 initial retirement notice is 180 days. Global administration, SCIM-backed role
 mappings, grant-only scoped composition and self-permission discovery are agreed.
@@ -501,9 +505,9 @@ to the printed context tree rather than these explanatory surface bindings.
 
 ### Domain model and context map
 
-Directory's `Staff` is a correlated identity with effective source facts.
-Access uses an eligibility/authority view; Booking uses a staff identifier and
-dated team/office snapshot. An allocation group is created for an attendance
+Identity's `Staff` is a correlated identity with effective source facts.
+Its distinct Access/People/Delegation interfaces use the same owned security
+state; Booking consumes a staff identifier and dated team/office snapshot. An allocation group is created for an attendance
 date, not imported from Workday and not synonymous with a team. None of these
 models owns Entra tokens. Exchange's observed organiser, booking owner and actual
 booker have separate fields and meanings.
@@ -515,10 +519,11 @@ geometry revisions, not desk claims or authoritative space identity. An amended
 drawing can be reviewed before becoming the current plan without moving an
 existing booking to a different inferred polygon.
 
-Proposed context relationships are Directory → eligibility/workforce consumers;
-Workplace/Policy → Booking planning; Booking → Exchange, reporting and
-notifications through committed facts; Events → Booking/Visitors through
-published commands. Access depends on Directory, not the reverse. Composition
+Context relationships are Identity → eligibility/authority/workforce consumers;
+Workplace/Policy → Booking's internal planning; Booking → Exchange, reporting
+and notifications through committed facts; Events → Booking/Visitors through
+published commands. Source status and session/access invalidation share Identity's
+transaction; separate Directory and Access contexts are not retained. Composition
 supplies a narrow impact-check interface where Workplace configuration must
 consult committed Booking state, avoiding a cycle between concrete packages.
 
@@ -625,7 +630,7 @@ window-scoped delta reconcile at the agreed five-minute healthy cadence.
 [Event semantics][graph-event], [delta scope][graph-delta],
 [room acceptance][room-policy].
 
-Access records source-labelled native grants and app-managed grants independently.
+Identity records source-labelled native grants and app-managed grants independently.
 New native-derived actions need fresh verification within the configurable
 fifteen-minute limit. Revocation of one source does not remove an independent
 grant. App-managed authority permits app-mediated outcomes but does not write
@@ -634,7 +639,7 @@ remain separate checks. [Application permission scope][exchange-rbac].
 
 ### SCIM, Workday and staff lifecycle
 
-The Directory context's provider adapters form an anti-corruption layer: SCIM
+The Identity context's provider adapters form an anti-corruption layer: SCIM
 `active`, Entra account status and Workday workforce status remain distinct inputs
 with explicit authority. Workday owns effective workforce structure/usual office;
 the app owns preferences and dated travel. Only mapped groups become allocation
@@ -747,11 +752,12 @@ alert and require explicit operator choice for failover outside that budget.
 
 ### Composition root
 
-`app/contexts.go` builds Directory, then Access with a Directory eligibility
-interface, then Workplace/Policy/Plans and Booking with their published views.
-Events receives Booking's event-venue participant and Visitors' visit interface.
-Exchange receives Booking room commands and an Access authority-observation
-interface. Notifications/reporting subscribe to committed outcomes.
+`app/contexts.go` constructs Identity once with distinct People/Access/Delegation
+interfaces, then Workplace/Policy/Plans and Booking with its private solver.
+Events receives Booking's venue participant and Visitors' visit interface.
+Exchange receives Booking's room interface and owns provider reconciliation;
+Identity's native-authority adapter independently verifies delegation evidence.
+Notifications/reporting subscribe to committed outcomes.
 
 Potential runtime cycles are addressed by consumer-owned impact-check contracts
 or composition-owned coordinators, not pervasive late setters. Wiring exposes
@@ -763,7 +769,7 @@ unrestricted database handle inside every command.
 
 ```text
 api/src/app/
-  directory/ access/ workplace/ policy/ booking/ plans/
+  identity/ workplace/ policy/ booking/ exchange/ plans/
   visitors/ events/ attendance/ notifications/
 api/src/provisioning/              SCIM Users/Groups wire contract and Entra profile
 api/generated/app.openapi.yaml    bundled application transport contract
@@ -802,12 +808,24 @@ queries. Generation is reproducible. Rolling releases use one controlled
 migration step, expand/contract schemas and compatible job/fact versions; older
 workers must drain before compatibility is removed.
 
+### Workplace retirement and deletion
+
+`internal/workplace/application/retirement.go` handles explicit retirement and dependency-checked removal
+through the existing owning interfaces. Retiring an office, building, floor or space stops
+new booking eligibility, including descendant spaces, while confirmed commitments
+remain readable and manageable. Booking revalidates retirement at claim commit;
+a stale snapshot cannot authorise new use. Deletion reports blocking bookings,
+children or other dependencies and never silently retires, cancels or cascades.
+Retired resources remain present for authorised read/refresh/import, including
+Terraform. The [workplace lifecycle contract](../api-surfaces/workplace-lifecycle.md)
+applies independently of this candidate's technical organisation.
+
 ## Walkthroughs
 
 ### Commit one allocation group while capacity changes
 
 1. A durable cycle job calls `booking/application/plan_cycle.go` with a cycle ID.
-2. Published Directory/Workplace/Policy views and Booking-owned inventory/claims
+2. Published Identity/Workplace/Policy views and Booking-owned inventory/claims
    produce a versioned planning snapshot. No database transaction spans packing.
 3. `domain/allocation/planner.go` forms the per-date group and suitable desk/parking
    proposal, preserving attendance choices and required features.
@@ -821,7 +839,7 @@ workers must drain before compatibility is removed.
 
 ### Race check-in, release and waitlist promotion
 
-1. The owner's QR or portal request reaches Access and Booking's check-in handler.
+1. The owner's QR or portal request reaches Identity and Booking's check-in handler.
 2. A no-show timer concurrently calls `release.go` for that allocation/version.
 3. Both use the current Booking transition and protected-incident policy. The
    committed state decides whether the check-in is valid or the desk was released.
@@ -833,7 +851,7 @@ workers must drain before compatibility is removed.
 
 ### A PA books a room and Outlook changes it
 
-1. `access/application/decide.go` authorises actor, owner, action and office using
+1. `identity/application/decide.go` authorises actor, owner, action and office using
    a sufficiently fresh source-labelled grant or current app grant.
 2. Booking commits a pending room hold and desired intention with owner/actor.
 3. Exchange's worker performs the provider action in the owner's calendar; the
@@ -862,8 +880,8 @@ workers must drain before compatibility is removed.
 
 ### Apply lifecycle updates during a source outage
 
-1. Authenticated SCIM disable reaches Directory; retain its source meaning and
-   make effective ineligibility visible to Access immediately when observed.
+1. Authenticated SCIM disable reaches Identity; retain its source meaning and
+   commit effective ineligibility and session/access invalidation together in Identity.
 2. An existing staff session fails the next eligibility check; asynchronous
    cleanup handles retained sessions without being the sole enforcement.
 3. Workday supplies an effective office/team change. Apply only its owned fields
@@ -920,10 +938,10 @@ staffing or runtime. Counts describe the representative tree in this document.
 
 | Measure | Candidate value |
 | --- | --- |
-| Business contexts | 11, named in the full tree. |
-| Uniform context layer directories | 44: `api`, `domain`, `application`, `adapters` for each context, before their internal subdivisions. |
-| Explicit Go-bearing package paths | 114: one per parent directory with a named `.go` file in the full tree. |
-| Explicit representative Go filenames | 189, including generated examples; co-located tests and unprinted retained engine files are excluded. |
+| Business contexts | 10, named in the full tree. |
+| Uniform context layer directories | 40: `api`, `domain`, `application`, `adapters` for each context, before their internal subdivisions. |
+| Explicit Go-bearing package paths | 110: one per parent directory with a named `.go` file in the full tree. |
+| Explicit representative Go filenames | 190, including generated examples; co-located tests and unprinted retained engine files are excluded. |
 | Shared-kernel packages shown | 4: IDs, principal envelope, interval values and clock. |
 | Explicit booking multi-aggregate operations | Group placement, required linked claim and office transfer. |
 | Explicit cross-context transaction families | Event venue/capacity through Events and Booking; registration-created visit/ticket through Events and Visitors. |

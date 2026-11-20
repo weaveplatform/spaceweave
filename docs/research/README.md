@@ -20,8 +20,9 @@ and relevant technology principles without requiring prior design discussions.
 3. [Five detailed candidates](architecture-options/README.md): repository layouts,
    dependency rules, state ownership, transactions, migration and common workflows.
 
-The preferred direction is a modular monolith. Exact module boundaries remain
-subject to comparison and validation; a candidate tree illustrates an option,
+The repository-architecture choice is pending. A modular monolith remains the
+preferred candidate; agreed logical owners apply across all five layouts, while
+concrete package placement remains subject to validation; a candidate tree illustrates an option,
 rather than proving its correctness or performance.
 
 ## API reading path
@@ -36,6 +37,8 @@ rather than proving its correctness or performance.
    generation, enforcement, rate admission, backpressure and consumer validation.
 5. [Event workflows](api-surfaces/event-workflows.md): registration, venue recovery,
    reconfirmation, visitor eligibility, cancellation and optional event waitlists.
+6. [Workplace lifecycle](api-surfaces/workplace-lifecycle.md): explicit retirement,
+   protected confirmations and dependency-blocked deletion for UI and automation.
 
 The catalogue links specialised research on authentication, role-based access,
 Entra groups, Conditional Access, MCP/Terraform and provider protocols. The

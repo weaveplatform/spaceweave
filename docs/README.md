@@ -10,7 +10,7 @@ here. Decision records live in `docs/adr/`.
   design tree, open decisions and verified integration constraints.
 
 - [Consolidated architecture blueprint](architecture-blueprint.md): agreed
-  product/runtime decisions and the detailed module ownership proposed for review.
+  product/runtime and core ownership decisions, with representative package placement.
 
 - [Operational policy defaults](policy-defaults.md): the agreed, configurable
   initial values and allocation priority rules.
@@ -41,6 +41,10 @@ here. Decision records live in `docs/adr/`.
   venue recovery, attendee reconfirmation, visitor eligibility, cancellation and
   optional event waitlists across the supported API consumers.
 
+- [Workplace retirement and deletion](research/api-surfaces/workplace-lifecycle.md):
+  preserve confirmed commitments while stopping new use, and report removal
+  dependencies consistently to administrators and automation.
+
 - [Allocate advance desk intents together](adr/0001-allocate-advance-desk-intents-together.md):
   consider attendance demand together to place groups by team proximity.
 
@@ -65,8 +69,9 @@ here. Decision records live in `docs/adr/`.
 - [Separate booking ownership from the acting delegate](adr/0008-separate-booking-ownership-from-the-acting-delegate.md):
   retain the booking owner's identity and the delegate's actions.
 
-- [Use a domain-first modular monolith](adr/0009-use-a-domain-first-modular-monolith.md):
-  organise domain ownership with ports and adapters inside substantial modules.
+- [Consider a domain-first modular monolith](adr/0009-use-a-domain-first-modular-monolith.md):
+  proposed architecture direction; the repository-style decision remains pending
+  across all five candidates.
 
 - [Keep app-managed delegation local](adr/0010-keep-app-managed-delegation-local.md):
   grant app-mediated booking authority while synchronising booking outcomes.
@@ -116,3 +121,15 @@ here. Decision records live in `docs/adr/`.
 - [Create event visitor visits with tickets atomically](adr/0024-create-event-visitor-visits-with-tickets-atomically.md):
   roll back a visit created solely for failed registration while retaining an
   existing valid visit reused by the attempt.
+
+- [Retire workplaces before removing protected resources](adr/0025-retire-workplaces-before-removing-protected-resources.md):
+  separate stopping new bookings from dependency-checked deletion.
+
+- [Combine workforce identity and access ownership](adr/0026-combine-workforce-identity-and-access-ownership.md):
+  keep source identity, sessions, permissions and delegation in one Identity owner.
+
+- [Keep attendance planning inside Booking](adr/0027-keep-attendance-planning-inside-booking.md):
+  isolate the solver while keeping demand and capacity validation together.
+
+- [Separate Exchange synchronisation from Booking](adr/0028-separate-exchange-synchronisation-from-booking.md):
+  own provider integration independently while Booking remains the claim authority.

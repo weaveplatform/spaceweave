@@ -164,7 +164,7 @@ when its folder says `api` and its Go names are exported; it is not an Internet 
 | 1 — Layered | `api/src/{staff,admin,scim}/`, bundled `api/*.openapi.yaml`; Go `internal/transport/http/gen/{staff,admin,scim}`; optional `pkg/client/{staff,admin}`; TS `web/shared/api/generated`. | Chi `internal/transport/http`; staff/admin/plans/SCIM handlers and static portal adapter; `internal/transport/{cli,inbox,trigger,jobs}` are other drivers. | Services in `internal/application/*`; storage/provider interfaces in `internal/persistence/{store,blob,calendar,...}` beside implementations; shared business values in `internal/model`; `internal/app` wires them. |
 | 2 — Hexagonal | `api/src/{staff,admin,scim}.yaml`, bundles/configs under `api`; Go `internal/adapter/driving/http/gen/*`; optional `pkg/client/{staff,admin}`; TS `web/shared/src/api/generated`. | `internal/adapter/driving/http/{plans,booking,session,scim,...}`; CLI/jobs/scheduler/inbox/web siblings. Handlers hold driving ports. | Central `internal/core/port/driving` and `driven`; model/rules/services in core; consumer-owned sibling interfaces where needed; `internal/app` assigns implementations. |
 | 3 — Clean | `api/src/{staff,admin,visitor}.yaml`; Go `internal/adapter/http/gen/{staff,admin,visitor}`; TS `web/packages/api/*.gen.ts`; SCIM has protocol-specific shapes, not staff DTO aliases. | `internal/adapter/http/controller/{staff,admin,visitor}`, presenter/session/protocol adapters; Chi assembly in `internal/infrastructure/router`; lifecycle in `httpserver`. | Each `internal/usecase/<operation>/port.go` owns consumed interfaces; only shared `unitofwork/event/job` contract exceptions; `internal/entity` stays pure; `internal/app` wires use cases/controllers. |
-| 4 — DDD | `api/src/app/<context>`, `api/src/provisioning`; bundle `api/generated/app.openapi.yaml`; Go `internal/shared/generated/{app,provisioning}`; TS `web/shared/generated`. | Each `internal/<context>/adapters/http`; common `shared/httpkit`; `internal/app/routes.go` dispatches generated contracts. | Eleven context `api` seams publish commands/queries/facts; repository/provider contracts in context domain/application; implementation in adapters; factories composed by `app/contexts.go`. |
+| 4 — DDD | `api/src/app/<context>`, `api/src/provisioning`; bundle `api/generated/app.openapi.yaml`; Go `internal/shared/generated/{app,provisioning}`; TS `web/shared/generated`. | Each `internal/<context>/adapters/http`; common `shared/httpkit`; `internal/app/routes.go` dispatches generated contracts. | Ten context `api` seams publish commands/queries/facts; repository/provider contracts in context domain/application; implementation in adapters; factories composed by `app/contexts.go`. |
 | 5 — Modular monolith | Single `api/openapi.yaml` with capability fragments and `generation.yaml`; Go `internal/transport/gen/rest`; optional `pkg/client/rest`; TS `web/generated/{transport,client}.ts`. | Large modules `internal/<module>/adapters/http`; small modules `<module>/http`; read-composing `internal/gateway/{portal,operations}`; `internal/app/router.go` mounts module handlers. | Ten representative `<module>/api` seams; large modules have private `core/port`, small ones may stay flat; `module.go` exposes narrow API/route/job bundles; `app/modules.go` composes. |
 
 Placement evidence: [layered tree](../architecture-options/1-layered.md),
@@ -192,19 +192,21 @@ Evidence: [layered Plans](../architecture-options/1-layered.md),
 
 ## Option 5's ten representative owners
 
-This candidate is not the eleven-context DDD layout or the earlier blueprint.
-Its explicit list is [Identity, Workplace, Booking, Events, Planning, Visitors,
-Plans, Notifications, Attendance and Policy](../architecture-options/5-modular-monolith.md).
-The Events–Booking boundary is agreed; the other placements remain proposed.
+All five candidates use the same agreed logical owners, expressed through their
+different technical organisations. This module-first tree names
+[Identity, Workplace, Booking, Events, Exchange, Visitors, Plans, Notifications,
+Attendance and Policy](../architecture-options/5-modular-monolith.md).
+The architecture style remains pending; concrete paths and remaining evidence/
+publication boundaries are representative design work.
 
 | Proposed module | Owned responsibility and private published seam |
 | --- | --- |
 | Identity | Combines workforce/directory projection, verified source correlation, sessions, capabilities and delegation; `identity/api/{access,people,delegation,events}.go`. |
 | Workplace | Versioned offices/buildings/floors/spaces/calendars and baseline neighbourhood definitions; `workplace/api/{definitions,events}.go`; no claim writes. |
-| Booking | Dated inventory/claims, desk use/waitlists, rooms, Exchange reconciliation state, venue claims and outage protection; `booking/api/{claims,allocation,desks,rooms,venues,operations}.go`. No separate Exchange module in this candidate. |
+| Booking | Attendance demand/travel, cycles/groups/solver/proposals/run progress, dated claims, desk use/waitlists, business room intentions, venue claims and outage protection; `booking/api/{claims,planning,allocation,desks,rooms,venues,operations}.go`. |
 | Events | Event catalogue/audience/registration, ticket capacity, named tickets and admission; `events/api/{events,tickets}.go`. Coordinates venue changes through Booking's participant; owns its event/ticket SQL and migrations. |
-| Planning | Attendance dates/travel choices, cycles, groups, solver/proposals/run status; `planning/api/planning.go`; computes proposals while Booking validates/commits capacity. |
-| Visitors | Hosted/restricted visits, verification/reception/retention; `visitors/api/{visits,ticket_visits}.go`; proposed named `VisitTicketIssuance` transaction with Events. |
+| Exchange | Provider mappings, desired/observed calendar state, subscriptions/delta progress and reconciliation; `exchange/api/{reconciliation,events}.go`; applies all business capacity/transitions through Booking. |
+| Visitors | Hosted/restricted visits, verification/reception/retention; `visitors/api/{visits,ticket_visits}.go`; the named `VisitTicketIssuance` transaction joins Events through owning interfaces. |
 | Plans | Drawing-to-approved-revision workflow and assets, including blob port/Azure/GCS adapters and retained processing algorithms; `plans/api/revisions.go`. |
 | Notifications | In-app/email delivery, message catalogue/preferences, optional private booking-raised Teams delivery; `notifications/api/notifications.go`. |
 | Attendance | Provenance-labelled attendance/occupancy projections, reports and retention; `attendance/api/reports.go`; no booking authority. |

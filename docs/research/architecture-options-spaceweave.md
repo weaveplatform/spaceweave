@@ -54,15 +54,16 @@ They can be combined; the candidate layouts make different combinations concrete
 | DDD | Explicit language, context boundaries and aggregate behaviour. | Aggregate/context splits may conflict with atomic group, parking and venue/ticket requirements unless coordination is designed. |
 | Modular monolith | Business ownership and local consistency align with package navigation and migration custody. | A large Booking module and permitted cross-module transactions create coupling that needs active control. |
 
-The preferred direction is a domain-oriented modular monolith with ports and
-adapters inside substantial modules. The reason is the ownership of local booking
-invariants and integration state. Events is agreed as a separate owner from
-Booking, with an explicit venue/ticket transaction through their published
-interfaces. This preserves Events' attendance lifecycle at the cost of local
-transaction coordination; the remaining detailed module split stays open.
-[Architecture decision](../adr/0009-use-a-domain-first-modular-monolith.md),
-[modular-monolith candidate](architecture-options/5-modular-monolith.md),
-[Events–Booking decision](../adr/0023-separate-events-from-venue-booking.md).
+The repository-architecture decision remains pending. A domain-oriented modular
+monolith with inner ports/adapters is the preferred candidate, not a selected
+implementation. All five layouts now use the same agreed logical ownership:
+combined Identity; attendance planning and capacity commitment inside Booking;
+separate Exchange; and Events-owned registration/tickets/admission. Events and
+Booking coordinate venue/ticket consistency through owning interfaces in one
+local transaction where required. Architecture style changes the package,
+dependency and composition mechanisms rather than these business owners.
+[Proposed architecture decision](../adr/0009-use-a-domain-first-modular-monolith.md),
+[five candidate layouts](architecture-options/README.md).
 
 ## Transaction and workflow ownership
 
@@ -124,7 +125,7 @@ to preserve. The booking authority, staff identity model, durable distributed wo
 and enterprise integrations are new capabilities. The [current inventory](api-surfaces/current-surfaces.md)
 distinguishes implemented surfaces from proposed ones.
 
-Validate the preferred architecture with four focused bodies of evidence:
+Validate every candidate against the same four bodies of evidence before selecting a repository architecture:
 
 1. **Consistency:** concurrent allocation, direct booking, check-in/release,
    parking and venue/ticket transitions against real PostgreSQL transactions.

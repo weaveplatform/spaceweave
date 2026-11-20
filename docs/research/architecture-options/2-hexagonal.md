@@ -1,5 +1,14 @@
 # Option 2: Hexagonal architecture: ports and adapters
 
+The repository-architecture decision is pending. This candidate expresses the
+same agreed logical owners as the other four: combined Identity; attendance
+planning and claim commitment inside Booking; separate Exchange and Events.
+Its package organisation and dependency rules remain specific to this style.
+[Identity](../../adr/0026-combine-workforce-identity-and-access-ownership.md),
+[Booking planning](../../adr/0027-keep-attendance-planning-inside-booking.md) and
+[Exchange](../../adr/0028-separate-exchange-synchronisation-from-booking.md)
+record those ownership decisions independently of repository style.
+
 SpaceWeave coordinates workplace bookings and advance desk allocation across a
 large organisation's offices. Its application must accept requests from web
 portals, automation and workers while integrating with PostgreSQL, Exchange
@@ -177,28 +186,25 @@ internal/
         retention.go
     port/
       driving/
-        access.go directory.go provisioning.go
+        identity_access.go identity_people.go provisioning.go
         workplace.go policy.go booking.go
         allocation.go rooms.go exchange.go
         plans.go visitors.go events.go
         reporting.go notifications.go work.go
       driven/
-        unitofwork.go directory_store.go access_store.go
+        unitofwork.go identity_people_store.go identity_access_store.go
         workplace_store.go policy_store.go capacity_store.go
         exchange_store.go plan_store.go visitor_store.go
         event_store.go reporting_store.go notification_store.go
         work_store.go blob.go exchange.go
         identity.go tracing.go delivery.go
-        clock.go
+        clock.go solver.go
     service/
-      access/
-        access.go sessions.go
-        delegation.go
-      directory/
-        directory.go scim.go
-        workday.go eligibility.go
+      identity/
+        identity.go access.go sessions.go delegation.go
+        scim.go workday.go eligibility.go native_delegation.go
       workplace/
-        workplace.go changes.go
+        workplace.go changes.go retirement.go
       policy/
         policy.go publish.go
       booking/
@@ -208,7 +214,7 @@ internal/
         rooms.go venue.go outages.go
       exchange/
         exchange.go reconcile.go outbound.go
-        acceptance.go delegation.go subscriptions.go
+        acceptance.go subscriptions.go
       plans/
         plans.go processing.go
         review.go publish.go
@@ -278,9 +284,11 @@ internal/
       web/
         assets.go
     driven/
+      solver/
+        solver.go
       postgres/
         postgres.go unitofwork.go retry.go
-        directory.go access.go workplace.go
+        identity_people.go identity_access.go workplace.go
         policy.go capacity.go allocation.go
         waitlist.go rooms.go exchange.go
         plans.go visitors.go events.go
@@ -288,7 +296,7 @@ internal/
         outbox.go migrations.go
         ownership.yaml
         migrations/
-          0001_directory_access.sql
+          0001_identity.sql
           0002_workplace_policy.sql
           0003_booking_capacity.sql
           0004_work_outbox.sql
@@ -433,7 +441,7 @@ client every action.
 | Consumer/surface | Contract and access | Binding to this layout |
 | --- | --- | --- |
 | UI, MCP, SDK, script, contract tests and Terraform | Supported public REST, capability-specific views and common business semantics. | HTTP driving adapters translate the public schemas into `core/port/driving`; clients do not call concrete services or database adapters. |
-| Staff/admin humans and enrolled applications | Approved session/CSRF or token profiles; Conditional Access and current record authority. | Credential validation at the driving edge; core Access/owners distinguish actual actor, client, owner and machine grants. |
+| Staff/admin humans and enrolled applications | Approved session/CSRF or token profiles; Conditional Access and current record authority. | Credential validation at the driving edge; Identity/command owners distinguish actual actor, client, owner and machine grants. |
 | Visitors to internal events | Internet invitation/verification and restricted visitor event/visit/ticket contract. | Visitor/session projection adapters; a guest speaker is not made a staff principal. No general anonymous catalogue is established. |
 | Provisioning/provider/source clients | Native SCIM, Graph/Teams callbacks and selected source-ingestion protocols. | Specialised driving adapters validate the real caller/profile. Their Graph/Teams/Workday SDK clients are outbound driven adapters. |
 | Platform workers, CLI runtime and schedulers | Private Go driving contracts and durable work envelopes. | Run direct core calls with scoped runtime credentials; not a second public REST or a remote HTTP copy of the whole hexagon. |
@@ -450,7 +458,7 @@ no external version/support promise, while the public contract must account for
 Terraform/scripts that upgrade independently of a UI deployment. Distinct
 human/application authority, initial configuration-only Terraform management,
 independent public version compatibility and follow-on MCP/provider delivery are
-agreed. Configurable RBAC belongs with core Access: MCP retains user context,
+agreed. Configurable RBAC belongs with Identity: MCP retains user context,
 machine-identity scripts have a separate channel, UI drift is allowed and initial
 version-retirement notice is 180 days. No common login journey is selected by
 client label. Global administration, SCIM-backed role mappings, grant-only scoped
@@ -462,6 +470,10 @@ details remain open; worker execution is bounded separately.
 These bindings refine the proposal, not its printed counts.
 
 ## Deep dives
+
+Booking consumes the driven solver interface, implemented by its solver adapter
+using pure allocation rules. Demand, planning progress and claims remain one
+Booking owner, with calculation outside claim transactions.
 
 ### Allocation, packing and one capacity authority
 
@@ -510,8 +522,7 @@ pretending to coordinate distributed transactions.
 
 | Logical owner | Owned rows and migration responsibility | Service writer |
 | --- | --- | --- |
-| Directory | staff, source links, effective facts, teams/membership, SCIM resources, import cursors | `directory` |
-| Access | sessions, capabilities/scopes, delegation grants and authority evidence | `access` |
+| Identity | staff/source facts, teams, SCIM, sessions, capabilities/scopes and delegation evidence | Identity-owned people/access facets inside the shared adapter |
 | Workplace | office/building/floor/space definitions, calendars, baseline bundles | `workplace` |
 | Policy | revisioned policies, office overrides, publication/effective records | `policy` |
 | Booking | intents/cycles/groups/proposals, dated inventory, claims/holds, waitlist/offers, check-ins, outage protection | `booking` only |
@@ -640,7 +651,7 @@ accepts. Organiser cancellation and deleting a room copy also need distinct
 and [delete](https://learn.microsoft.com/en-us/graph/api/event-delete?view=graph-rest-1.0)
 handling.
 
-`access/delegation.go` evaluates source-labelled grants for actor, owner, action
+`identity/delegation.go` evaluates source-labelled grants for actor, owner, action
 and office. Native-derived authority must be verified within the configurable
 fifteen-minute limit for a new action. Room admission, human calendar delegation
 and backend mailbox access are separate. App-managed grants authorise app actions
@@ -663,7 +674,7 @@ accepted event or secretly erase existing bookings.
 `http/scim` implements authenticated `/Users` and `/Groups`, filters, paging,
 PATCH/error semantics and Entra compatibility through `driving.Provisioning`.
 It is an inbound driving adapter, not an Entra polling client renamed SCIM.
-Provisioning credentials are separate from staff SSO. `directory/scim.go` owns
+Provisioning credentials are separate from staff SSO. `identity/scim.go` owns
 resource creation/update/disable/reactivation/deletion and explicitly mapped
 group membership; not every Entra group becomes a SpaceWeave team.
 [RFC 7644](https://www.rfc-editor.org/rfc/rfc7644.html) and
@@ -697,9 +708,9 @@ do not establish this organisation's identifiers, population or latency, nor a
 Workday-to-SpaceWeave SCIM transport.
 
 Observed effective deactivation invalidates existing staff sessions and new
-access, not only the next login. The source/eligibility update and an Access-owned invalidation participant
-share a local transaction; Directory never receives Access's unrestricted writer.
-Requests check the current epoch. Durable
+access, not only the next login. Identity commits source/eligibility changes,
+access-epoch advancement and session invalidation in one owned transaction.
+Requests check its current epoch; there is no cross-owner Access participant. Durable
 follow-up releases future personal desk/parking claims through Booking and opens
 room/event handover review. Recheck eligibility at claim commit during cleanup
 lag. A SCIM delete removes the provisioning resource while retained booking
@@ -833,8 +844,9 @@ not a separate service architecture or owner of a second capacity store.
 
 For example, `booking.New` receives capacity/UoW access, current eligibility,
 policy/workplace queries, clock and outbox. `exchange.New` receives Exchange
-state, the provider port, delegation-evidence sink and Booking's reconciliation
-interface. `events.New` receives event state plus a narrow Booking venue
+state, the provider port and Booking's reconciliation interface. `identity.New`
+receives distinct people/access storage facets and the native-authority port.
+`events.New` receives event state plus a narrow Booking venue
 participant. Constructors never receive the entire runtime. Avoid a service
 locator or context that lets a core service discover arbitrary SQL/adapters.
 
@@ -935,6 +947,18 @@ using durable revisions; apply confirmed check-in/offer outage protection withou
 overwriting existing reassignments. Rehearse complete recovery and retention
 reapplication; a successful database promotion alone is not the RTO test.
 
+### Workplace retirement and deletion
+
+`internal/core/service/workplace/retirement.go` handles explicit retirement and dependency-checked removal
+through the existing owning interfaces. Retiring an office, building, floor or space stops
+new booking eligibility, including descendant spaces, while confirmed commitments
+remain readable and manageable. Booking revalidates retirement at claim commit;
+a stale snapshot cannot authorise new use. Deletion reports blocking bookings,
+children or other dependencies and never silently retires, cancels or cascades.
+Retired resources remain present for authorised read/refresh/import, including
+Terraform. The [workplace lifecycle contract](../api-surfaces/workplace-lifecycle.md)
+applies independently of this candidate's technical organisation.
+
 ## Walkthroughs
 
 ### 1. Commit a group while direct requests and cancellations change capacity
@@ -959,7 +983,7 @@ reapplication; a successful database promotion alone is not the RTO test.
 ### 2. Check-in races no-show release, promotion and an outage
 
 1. `http/booking/checkin.go` sends the authenticated actor and booking ID through
-   `driving.Booking.CheckIn`; Access requires that actor to be the owner.
+   `driving.Booking.CheckIn`; Identity requires that actor to be the owner.
 2. A due no-show job calls `driving.Booking.ReleaseNoShow` with the expected
    claim revision. Both commands lock the same claim and scope/date guards.
 3. If check-in commits while valid, the expiry observes taken state and does
@@ -978,7 +1002,7 @@ reapplication; a successful database promotion alone is not the RTO test.
 ### 3. A PA requests a room; late acceptance and Outlook edits arrive
 
 1. `http/booking/rooms.go` calls `driving.Rooms.Request(actor=PA, owner=staff)`.
-   Access checks source-labelled authority/freshness for that action and office.
+   Identity checks source-labelled authority/freshness for that action and office.
 2. Booking commits a pending local hold, retry result, desired Exchange revision
    and work. The HTTP response says pending; it never invents room acceptance.
 3. The Exchange worker rechecks authority for unsent work and calls
@@ -1018,10 +1042,10 @@ reapplication; a successful database promotion alone is not the RTO test.
 ### 5. SCIM deactivation and effective workforce change during an outage
 
 1. Entra's authenticated SCIM PATCH maps to `driving.Provisioning.ApplyUser`.
-   Directory records source status and advances eligibility/access epoch in its
+   Identity records source status and advances eligibility/access epoch in its
    transaction; existing sessions now fail the current-eligibility check.
 2. Workday supplies a future-effective usual-office/team update through its
-   driven adapter. Directory preserves its source IDs and effective time;
+   driven adapter. Identity preserves its source IDs and effective time;
    verified correlation finds the same internal staff ID without email matching.
 3. Another source or related-entity page fails. Persist successful progress only
    at its safe boundary, preserve last known facts for failed parts and surface
@@ -1089,13 +1113,13 @@ packages are included. They are not implementation-effort estimates.
 | Measure | Printed candidate |
 | --- | --- |
 | Named Go package directories, including command/client/test-only packages | 85 |
-| Core packages | 30 |
-| Core service packages | 12 |
+| Core packages | 29 |
+| Core service packages | 11 |
 | Driving adapter packages | 20 |
-| Driven adapter packages | 21 |
+| Driven adapter packages | 22 |
 | Reusable contract packages | 6 |
 | Driving-port source files | 15 |
-| Driven-port source files | 19 |
+| Driven-port source files | 20 |
 | Named PostgreSQL migration files | 8 |
 | Generated Go packages | 5: three server, two client |
 | Named runtime role Deployment manifests | 5 |
@@ -1123,7 +1147,7 @@ touches model, both port sides, service, persistence, transport and tests.
   authority across direct booking, allocation, Exchange and events. The resulting
   Booking service is substantial and needs internal decomposition; distributing
   claim SQL among adapters would weaken correctness.
-- **Explicit sibling collaboration.** Access, Directory, Booking and Events use
+- **Explicit sibling collaboration.** Identity, Booking and Events use
   interfaces supplied by composition. This is real type-level inversion, but all
   implementations still live in one core, so the extra import rule matters.
 - **Named multi-owner local transactions.** Venue changes and visitor issuance

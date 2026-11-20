@@ -5,10 +5,10 @@ This design record distinguishes product/runtime requirements, existing floor-pl
 capabilities and proposed implementation boundaries. The [scope](../README.md#product-scope),
 [glossary](../GLOSSARY.md) and [decision records](README.md) define the requirements.
 
-The [architecture blueprint](architecture-blueprint.md) proposes one module map;
+The [architecture blueprint](architecture-blueprint.md) records agreed logical owners;
 the [five-option comparison](research/architecture-options/README.md) evaluates
-alternative layouts against the same workflows. Detailed module selection remains
-open. [Architecture foundations](research/architecture-options/architecture-foundations.md)
+alternative layouts against the same workflows. The repository-architecture choice remains pending; concrete package placement
+and evidence/publication boundaries remain under review. [Architecture foundations](research/architecture-options/architecture-foundations.md)
 and the [API research](research/api-surfaces/README.md) provide primary-source
 technical guidance and design tradeoffs.
 
@@ -66,17 +66,25 @@ technical guidance and design tradeoffs.
   - Established: retain Golang.
   - Research compares the five reference layouts: layered, hexagonal, clean,
     DDD and modular monolith, applied to SpaceWeave.
-  - Established: choose a domain-first modular monolith, with ports and adapters
-    inside modules where their complexity warrants them. The
+  - Pending: choose among layered, hexagonal, Clean, DDD and modular-monolith
+    repository architectures. A domain-first modular monolith is the preferred
+    candidate; the
     [research comparison](research/architecture-options-spaceweave.md) and
-    [architecture decision](adr/0009-use-a-domain-first-modular-monolith.md)
+    [proposed architecture decision](adr/0009-use-a-domain-first-modular-monolith.md)
     record the reasoning.
   - Established: Booking owns local space availability and booking transitions;
     other modules use its interface.
   - Established: Workplace owns location/space definitions and baseline
     neighbourhoods; Booking owns dated capacity and temporary neighbourhood
-    adjustments. Planning uses a versioned snapshot outside long transactions;
+    adjustments. Booking's private planner uses a versioned snapshot outside long transactions;
     Booking revalidates bounded commits and protects confirmed allocations.
+  - Established: Identity combines source/workforce facts, sessions, permissions
+    and delegation through distinct interfaces. Booking owns intents, cycles,
+    groups and planning; Exchange separately owns provider state/progress and
+    applies transitions through Booking. These owners apply across all five layouts.
+  - Established: explicit workplace retirement stops new use while protected
+    confirmations remain manageable; dependency-blocked deletion never silently
+    retires, cancels bookings or cascades through child resources.
   - Established: one application image/release supports independently scaled
     HTTP, allocation, Exchange sync, tracing and maintenance roles.
   - Established: separate React/TypeScript staff/mobile-web and admin entrypoints
@@ -297,8 +305,9 @@ settles that ownership boundary and its narrow capacity transaction. The design
 also preserves [atomic visitor registration](adr/0024-create-event-visitor-visits-with-tickets-atomically.md)
 and the agreed organiser-controlled venue recovery, retaining tickets while
 admission and issuance are paused. Remaining architectural work includes the
-rest of the detailed module/data ownership, operation
-schemas, provider deployment permissions, load-validated limits and recovery
+pending repository-architecture choice, remaining operational-evidence and
+plan-publication ownership, concrete operation schemas, provider deployment
+permissions, load-validated limits and recovery
 validation. The [event workflow contract](research/api-surfaces/event-workflows.md)
 also records reconfirmation, retained seats during visitor ineligibility,
 attendee cancellation, optional event waitlists and purpose-based visit cleanup.
