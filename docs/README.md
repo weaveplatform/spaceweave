@@ -41,9 +41,13 @@ here. Decision records live in `docs/adr/`.
   venue recovery, attendee reconfirmation, visitor eligibility, cancellation and
   optional event waitlists across the supported API consumers.
 
-- [Workplace retirement and deletion](research/api-surfaces/workplace-lifecycle.md):
-  preserve confirmed commitments while stopping new use, and report removal
-  dependencies consistently to administrators and automation.
+- [Workplace retirement, reactivation and deletion](research/api-surfaces/workplace-lifecycle.md):
+  publish effective retirement schedules, preserve confirmations, validate
+  reactivation and report removal dependencies to administrators and automation.
+
+- [Plan approval and mapping publication](research/api-surfaces/plan-publication.md):
+  distinguish approved immutable assets from operational geometry mappings and
+  validate dated-inventory impact before activation.
 
 - [Allocate advance desk intents together](adr/0001-allocate-advance-desk-intents-together.md):
   consider attendance demand together to place groups by team proximity.
@@ -123,7 +127,8 @@ here. Decision records live in `docs/adr/`.
   existing valid visit reused by the attempt.
 
 - [Retire workplaces before removing protected resources](adr/0025-retire-workplaces-before-removing-protected-resources.md):
-  separate stopping new bookings from dependency-checked deletion.
+  schedule withdrawal from new use, validate reactivation and separate
+  dependency-checked deletion from protected commitments.
 
 - [Combine workforce identity and access ownership](adr/0026-combine-workforce-identity-and-access-ownership.md):
   keep source identity, sessions, permissions and delegation in one Identity owner.
@@ -133,3 +138,11 @@ here. Decision records live in `docs/adr/`.
 
 - [Separate Exchange synchronisation from Booking](adr/0028-separate-exchange-synchronisation-from-booking.md):
   own provider integration independently while Booking remains the claim authority.
+
+- [Keep operational occupancy evidence in Booking](adr/0029-keep-operational-occupancy-evidence-in-booking.md):
+  retain evidence used for release with the claim owner; project committed facts
+  into Attendance reports with separately configured retention.
+
+- [Separate plan approval from operational mapping activation](adr/0030-separate-plan-approval-from-operational-mapping-activation.md):
+  Plans approves assets, Workplace publishes mappings and Booking validates
+  dated-inventory and commitment impact.

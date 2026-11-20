@@ -36,6 +36,9 @@ are confined to the [current-system inventory](current-surfaces.md).
 | Topic | Purpose |
 | --- | --- |
 | [Request contract](request-behaviour.md) | Booking retries, configuration concurrency, actor budgets and operation lifecycle. |
+| [Event workflows](event-workflows.md) | Registration, venue recovery, exclusive offers, reconfirmation and admission. |
+| [Workplace lifecycle](workplace-lifecycle.md) | Scheduled retirement, identity-preserving reactivation and dependency-checked deletion. |
+| [Plan publication](plan-publication.md) | Asset approval versus operational mapping activation and dated-inventory validation. |
 | [Idempotency and concurrency](idempotency-and-concurrency.md) | HTTP semantics, durable acceptance, replay safety and retention tradeoffs. |
 | [API contract engineering](api-contract-engineering.md) | Primary guidance for specifications, generation, admission, backpressure and clients. |
 | [Protocol contracts](protocol-contracts.md) | HTTP, OAuth, errors, pagination and compatibility facts. |
@@ -130,7 +133,7 @@ deployment choices.
 | User and group provisioning | Entra user/group provisioning. | SCIM 2.0 `/scim/v2/Users`, `/Groups` and supported discovery. | Published provider/provisioning protocol. | Provisioning-only authentication; direct Entra connectivity or a supported private-agent route. |
 | Exchange change notifications | Exchange change/lifecycle delivery from Microsoft Graph. | Provider callback `/integrations/graph/notifications` and lifecycle route. | Provider-specific ingress, not a general booking API. | Public HTTPS edge with Graph challenge/notification validation; enqueue or persist promptly. |
 | Teams activities | Teams installation/conversation/activity handling. | Teams activity protocol `/integrations/teams/activities`. | Provider-specific ingress supporting optional personal delivery. | Provider-authenticated messaging edge; registration/SDK choice remains open. Installation never grants booking authority or message opt-in. |
-| Occupancy evidence ingestion | Optional occupancy connectors. | Source-specific push HTTP/batch or outbound pull adapter. | Published source-restricted ingestion where push is selected; private connector execution. | Restricted Internet edge for configured push sources, or outbound pull; source identity and office/device/evidence scope, never staff check-in authority. |
+| Occupancy evidence ingestion | Optional occupancy connectors calling Booking, which owns validated operational evidence and commits facts for Attendance projections. | Source-specific push HTTP/batch or outbound pull adapter. | Published source-restricted ingestion where push is selected; private connector execution. | Restricted Internet edge for configured push sources, or outbound pull; source identity and office/device/evidence scope, never staff check-in authority. |
 | Protected asset transfer | Floor-plan manifests, source uploads, approved renders, ticket/export bytes. | Authorised metadata/capability HTTP plus bounded binary transfer. | Access-controlled asset contract; public frontend bundles are separate. | App authorises before stream/signing; storage capability limits object, method and lifetime. |
 | Workflow status and recovery | Administrative workflow status and permitted repairs. | Public REST status/command operations with restricted operator capabilities. | Supported public contract for authorised operators/clients. | Internet-facing access follows applicable Conditional Access; private execution stays behind owning interfaces. No generic SQL/event injection/state setter. |
 | Application health and observability | Liveness/readiness, metrics, telemetry export and diagnostics. | Private probe HTTP, optional metrics scrape, OTLP and structured logs. | Private operational contracts. | Dedicated listener/routing and platform identity controls; no general portal access to raw metrics/debug endpoints. |
@@ -181,7 +184,7 @@ hatch. The application validates transitions regardless of which surface calls.
 | --- | --- | --- |
 | Workplace definitions | Office-scoped facilities staff configure buildings/floors/spaces/features/baseline bundles and calendars. | Definitions versus dated inventory and protected confirmed claims; impactful changes return explicit impact/workflow results. |
 | Allocation control | Authorised admins inspect cycles, demand, group proposals, placement progress and unfulfilled demand; trigger permitted work. | Proposal versus committed assignment; duplicate triggers do not create duplicate runs/claims. |
-| Plan management | Upload sources, associate floor/space identity, inspect trace/review, approve revisions and publication. | Sources/reports/drafts have different access from approved staff-facing render manifests; no raw filesystem browsing. |
+| Plan management | Upload sources, inspect trace/review and approve immutable assets through Plans; publish operational geometry-to-stable-space mappings through Workplace after Booking validates impact. | Approval versus activation have separate outcomes, including in a combined admin workflow; source/report/draft access differs from staff-facing manifests. |
 | Reception/admission | Expected visits, arrival/departure and event-ticket scans. | Office/event capabilities; reception arrival and ticket admission are different records. Duplicate admission is explicit. |
 | Event management | Authorised organisers manage event audience, access, venue and ticket cap. | Current secured venue and active issued count are checked atomically; no arbitrary cap write through a generic admin DTO. |
 | Reporting | Scoped individual/aggregate reports and, if selected, asynchronous exports. | Subject/office/date filters authorised server-side; output fields, download access and retention are part of the contract. |
@@ -366,8 +369,10 @@ access and temporary failure. A Terraform client must not drop state after a
 `401`, `403`, throttling or dependency error. Resource contracts that interpret
 `404` as deletion cannot mask an authorisation failure as that same result;
 scope checks before lookup can return a uniform denial without exposing whether
-a particular object exists. Explicit retirement stops new bookings while keeping
-existing confirmations manageable. Separate deletion reports unresolved bookings,
+a particular object exists. Published retirement, immediate or scheduled, excludes
+new bookings for use on/after its office-local effective time while keeping
+existing confirmations manageable. Authorised reactivation revalidates definitions,
+calendars and inventory while retaining identity/history. Separate deletion reports unresolved bookings,
 children or other dependencies and refuses removal without cancelling/cascading.
 Retired state remains readable/importable and is not absence. The
 [workplace lifecycle contract](workplace-lifecycle.md) supplies these semantics;
@@ -513,7 +518,11 @@ contract; none follows merely from choosing React or Kubernetes.
 ## Assets and native integrations
 
 Approved floor geometry is a consumer contract even if delivered as JSON files
-rather than under `/api`. Current `generated/catalog.json`, plan/report/original
+rather than under `/api`. Plans approves immutable assets; Workplace separately
+activates their geometry-to-stable-space mappings after Booking validates dated
+inventory/commitment impact. One admin workflow may do both, exposing each actual
+outcome. The [plan publication contract](plan-publication.md) applies across all
+five architecture candidates. Current `generated/catalog.json`, plan/report/original
 reads therefore belong in the migration inventory. Do not transfer broad
 generated-directory access into the production staff/visitor surface.
 

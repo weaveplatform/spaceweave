@@ -8,7 +8,7 @@ capabilities and proposed implementation boundaries. The [scope](../README.md#pr
 The [architecture blueprint](architecture-blueprint.md) records agreed logical owners;
 the [five-option comparison](research/architecture-options/README.md) evaluates
 alternative layouts against the same workflows. The repository-architecture choice remains pending; concrete package placement
-and evidence/publication boundaries remain under review. [Architecture foundations](research/architecture-options/architecture-foundations.md)
+and publication-guard mechanics remain under review. [Architecture foundations](research/architecture-options/architecture-foundations.md)
 and the [API research](research/api-surfaces/README.md) provide primary-source
 technical guidance and design tradeoffs.
 
@@ -82,9 +82,15 @@ technical guidance and design tradeoffs.
     and delegation through distinct interfaces. Booking owns intents, cycles,
     groups and planning; Exchange separately owns provider state/progress and
     applies transitions through Booking. These owners apply across all five layouts.
-  - Established: explicit workplace retirement stops new use while protected
-    confirmations remain manageable; dependency-blocked deletion never silently
-    retires, cancels bookings or cascades through child resources.
+  - Established: Booking owns validated operational occupancy evidence used for
+    release; Attendance projects committed facts with separate reporting retention.
+    Plans approves immutable assets; Workplace publishes geometry-to-stable-space
+    mappings after Booking validates dated inventory and commitment impact.
+  - Established: retirement is immediate or scheduled at an office-local time.
+    Publication excludes new bookings for use on/after that point while protected
+    confirmations remain manageable. Reactivation validates definitions, calendars
+    and inventory, retaining identity/history. Dependency-blocked deletion never
+    silently retires, cancels bookings or cascades through child resources.
   - Established: one application image/release supports independently scaled
     HTTP, allocation, Exchange sync, tracing and maintenance roles.
   - Established: separate React/TypeScript staff/mobile-web and admin entrypoints
@@ -305,8 +311,8 @@ settles that ownership boundary and its narrow capacity transaction. The design
 also preserves [atomic visitor registration](adr/0024-create-event-visitor-visits-with-tickets-atomically.md)
 and the agreed organiser-controlled venue recovery, retaining tickets while
 admission and issuance are paused. Remaining architectural work includes the
-pending repository-architecture choice, remaining operational-evidence and
-plan-publication ownership, concrete operation schemas, provider deployment
+pending repository-architecture choice, confirmed outage-record custody,
+concrete evidence/activation protocols, operation schemas, provider deployment
 permissions, load-validated limits and recovery
 validation. The [event workflow contract](research/api-surfaces/event-workflows.md)
 also records reconfirmation, retained seats during visitor ineligibility,

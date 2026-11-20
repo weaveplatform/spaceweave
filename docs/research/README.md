@@ -37,8 +37,10 @@ rather than proving its correctness or performance.
    generation, enforcement, rate admission, backpressure and consumer validation.
 5. [Event workflows](api-surfaces/event-workflows.md): registration, venue recovery,
    reconfirmation, visitor eligibility, cancellation and optional event waitlists.
-6. [Workplace lifecycle](api-surfaces/workplace-lifecycle.md): explicit retirement,
-   protected confirmations and dependency-blocked deletion for UI and automation.
+6. [Workplace lifecycle](api-surfaces/workplace-lifecycle.md): scheduled retirement,
+   identity-preserving reactivation, protected confirmations and guarded deletion.
+7. [Plan publication](api-surfaces/plan-publication.md): asset approval, Workplace
+   mapping activation and Booking dated-inventory validation across all layouts.
 
 The catalogue links specialised research on authentication, role-based access,
 Entra groups, Conditional Access, MCP/Terraform and provider protocols. The

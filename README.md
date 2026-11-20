@@ -217,8 +217,11 @@ Organisation-wide policies, identity mappings and integration administration
 require explicitly granted global capabilities beyond an administrator's office
 scope.
 
-Administrators can explicitly retire offices, buildings, floors or spaces to
-stop new bookings while existing confirmed commitments remain manageable.
+Administrators can retire offices, buildings, floors or spaces immediately or at
+a scheduled office-local date/time. Publishing retirement prevents new bookings
+for use on/after that time while preserving confirmed commitments. Authorised
+reactivation validates definitions, calendars and inventory while retaining
+identity and history.
 Deletion reports blocking dependencies and does not silently cancel bookings or
 cascade through child resources. The
 [workplace lifecycle contract](docs/research/api-surfaces/workplace-lifecycle.md)

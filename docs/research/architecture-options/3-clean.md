@@ -198,16 +198,16 @@ internal/usecase/
                      enqueue durable work in the active transaction
   booking/           port.go command.go commit.go direct.go transfer.go release.go
                      checkin.go offer.go room.go venue.go adjustment.go
-                     intent.go cycle.go snapshot.go plan.go run.go repair.go
+                     intent.go cycle.go snapshot.go plan.go run.go repair.go evidence.go
                      demand/planning/claim owner; solver through own consumed port
   availability/      port.go query.go
                      eligible search and authoritative reads; no promises from cache
-  manageworkplace/   port.go location.go space.go neighbourhood.go retirement.go
+  manageworkplace/   port.go location.go space.go neighbourhood.go retirement.go mapping.go
                      definitions/baseline bundles; dated inventory via booking port
   managepolicy/      port.go publish.go migrate.go
                      validate and publish versions; explicit migration of old claims
   recordoccupancy/   port.go ingest.go evidence.go
-                     deduplicate/source-label sensor evidence; request vacancy review
+                     translate source input; Booking validates, deduplicates and stores evidence
   outage/            port.go confirm.go resume.go
                      durable affected-office interruption windows and recovery grace
   roomrequest/       port.go request.go change.go cancel.go
@@ -229,7 +229,7 @@ internal/usecase/
   drawingprocess/   port.go convert.go trace.go publishdraft.go
                      engine orchestration, validation, immutable draft artifacts
   drawingreview/    port.go review.go approve.go
-                     reject/retrace, approve and advance current revision pointers
+                     reject/retrace, approve immutable assets and advance asset pointers
   report/           port.go attendance.go utilisation.go export.go
                      scoped evidence-labelled reports; retention-aware exports
   retain/           port.go schedule.go erase.go reconcile.go
@@ -261,6 +261,7 @@ internal/adapter/
       admin/         server.gen.go
       visitor/       server.gen.go
     scim/            routes.go users.go groups.go filter.go presenter.go
+    occupancy/       routes.go
     exchangehook/    validation.go notification.go lifecycle.go
     teamshook/       activity.go installation.go
     session/         cookie.go csrf.go redirect.go
@@ -271,8 +272,8 @@ internal/adapter/
   eventloop/         relay.go registry.go delivery.go
   repository/postgres/
     tx/              scope.go transaction.go retry.go
-    booking/         repository.go locks.go claims.go capacity.go transitions.go
-    workplace/       repository.go definitions.go snapshots.go
+    booking/         repository.go locks.go claims.go capacity.go transitions.go evidence.go
+    workplace/       repository.go definitions.go snapshots.go mappings.go
     identity/        repository.go sources.go membership.go sessions.go grants.go verification.go
     exchange/        repository.go mappings.go cursors.go conflicts.go
     visits/          repository.go visits.go access.go
@@ -402,7 +403,7 @@ snapshot result is never final authority.
 
 ```text
 internal/usecase/booking/
-  port.go          Claims, Inventory, Waitlist, Solver, Authority, Policies,
+  port.go          Claims, Inventory, OperationalEvidence, Waitlist, Solver, Authority, Policies,
                    unitofwork.Runner, event.Appender, job.Enqueuer
   command.go       entity-valued commands/results and operation dispatch
   commit.go        whole allocation-group validation and one transaction
@@ -410,6 +411,7 @@ internal/usecase/booking/
   transfer.go      acquire replacements and release old claims together
   release.go       owner cancellation, leaver cleanup, no-show and vacancy release
   checkin.go       personal assignee check-in under current claim lock
+  evidence.go      validate/deduplicate/store operational observations; commit facts
   offer.go         capacity holds, acceptance, decline and protected expiry
   room.go          pending holds, acceptance/decline and external observation apply
   venue.go         Booking-owned venue validation/claim participant in shared scope
@@ -437,8 +439,8 @@ case's `Input` struct:
 | `exchangesync` | `RoomObserver.Apply(context, exchange.Observation)` | booking interactor |
 | `manageevent` | `VenueParticipant.Validate/Replace(context, unitofwork.Scope, claim.VenueCommand)` | Booking's owning venue participant; Events keeps its ticket/admission writer. |
 | `identity` | `PersonalClaims.ReleaseFuture(context, staff.Departure)` | booking interactor |
-| `recordoccupancy` | `VacancyReviewer.Review(context, attendance.EvidenceRef)` | booking interactor |
-| `manageworkplace` | `DatedInventory.ApplyDefinition(context, workplace.Change)` | booking interactor |
+| `recordoccupancy` | `OperationalEvidence.Record(context, attendance.Observation)` | Booking validates, deduplicates, persists and commits evidence facts; the edge use case has no evidence-store writer. |
+| `manageworkplace` | `DatedInventory.ValidateAndApply(context, workplace.Change)` | Booking validates dated-inventory/commitment impact under the definition-version protocol, including mapping activation. |
 
 These are illustrative signatures, not generated contracts. Booking's method
 set uses entity types and satisfies them structurally without importing the
@@ -470,13 +472,13 @@ labels describe data responsibility, not self-contained domain packages.
 
 | SQL owner | Durable records | Mutation authority and enforcement |
 | --- | --- | --- |
-| booking | claims, person guards, dated inventory, parking pools, waitlist/offer state, dated neighbourhood adjustments | injected only into booking; exclusion/capacity constraints |
-| workplace | office calendars, buildings, floors, space definitions, baseline bundles | manageworkplace; booking reads versioned effective definitions |
+| booking | claims, person guards, dated inventory, parking pools, waitlist/offer state, dated neighbourhood adjustments and validated operational occupancy evidence | injected only into booking; evidence validation/deduplication and exclusion/capacity constraints |
+| workplace | office calendars, buildings, floors, space definitions, baseline bundles, lifecycle schedules and active geometry mappings | manageworkplace; Booking validates dated impact under versioned activation |
 | identity | source links/facts, membership, sessions, capabilities and source-labelled grants | Identity operation family with distinct People, Access and Delegation facets |
 | exchange | external mappings, common baseline, cursors, subscriptions, conflicts | exchangesync; no direct mutation of booking claims |
 | visits | visitors, host/window, arrival/departure and verified access | managevisit; constrained ticket-link capability consumed by manageevent |
 | events | descriptions, audience/access, venue reference, limit, tickets, admission | manageevent owns all event/ticket/admission mutations; Booking receives no Events repository. |
-| drawings | source/render revisions, manifests, review/current pointers | upload/process/review, each with limited operations |
+| drawings | source/render revisions, manifests, review/asset pointers | upload/process/review, each with limited operations; no operational mapping writer |
 | policies | versions, publication and confirmed outage windows | policy/outage operations; booking reads frozen/current versions |
 | notifications | preferences, recipient-purpose deliveries, provider attempts | notify; no authority to change booking outcome |
 | reports/retention | projections, export/copy registry, erasure/tombstones | report/retain; source owners apply category deletion ports |
@@ -826,7 +828,9 @@ revision workflow from local filesystem orchestration. Current
 upload source package -> verify immutable source/recovery objects -> metadata/job
   -> convert/sniff -> deterministic autotrace OR configured Claude gateway
   -> validate geometry/renderer schema -> immutable draft render manifest
-  -> reviewer approve -> verify recovery artifacts -> current revision pointer
+  -> reviewer approve -> verify recovery artifacts -> approved asset pointer
+  -> manageworkplace prepares stable-space mapping -> Booking validates dated impact
+  -> activate Workplace mapping with definition-version guards
 ```
 
 `drawingupload` preserves architecture, space-plan and reference roles, checks
@@ -836,6 +840,10 @@ Claude adapter keeps provider SDK, spend/turn/time limits and transcripts outsid
 entities; deterministic mode needs no model credentials or outbound model call.
 Retries reuse source revision and attempt identity, never rewrite an approved
 asset in place. Review rejection creates a new attempt/revision lineage.
+`manageworkplace/mapping.go` owns operational mapping publication through its
+consumed Booking inventory port and its own repository; `drawingreview` owns
+asset approval only. A combined administrator workflow reports each outcome,
+including approved assets awaiting activation after an impact conflict.
 
 Azure and GCS implement the same use-case-consumed blob interface; deployment
 configuration selects the active provider. Blob identity includes opaque provider
@@ -1007,17 +1015,42 @@ workflow, and actual end-to-end recovery must be exercised on the chosen platfor
 [GCS durability](https://docs.cloud.google.com/storage/docs/availability-durability),
 [Azure priority replication](https://learn.microsoft.com/en-us/azure/storage/common/storage-redundancy-priority-replication).
 
-### Workplace retirement and deletion
+### Workplace retirement, reactivation and deletion
 
 `internal/usecase/manageworkplace/retirement.go` handles explicit retirement and dependency-checked removal
-through the existing owning interfaces. Retiring an office, building, floor or space stops
-new booking eligibility, including descendant spaces, while confirmed commitments
-remain readable and manageable. Booking revalidates retirement at claim commit;
-a stale snapshot cannot authorise new use. Deletion reports blocking bookings,
+through the existing owning interfaces. Retirement is immediate or scheduled at an
+office-local date/time. Publishing the schedule immediately excludes new bookings
+for use on/after that point, including descendant spaces; confirmed commitments
+remain readable and manageable. Booking compares requested use with the published
+lifecycle revision at claim commit. A stale snapshot cannot bypass the schedule.
+Authorised reactivation revalidates definitions, calendars and dated inventory,
+preserving the same identity, commitments and history. Deletion reports blocking bookings,
 children or other dependencies and never silently retires, cancels or cascades.
 Retired resources remain present for authorised read/refresh/import, including
 Terraform. The [workplace lifecycle contract](../api-surfaces/workplace-lifecycle.md)
 applies independently of this candidate's technical organisation.
+
+### Evidence custody and operational plan activation
+
+Booking owns validated operational occupancy evidence used for desk-release
+commands. Source adapters authenticate and translate observations; Booking checks
+scope, provenance, granularity and freshness, deduplicates and commits evidence
+facts. Attendance/Reporting consumes committed facts into projections with
+separately configured reporting retention. A report or delayed projection never
+authorises release. Personal check-in remains the only transition to taken;
+anonymous occupancy cannot prevent a no-show returning to the pool.
+
+Plans approval identifies an immutable, durable asset. Workplace owns publication
+of geometry-to-stable-space mappings; Booking validates dated inventory and
+confirmed-claim impact before operational activation. A combined administrator
+workflow may complete both steps, but reports approval separately when activation
+cannot succeed. The [mapping publication contract](../api-surfaces/plan-publication.md)
+and [operational evidence decision](../../adr/0029-keep-operational-occupancy-evidence-in-booking.md)
+apply in this candidate's directory style. Version guards, atomic visibility and
+retry outcomes need transaction-level validation; this owner agreement does not
+choose a repository architecture. Confirmed outage-record custody is a separate
+[shared ownership question](README.md#remaining-shared-design-questions); existing
+incident placement below remains a proposal until that decision is resolved.
 
 ## Walkthroughs
 
@@ -1216,11 +1249,11 @@ They are structural design counts, not estimates of final implementation size.
 | Entity packages | 17 |
 | Operation-family packages | 18 |
 | Shared ring-2 contract packages | 3 |
-| Adapter packages, including generated transport and engine fixtures | 57 |
+| Adapter packages, including generated transport and engine fixtures | 58 |
 | Infrastructure packages | 7 |
 | Composition/enforcement/devtool packages | 3 |
-| Total explicitly inventoried Go packages | 105 |
-| Explicit `.go` file entries, including generated/enforcement examples | 323 |
+| Total explicitly inventoried Go packages | 106 |
+| Explicit `.go` file entries, including generated/enforcement examples | 328 |
 | Core dependency rules plus ownership/port rules | 9 |
 | Common comparison scenarios traced | 6 |
 

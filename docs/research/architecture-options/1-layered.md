@@ -228,6 +228,8 @@ internal/
 │   │   │   └── discovery.go          service-provider/resource/schema discovery
 │   │   ├── exchange/
 │   │   │   └── notifications.go      validate callbacks; durably schedule reconciliation
+│   │   ├── occupancy/
+│   │   │   └── receiver.go           source-authenticated evidence command to Booking
 │   │   ├── teams/
 │   │   │   └── activities.go         authenticated personal app/conversation lifecycle
 │   │   ├── health/
@@ -257,6 +259,7 @@ internal/
 │   │   ├── transfer.go               acquire replacements/release old claims atomically
 │   │   ├── adjustment.go             dated movement of unallocated neighbourhood desks
 │   │   ├── checkin.go                only assignee can mark live allocation taken
+│   │   ├── evidence.go               validate/deduplicate operational evidence; commit facts
 │   │   ├── release.go                cancellation/no-show/vacancy and linked claim policy
 │   │   ├── waitlist.go               eligibility, ordering and offer creation
 │   │   ├── offer.go                  versioned acceptance, expiry and next candidate
@@ -278,7 +281,8 @@ internal/
 │   │   ├── workplace.go              office/building/floor/space definitions
 │   │   ├── neighbourhood.go          baseline bundles within one building
 │   │   ├── revision.go               prepare/publish immutable definition versions
-│   │   └── retirement.go             stop new use; dependency-checked deletion
+│   │   ├── mapping.go                publish approved geometry bindings after Booking validation
+│   │   └── retirement.go             scheduled retirement/reactivation; guarded deletion
 │   ├── policy/
 │   │   ├── policy.go                 resolve pinned versions and permitted office overrides
 │   │   └── publish.go                validate effective dates and cross-field consistency
@@ -307,8 +311,7 @@ internal/
 │   │   ├── process.go                conversion/tracing workflow ← internal/worker
 │   │   ├── review.go                 approve/reject/retry/retrace application decisions
 │   │   ├── profiles.go               version corrections and enqueue affected retraces
-│   │   ├── publish.go                recovery-verified immutable asset publication
-│   │   └── geometry.go               approved geometry to stable Workplace space identities
+│   │   └── publish.go                recovery-verified immutable asset publication
 │   ├── visitors/
 │   │   ├── visitors.go               host, visit window and restricted visitor details
 │   │   ├── reception.go              arrival/departure distinct from event admission
@@ -320,10 +323,9 @@ internal/
 │   │   ├── admission.go              one successful entry scan per usable ticket
 │   │   └── handover.go               assisted leaver ownership/venue recovery work
 │   ├── reporting/
-│   │   ├── ingest.go                 person/desk/office evidence semantics and provenance
 │   │   ├── projection.go             committed booking/check-in facts and source freshness
 │   │   ├── reports.go                own history and scoped individual/aggregate queries
-│   │   └── retention.go              separate evidence/copy retention and purge progress
+│   │   └── retention.go              reporting projection/copy retention and purge progress
 │   ├── notifications/
 │   │   ├── record.go                 intended recipients/message kind from committed outcome
 │   │   ├── preferences.go            message-specific delivery choices/Teams opt-in evidence
@@ -331,7 +333,7 @@ internal/
 │   │   ├── templates.go              email/in-app/private booking-raised content
 │   │   └── teams.go                  eligibility and private conversation prerequisites
 │   ├── operations/
-│   │   ├── workplace.go              coordinate definition changes with Booking validation
+│   │   ├── workplace.go              coordinate asset approval, mapping and Booking validation
 │   │   ├── incidents.go              persist affected outage windows and recovery grace
 │   │   └── recovery.go               lag/readiness assessment and explicit failover evidence
 │   └── jobs/
@@ -342,7 +344,7 @@ internal/
     ├── store/
     │   ├── store.go                  aggregate factory and narrow read/write facets
     │   ├── tx.go                     explicit transaction handle and bounded Tx callback
-    │   ├── booking.go                Booking mutations; allocation snapshot/read contracts
+    │   ├── booking.go                Booking claims/evidence; allocation snapshot contracts
     │   ├── identity_people.go        Identity staff/source/effective-state facets
     │   ├── identity_access.go        Identity sessions, grants and delegation facets
     │   ├── workplace.go              versioned definitions and calendars
@@ -351,7 +353,7 @@ internal/
     │   ├── plans.go                  package/revision/profile/recovery-copy metadata
     │   ├── events.go                 venue coordination state, tickets and admissions
     │   ├── visitors.go               visit links and reception/retention state
-    │   ├── reporting.go              evidence, projections and scoped read queries
+    │   ├── reporting.go              derived projections and scoped read queries
     │   ├── notifications.go          preferences, inbox and delivery identities
     │   ├── work.go                   jobs/outbox/leases/incidents/idempotency records
     │   ├── postgres/
@@ -360,6 +362,7 @@ internal/
     │   │   ├── booking.go            booking claims and transitions; no business bypass API
     │   │   ├── capacity.go           stable lock rows and overlap/capacity constraints
     │   │   ├── allocation.go         snapshot/cycle/group/proposal rows
+    │   │   ├── evidence.go           Booking-owned operational occupancy records
     │   │   ├── identity_people.go    Identity source observations and effective facts
     │   │   ├── identity_access.go    Identity session/grant/token persistence
     │   │   ├── workplace.go          definition revisions and immutable references
@@ -368,7 +371,7 @@ internal/
     │   │   ├── plans.go              asset revisions and publication state
     │   │   ├── events.go             event locks, ticket counters and unique admissions
     │   │   ├── visitors.go           visit association, arrival/departure and purge state
-    │   │   ├── reporting.go          projections/evidence and paged scope-filtered reports
+    │   │   ├── reporting.go          derived projections and paged scope-filtered reports
     │   │   ├── notifications.go      deliveries/preferences and attempt uniqueness
     │   │   ├── jobs.go               due claims, leases, backoff and failed-job inspection
     │   │   ├── outbox.go             same-transaction append and consumer checkpoints
@@ -377,14 +380,14 @@ internal/
     │   │       ├── owners.yaml       table/file owner and permitted cross-owner references
     │   │       ├── 0001_identity_people.sql Identity people/source constraints
     │   │       ├── 0002_identity_access.sql Identity sessions/capabilities/grants
-    │   │       ├── 0003_workplace.sql Workplace definitions and calendar revisions
+    │   │       ├── 0003_workplace.sql Workplace definitions, calendars and active mappings
     │   │       ├── 0004_policy.sql    Policy revisions and publications
-    │   │       ├── 0005_booking.sql   Booking dated inventory/intents/cycles/claims
+    │   │       ├── 0005_booking.sql   Booking inventory/intents/cycles/claims/evidence
     │   │       ├── 0006_exchange.sql  Exchange mappings/observations/cursors
     │   │       ├── 0007_plans.sql     Plans revisions and recovery metadata
     │   │       ├── 0008_visitors.sql  Visitors/visits and reception state
     │   │       ├── 0009_events.sql    Events/tickets/admissions
-    │   │       ├── 0010_reporting.sql Reporting evidence/projections/purge progress
+    │   │       ├── 0010_reporting.sql Reporting projections and purge progress
     │   │       ├── 0011_messages.sql  Notifications preferences/inbox/attempts
     │   │       └── 0012_work.sql      durable jobs/outbox/incidents and retry records
     │   └── storetest/
@@ -559,13 +562,13 @@ job claiming, not the inventory query deciding who can book.
 
 | Logical owner | Application decisions | Persistence files/tables it alone mutates |
 | --- | --- | --- |
-| Booking | claims, dated inventory, intents/cycles, waitlists, check-in/release | booking/capacity/allocation SQL; booking-owned claim/inventory tables |
-| Workplace | baseline definitions, calendars and immutable revisions | workplace SQL and definition tables |
+| Booking | claims, dated inventory, intents/cycles, waitlists, check-in/release and validated operational occupancy evidence | booking/capacity/allocation/evidence SQL; Booking-owned claim/inventory/evidence tables |
+| Workplace | baseline definitions, calendars, lifecycle schedules and active geometry mappings | workplace SQL and definition/mapping tables |
 | Identity | canonical IDs/source facts, SCIM, sessions, capabilities and delegation | Identity-owned people/access facets and migration files under the shared SQL layer |
 | Exchange | correspondence, provider observations, progress | exchange SQL and mapping/cursor/subscription tables |
 | Plans | drawing packages, processing/review/publication | plans SQL and asset/revision/profile tables |
 | Visitors / Events | visits/reception / event/tickets/admission | visitors SQL / events SQL, respectively |
-| Reporting / Notifications | evidence/projections / preferences/delivery | reporting SQL / notifications SQL, respectively |
+| Reporting / Notifications | derived projections/report retention / preferences/delivery | reporting SQL / notifications SQL, respectively |
 | Policy / Jobs | version publications / durable execution mechanics | policy SQL / jobs/outbox/incidents, respectively |
 
 `owners.yaml` lists table/query/migration owners and approved references.
@@ -590,8 +593,9 @@ with an explicit cross-owner consistency contract.
 `checkin.go` requires the authenticated actor to own a live allocation: allocated
 → taken. A PA cannot check in for the owner. QR identifies the desk, not its user.
 
-Reporting distinguishes anonymous occupancy, identified desk evidence and office
-presence. Booking queries fresh, provenance-labelled vacancy evidence. Anonymous
+Booking validates and stores operational evidence, distinguishing anonymous
+occupancy, identified desk evidence and office presence. Reporting projects
+committed facts under separately configured reporting retention. Anonymous
 occupancy cannot establish attendance or prevent no-show release. After personal
 check-in, fresh sustained vacancy may release capacity; missing signals mean unknown.
 
@@ -727,9 +731,12 @@ a directory rename.
 Tracing stages bytes in bounded scratch space, checks lease/revision on progress,
 writes immutable objects and verifies recovery copies before durable/publication
 acknowledgement. PostgreSQL holds IDs, hashes, status and current pointers.
-Approval advances pointers without overwriting referenced history. Reviewed
-geometry association maps to stable Workplace IDs; detection alone creates no
-authoritative bookable desks.
+Plans approval advances asset pointers without overwriting referenced history.
+Workplace publishes the reviewed geometry-to-stable-space mapping through
+`application/workplace/mapping.go`, after Booking validates dated-inventory and
+commitment impact. `application/operations/workplace.go` can coordinate approval
+and activation in one administrator workflow, returning each actual outcome;
+detection or asset approval alone creates no authoritative bookable desks.
 
 Azure uses ETags for conditional operations; GCS uses generation preconditions.
 The interface carries opaque provider tokens separately from content hashes.
@@ -876,17 +883,42 @@ transactions must prove locking, idempotency and shared-transaction rollback.
 Thin transport/provider packages retain coverage obligations: contract-test
 mapping, authority and failures; exclude only explicit generated outputs.
 
-### Workplace retirement and deletion
+### Workplace retirement, reactivation and deletion
 
 `internal/application/workplace/retirement.go` handles explicit retirement and dependency-checked removal
-through the existing owning interfaces. Retiring an office, building, floor or space stops
-new booking eligibility, including descendant spaces, while confirmed commitments
-remain readable and manageable. Booking revalidates retirement at claim commit;
-a stale snapshot cannot authorise new use. Deletion reports blocking bookings,
+through the existing owning interfaces. Retirement is immediate or scheduled at an
+office-local date/time. Publishing the schedule immediately excludes new bookings
+for use on/after that point, including descendant spaces; confirmed commitments
+remain readable and manageable. Booking compares requested use with the published
+lifecycle revision at claim commit. A stale snapshot cannot bypass the schedule.
+Authorised reactivation revalidates definitions, calendars and dated inventory,
+preserving the same identity, commitments and history. Deletion reports blocking bookings,
 children or other dependencies and never silently retires, cancels or cascades.
 Retired resources remain present for authorised read/refresh/import, including
 Terraform. The [workplace lifecycle contract](../api-surfaces/workplace-lifecycle.md)
 applies independently of this candidate's technical organisation.
+
+### Evidence custody and operational plan activation
+
+Booking owns validated operational occupancy evidence used for desk-release
+commands. Source adapters authenticate and translate observations; Booking checks
+scope, provenance, granularity and freshness, deduplicates and commits evidence
+facts. Attendance/Reporting consumes committed facts into projections with
+separately configured reporting retention. A report or delayed projection never
+authorises release. Personal check-in remains the only transition to taken;
+anonymous occupancy cannot prevent a no-show returning to the pool.
+
+Plans approval identifies an immutable, durable asset. Workplace owns publication
+of geometry-to-stable-space mappings; Booking validates dated inventory and
+confirmed-claim impact before operational activation. A combined administrator
+workflow may complete both steps, but reports approval separately when activation
+cannot succeed. The [mapping publication contract](../api-surfaces/plan-publication.md)
+and [operational evidence decision](../../adr/0029-keep-operational-occupancy-evidence-in-booking.md)
+apply in this candidate's directory style. Version guards, atomic visibility and
+retry outcomes need transaction-level validation; this owner agreement does not
+choose a repository architecture. Confirmed outage-record custody is a separate
+[shared ownership question](README.md#remaining-shared-design-questions); existing
+incident placement below remains a proposal until that decision is resolved.
 
 ## Walkthroughs
 
@@ -914,8 +946,9 @@ applies independently of this candidate's technical organisation.
    booking transition and protected incident interval.
 3. If valid check-in commits first, the later no-show job observes taken state
    and does nothing. If release commits first, stale check-in cannot restore it.
-4. Anonymous occupancy stays a separate report observation and cannot stop the
-   no-show capacity returning to the pool.
+4. The source receiver calls Booking to validate/deduplicate/store operational
+   evidence and commit facts. Reporting projects those facts; anonymous occupancy
+   cannot stop the no-show capacity returning to the pool.
 5. Booking promotes eligible waitlist demand and holds capacity for an offer.
    Accept/expiry compete on current offer/claim state through Booking.
 6. A confirmed preventing app outage pauses affected deadlines and adds configured
@@ -1038,10 +1071,10 @@ sketches and walkthrough paths are not counted again.
 
 | Measure | Printed candidate |
 | --- | --- |
-| Internal Go packages | 77 |
+| Internal Go packages | 78 |
 | Application packages | 13 |
 | Persistence packages | 23 |
-| Representative Go files, including generated servers and architecture tests | 224 |
+| Representative Go files, including generated servers and architecture tests | 226 |
 | Initial named SQL migrations | 12; one ordered sequence, individually owned |
 | Dependency/ownership rules | 8; application edges and SQL owner manifest expand their checks |
 | Independent runtime roles from one release | 5 |

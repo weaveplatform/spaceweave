@@ -204,13 +204,13 @@ internal/
         identity.go access.go sessions.go delegation.go
         scim.go workday.go eligibility.go native_delegation.go
       workplace/
-        workplace.go changes.go retirement.go
+        workplace.go changes.go retirement.go mapping.go
       policy/
         policy.go publish.go
       booking/
         booking.go inventory.go intents.go
         allocation.go commit_group.go transfer.go
-        waitlist.go checkin.go release.go
+        waitlist.go checkin.go release.go evidence.go
         rooms.go venue.go outages.go
       exchange/
         exchange.go reconcile.go outbound.go
@@ -225,7 +225,7 @@ internal/
         events.go venue.go
         tickets.go admission.go
       reporting/
-        reporting.go evidence.go
+        reporting.go
         project.go retention.go
       notifications/
         notifications.go preferences.go
@@ -277,6 +277,8 @@ internal/
         scheduler.go
       jobs/
         runner.go handlers.go
+      occupancy/
+        receiver.go
       exchangehook/
         notifications.go lifecycle.go
       inbox/
@@ -289,7 +291,7 @@ internal/
       postgres/
         postgres.go unitofwork.go retry.go
         identity_people.go identity_access.go workplace.go
-        policy.go capacity.go allocation.go
+        policy.go capacity.go allocation.go evidence.go
         waitlist.go rooms.go exchange.go
         plans.go visitors.go events.go
         reporting.go notifications.go jobs.go
@@ -323,8 +325,6 @@ internal/
         personal.go conversations.go
       smtp/
         smtp.go
-      occupancy/
-        receiver.go
       tracing/
         automatic/
           automatic.go
@@ -523,19 +523,19 @@ pretending to coordinate distributed transactions.
 | Logical owner | Owned rows and migration responsibility | Service writer |
 | --- | --- | --- |
 | Identity | staff/source facts, teams, SCIM, sessions, capabilities/scopes and delegation evidence | Identity-owned people/access facets inside the shared adapter |
-| Workplace | office/building/floor/space definitions, calendars, baseline bundles | `workplace` |
+| Workplace | office/building/floor/space definitions, calendars, baseline bundles, lifecycle schedules and active geometry mappings | `workplace` |
 | Policy | revisioned policies, office overrides, publication/effective records | `policy` |
-| Booking | intents/cycles/groups/proposals, dated inventory, claims/holds, waitlist/offers, check-ins, outage protection | `booking` only |
+| Booking | intents/cycles/groups/proposals, dated inventory, claims/holds, waitlist/offers, check-ins, validated operational occupancy evidence, outage protection | `booking` only |
 | Exchange | mailbox/event mappings, desired/observed revisions, acceptance facts, subscriptions/cursors | `exchange` |
 | Plans | drawing packages, processing attempts, immutable revisions, blob/recovery/publication metadata | `plans` |
 | Visitors | visitor identities, hosted visits, verified-link grants, reception records | `visitors` |
 | Events | event/audience/capacity, named tickets, admission records, venue association | `events` |
-| Reporting | occupancy evidence and explicitly scoped attendance/report projections | `reporting` |
+| Reporting | derived attendance/report projections and separately configured reporting retention | `reporting` |
 | Notifications | preferences, Teams message consent, in-app messages, delivery attempts | `notifications` |
 | Work | job/outbox rows, leases, consumer checkpoints, retry/failure records | `work` through transactional facets |
 
 `postgres/ownership.yaml` maps each table and migration section to that owner.
-SQL in `capacity.go`, `allocation.go`, `waitlist.go` and `rooms.go` implements
+SQL in `capacity.go`, `allocation.go`, `waitlist.go`, `evidence.go` and `rooms.go` implements
 Booking's writer. Other SQL files may read approved views but cannot update those
 tables. Layout checks inspect query ownership, constructors do not leak writer
 facets, and review covers dynamic SQL which static prefix checks cannot prove.
@@ -576,9 +576,12 @@ No-show expiry checks that current state again; whichever valid transition
 commits first determines the outcome. It cannot release a now-taken desk using
 the stale state captured when its job was enqueued.
 
-Anonymous occupancy belongs to Reporting's evidence store, not Booking's owner
-check-in. It cannot establish attendance or withhold a no-show desk from the
-pool. Post-check-in vacancy may release a taken desk only using fresh sustained
+Booking validates, deduplicates and stores operational occupancy evidence through
+its capacity-store facet. A driving occupancy receiver calls Booking's ingestion
+port; outbound source polling, if needed, is a driven integration. Reporting
+projects committed facts with separately configured retention. Anonymous occupancy
+is distinct from personal check-in and cannot establish the owner's attendance
+or withhold a no-show desk from the pool. Post-check-in vacancy may release a taken desk only using fresh sustained
 vacancy evidence over the configured window. A missing/stale sensor is unknown.
 Office presence is another evidence category and never proves desk use.
 
@@ -790,8 +793,11 @@ reconcile orphan uploads and missing copies. There is no transaction across
 PostgreSQL and either blob provider. `blob/verified` wraps the active adapter and
 a deployment-selected recovery destination; selecting Azure versus GCS does not
 require writing every asset to both providers. Published revisions never mutate
-in place; approved geometry binds stable workplace space IDs, and definition
-changes revalidate existing commitments rather than silently deleting desks.
+in place. Plans approves immutable assets; Workplace publishes their stable-space
+mappings through `core/service/workplace/mapping.go` and its own driving/store
+ports. Booking validates dated inventory and commitment impact before activation.
+An admin operation may coordinate approval then activation, reporting distinct
+outcomes; an approved asset alone cannot change bookable definitions.
 
 Local scratch is disposable and cannot be the acknowledged source of truth.
 Kubernetes documents [Pod volume lifetimes](https://kubernetes.io/docs/concepts/storage/volumes/).
@@ -947,17 +953,42 @@ using durable revisions; apply confirmed check-in/offer outage protection withou
 overwriting existing reassignments. Rehearse complete recovery and retention
 reapplication; a successful database promotion alone is not the RTO test.
 
-### Workplace retirement and deletion
+### Workplace retirement, reactivation and deletion
 
 `internal/core/service/workplace/retirement.go` handles explicit retirement and dependency-checked removal
-through the existing owning interfaces. Retiring an office, building, floor or space stops
-new booking eligibility, including descendant spaces, while confirmed commitments
-remain readable and manageable. Booking revalidates retirement at claim commit;
-a stale snapshot cannot authorise new use. Deletion reports blocking bookings,
+through the existing owning interfaces. Retirement is immediate or scheduled at an
+office-local date/time. Publishing the schedule immediately excludes new bookings
+for use on/after that point, including descendant spaces; confirmed commitments
+remain readable and manageable. Booking compares requested use with the published
+lifecycle revision at claim commit. A stale snapshot cannot bypass the schedule.
+Authorised reactivation revalidates definitions, calendars and dated inventory,
+preserving the same identity, commitments and history. Deletion reports blocking bookings,
 children or other dependencies and never silently retires, cancels or cascades.
 Retired resources remain present for authorised read/refresh/import, including
 Terraform. The [workplace lifecycle contract](../api-surfaces/workplace-lifecycle.md)
 applies independently of this candidate's technical organisation.
+
+### Evidence custody and operational plan activation
+
+Booking owns validated operational occupancy evidence used for desk-release
+commands. Source adapters authenticate and translate observations; Booking checks
+scope, provenance, granularity and freshness, deduplicates and commits evidence
+facts. Attendance/Reporting consumes committed facts into projections with
+separately configured reporting retention. A report or delayed projection never
+authorises release. Personal check-in remains the only transition to taken;
+anonymous occupancy cannot prevent a no-show returning to the pool.
+
+Plans approval identifies an immutable, durable asset. Workplace owns publication
+of geometry-to-stable-space mappings; Booking validates dated inventory and
+confirmed-claim impact before operational activation. A combined administrator
+workflow may complete both steps, but reports approval separately when activation
+cannot succeed. The [mapping publication contract](../api-surfaces/plan-publication.md)
+and [operational evidence decision](../../adr/0029-keep-operational-occupancy-evidence-in-booking.md)
+apply in this candidate's directory style. Version guards, atomic visibility and
+retry outcomes need transaction-level validation; this owner agreement does not
+choose a repository architecture. Confirmed outage-record custody is a separate
+[shared ownership question](README.md#remaining-shared-design-questions); existing
+incident placement below remains a proposal until that decision is resolved.
 
 ## Walkthroughs
 
@@ -991,9 +1022,10 @@ applies independently of this candidate's technical organisation.
    unavailable outcome; it cannot steal the replacement's booking.
 4. Release selects/promotes eligible waitlist demand atomically or reserves its
    guarded next action. Fresh direct requests use the same protocol.
-5. Anonymous occupancy arrives through Reporting. It records evidence without
-   owner check-in and does not stop a no-show release. A missing sensor feed
-   cannot trigger a taken-desk vacancy release.
+5. The driving occupancy adapter calls Booking, which validates/deduplicates
+   operational evidence, persists it and commits facts for Reporting. Anonymous
+   occupancy is not owner check-in and cannot stop a no-show release. A missing
+   sensor feed cannot trigger a taken-desk vacancy release.
 6. An operator-confirmed affected outage interval pauses uncommitted no-show and
    offer expiry decisions. On recovery, workers recalculate deadlines with the
    configured grace and usable period. Already committed reassignments survive;
@@ -1115,8 +1147,8 @@ packages are included. They are not implementation-effort estimates.
 | Named Go package directories, including command/client/test-only packages | 85 |
 | Core packages | 29 |
 | Core service packages | 11 |
-| Driving adapter packages | 20 |
-| Driven adapter packages | 22 |
+| Driving adapter packages | 21 |
+| Driven adapter packages | 21 |
 | Reusable contract packages | 6 |
 | Driving-port source files | 15 |
 | Driven-port source files | 20 |

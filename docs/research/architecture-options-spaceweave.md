@@ -58,10 +58,14 @@ The repository-architecture decision remains pending. A domain-oriented modular
 monolith with inner ports/adapters is the preferred candidate, not a selected
 implementation. All five layouts now use the same agreed logical ownership:
 combined Identity; attendance planning and capacity commitment inside Booking;
-separate Exchange; and Events-owned registration/tickets/admission. Events and
+separate Exchange; Booking-owned operational occupancy evidence with Attendance
+reporting projections; Plans asset approval distinct from Workplace mapping
+activation; and Events-owned registration/tickets/admission. Events and
 Booking coordinate venue/ticket consistency through owning interfaces in one
 local transaction where required. Architecture style changes the package,
 dependency and composition mechanisms rather than these business owners.
+Published retirement schedules exclude new bookings for use on/after their
+office-local effective point; validated reactivation retains identity/history.
 [Proposed architecture decision](../adr/0009-use-a-domain-first-modular-monolith.md),
 [five candidate layouts](architecture-options/README.md).
 

@@ -11,7 +11,7 @@ compare alternative repository organisations. The
 [separate Exchange](adr/0028-separate-exchange-synchronisation-from-booking.md)
 are agreed logical owners across all five options. The repository-architecture
 choice remains pending. Candidates retain their own organisations and dependency
-rules; concrete package names and remaining evidence/publication boundaries
+rules; concrete package names, evidence retention settings and activation guards
 are still subject to validation.
 
 This is a design record. The existing implementation is the floor-plan tool;
@@ -78,19 +78,22 @@ retains the event-space claims. Identity combines workforce/source correlation
 with sessions, access and delegation through distinct interfaces. Exchange owns
 calendar integration/reconciliation independently; Identity retains its native
 delegation-evidence adapter. These agreed owners constrain all five comparison layouts without selecting
-a repository style or prescribing every internal package/evidence seam.
+a repository style or prescribing every internal package. Booking also owns
+validated operational occupancy evidence; Attendance projects committed facts
+under separately configured reporting retention. Plans asset approval is distinct
+from Workplace operational mapping activation, validated against Booking inventory.
 
 | Module | Owned state and behaviour | Interface callers rely on |
 | --- | --- | --- |
 | Identity | Staff identities/source links, effective workforce/team facts, SCIM/Workday progress, sessions, capabilities/scopes, global grants and source-labelled delegation. | Separate People, Access and Delegation interfaces resolve current eligibility, source-owned facts, sessions and actor/owner authority under one owner. |
-| Workplace | Offices, buildings, floors, space features, office calendars and baseline neighbourhood definitions. | Read versioned definitions and validate proposed changes against affected booking commitments. |
+| Workplace | Offices, buildings, floors, space features, calendars, baseline neighbourhoods, lifecycle schedules and operational plan mappings. | Publish versioned definitions/mappings, retire/reactivate resources and validate dated impact through Booking. |
 | Policy | Versioned operational policies, allowed office overrides, publication/effective dates and organisation retention settings. | Resolve the applicable policy/version and validate a prospective publication. |
-| Booking | Attendance intents/preferences/travel exceptions, allocation cycles/groups/proposals, dated inventory, holds, bookings, waitlists and desk check-in/release transitions. | Request, allocate, confirm, transfer, cancel, check in or release capacity while enforcing the same invariants from every caller. |
+| Booking | Attendance intents/preferences/travel exceptions, allocation cycles/groups/proposals, dated inventory, holds, bookings, waitlists, validated operational occupancy evidence and desk check-in/release transitions. | Request, allocate, confirm, transfer, cancel, check in or release capacity while enforcing the same invariants from every caller. |
 | Exchange | Provider mappings, desired/observed calendar state, durable observations, delta cursors/subscriptions and reconciliation work. | Consume Booking's committed room intentions and reconcile provider activity through Booking's owning room interface; never write claims directly. |
-| Plans | Drawing packages, tracing/review workflows, immutable plan/render revisions and blob metadata/publication. | Upload, process, review and retrieve a revision; associate approved geometry with stable Workplace space identities. |
+| Plans | Drawing packages, tracing/review workflows, immutable plan/render revisions and blob metadata/asset publication. | Upload, process, approve and retrieve immutable assets; Workplace separately publishes their operational mappings. |
 | Visitors | Visitor profiles, hosted visits, visit windows and reception arrival/departure records. | Create/retrieve a visit, record reception activity and apply visitor retention. |
 | Events | Event details/audience, registration, tickets/exclusive offers, reconfirmation, waitlists, admission and venue coordination. | Register, offer, reconfirm, cancel or admit within current event capacity and eligibility, coordinating secured venue changes with Booking. |
-| Attendance and reporting | Occupancy evidence, attendance projections and office-scoped reports, with separate evidence/retention categories. | Ingest evidence, expose fresh desk-vacancy observations to Booking and report bookings/check-ins/occupancy distinctly. |
+| Attendance and reporting | Derived attendance/occupancy projections, office-scoped reports and separately configured reporting retention. | Consume committed facts and report bookings/check-ins/occupancy distinctly; projections never authorise desk release. |
 | Notifications | In-app messages, delivery preferences, message-specific Teams opt-in and asynchronous delivery attempts. | Deliver committed outcomes to intended recipients without altering the booking outcome. |
 
 Composition wires the modules and runtime roles. Shared platform facilities cover
@@ -179,7 +182,8 @@ booking/check-in health distinct from degraded Exchange or notification delivery
 | Desk allocation, direct requests and waitlist promotion | Booking serialises competing claims; enforce mandatory features, dated neighbourhood membership, one overlapping desk per person and existing waitlist priority. Confirmed assignments are protected. |
 | Required desk plus parking | Secure both in one Booking transaction or confirm neither. A transfer acquires replacement capacity and releases the old claims together. |
 | Main allocation run | Plan outside long transactions using a versioned snapshot. Commit each group's placement atomically, including required parking; replan only affected uncommitted groups on conflicts. |
-| Workplace retirement/deletion | Workplace retires definitions to stop new bookings, including descendant eligibility. Booking orders new claim commitment against that change; existing confirmed bookings remain manageable. Deletion reports unresolved dependencies and never silently cancels or cascades. |
+| Workplace retirement/reactivation/deletion | Published immediate/scheduled retirement excludes new use on/after the office-local effective time, including descendants. Booking compares requested use with the lifecycle revision. Reactivation revalidates definitions/calendars/inventory while retaining identity/history; confirmations remain manageable and deletion never silently cancels/cascades. |
+| Operational plan activation | Plans approves immutable assets; Workplace owns geometry-to-stable-space mappings. Booking validates dated inventory and confirmed-claim impact under version guards before activation. Approval and activation have distinct public outcomes. |
 | Check-in, no-show and vacancy | Booking decides the transition against current state/policy. A personal check-in wins only if the allocation remains valid. Anonymous occupancy cannot reserve a released desk. Sensor outages do not establish vacancy. |
 | Room requests and reconciliation | Booking owns local holds/claims and transitions; Exchange owns provider observations/progress. Confirm only after acceptance and capacity revalidation. Keep external observations even if they conflict with local claims; reconcile rather than discarding provider truth. |
 | Venue changes and ticket issuance | Events coordinates its ticket state with Booking's venue state through owning interfaces in a named shared local transaction where required. Generic booking edits cannot bypass the event venue workflow. |
@@ -251,8 +255,8 @@ results retain normal access/expiry. Cancellation remains requested until work
 stops and is serialized against commit/publication; preserve work committed first
 and prevent the next commit/publication when cancellation wins. Receipt duration,
 retained expiry evidence, wire details and numeric limits remain open. The contract applies across all
-five candidate layouts; the architecture style and remaining evidence/publication
-boundaries remain under review.
+five candidate layouts; repository style, concrete activation guards and evidence
+retention settings remain under review.
 
 ## Identity, lifecycle and privacy
 

@@ -48,8 +48,8 @@ repository-architecture choice remains pending. Compare the
 [Booking planning decision](../../adr/0027-keep-attendance-planning-inside-booking.md),
 [Exchange decision](../../adr/0028-separate-exchange-synchronisation-from-booking.md)
 and [Events decision](../../adr/0023-separate-events-from-venue-booking.md).
-Concrete file names, transaction-scope names and remaining evidence/publication
-seams below are representative implementation proposals.
+Concrete file names, transaction-scope names and publication-guard mechanics
+below are representative implementation proposals.
 
 Dependency rules for this candidate:
 
@@ -243,6 +243,7 @@ spaceweave/
 │   │   │   └── events.go
 │   │   ├── definitions.go
 │   │   ├── neighbourhoods.go
+│   │   ├── mapping.go               publish approved geometry bindings after Booking validation
 │   │   ├── calendar.go
 │   │   ├── store.go
 │   │   ├── http/
@@ -638,7 +639,7 @@ the named venue and visitor-link scopes. Previous-version configuration edits, t
 classes, actor budgets and public operation status are agreed; wire/retention
 details remain open. Worker execution is bounded separately. Surface
 bindings preserve the agreed owners; repository-architecture selection, concrete
-package placement and remaining evidence/publication seams stay under review.
+package placement and concrete publication-guard mechanics stay under review.
 
 ## Deep dives
 
@@ -656,10 +657,10 @@ resources it owns; a shared PostgreSQL pool belongs to app.
 | `identity/api.Access` | Resolve session; require capability with office scope; verify actor/owner delegation and source freshness. |
 | `identity/api.People` | Read verified staff snapshots and effective team/office facts; receive lifecycle events. |
 | `identity/api.Delegation` | Evaluate app-managed grants and fresh native delegation evidence through Identity-owned authority adapters. |
-| `workplace/api.Definitions` | Read versioned offices, calendars, buildings, floors, spaces and baseline neighbourhoods. |
+| `workplace/api.Definitions` | Read/version definitions, retire/reactivate resources and publish approved geometry mappings after Booking validates dated impact. |
 | `booking/api.Claims` | Query authoritative availability; create/cancel claims; transfer desk and linked parking. |
 | `booking/api.Allocations` | Read planning snapshot; commit one group with expected inputs; return precise stale/conflict causes. |
-| `booking/api.Desks` | Personal check-in, eligible waitlist submission/acceptance, evidence ingestion and protected expiry. |
+| `booking/api.Desks` | Personal check-in, eligible waitlist submission/acceptance, validated operational evidence ingestion and protected expiry; commit facts for Attendance projections. |
 | `booking/api.Rooms` | Commit business room intentions/holds, expose desired revisions, and apply provider observations through capacity-safe booking transitions. |
 | `exchange/api.Reconciliation` | Durably accept provider observations, reconcile committed room intentions and expose integration progress; no claim writes. |
 | `booking/api.Venues` | Validate and mutate event-space claims as Booking's participant in the named venue workflow; no event/ticket table access. |
@@ -770,8 +771,8 @@ migrations install their own tables, indexes and constraints.
 | --- | --- | --- |
 | Platform | `jobs`, `job_attempts`, `leases`, `outbox`, `consumer_receipts`, `schema_versions` | Durable mechanisms, not booking state or staff models. |
 | Identity | `staff`, `source_links`, `source_checkpoints`, `workforce_facts`, `groups`, `memberships`, `sessions`, `capabilities`, `delegation_grants`, `scim_resources` | Correlation, source authority, access and lifecycle in one owned transaction. |
-| Workplace | `offices`, `buildings`, `floors`, `space_definitions`, `office_calendars`, `baseline_neighbourhoods`, `definition_versions` | Definition publication; no dated active claims. |
-| Booking | `inventory_days`, `dated_bundles`, `resource_guards`, `owner_guards`, `claims`, `parking_segments`, `waitlist_entries`, `offers`, `checkins`, `occupancy_evidence`, `protection_windows` | All claim and timeout transitions plus attendance-producing evidence. |
+| Workplace | `offices`, `buildings`, `floors`, `space_definitions`, `office_calendars`, `baseline_neighbourhoods`, `definition_versions`, `plan_mappings`, `lifecycle_schedules` | Definitions and operational mapping publication; no dated active claim writes. |
+| Booking | `inventory_days`, `dated_bundles`, `resource_guards`, `owner_guards`, `claims`, `parking_segments`, `waitlist_entries`, `offers`, `checkins`, `occupancy_evidence`, `protection_windows` | All claim/timeout transitions and validated operational occupancy evidence; commit facts for Attendance. |
 | Booking, continued | `room_requests`, `handover_reviews`, `cycles`, `attendance_intents`, `travel_exceptions`, `collaboration_requests`, `allocation_groups`, `runs`, `proposals` | Business room intentions plus planning, demand and group progress under the same claim owner. |
 | Events | `events`, `event_audiences`, `tickets`, `admissions` | Event lifecycle, registration, ticket capacity and admission, coordinated with Booking's venue state. |
 | Exchange | `exchange_links`, `provider_observations`, `provider_desired_state`, `sync_cursors`, `subscriptions`, `reconciliation_progress` | Provider correlation, desired/observed calendar state and reconciliation; apply business transitions through Booking. |
@@ -1072,8 +1073,12 @@ Upload bytes and conversion happen outside the metadata transaction. New
 revisions use unique immutable object names and content digests; provider tokens
 are opaque concurrency values, not portable content checksums. Azure ETags and
 GCS generation preconditions have different semantics. Publication verifies the
-recovery copy and manifest, then commits revision metadata, current pointer and
-outbox record. Until verification succeeds, status remains processing or
+recovery copy and manifest, then commits revision metadata, the asset pointer and
+outbox record. This approves/publishes an asset; Workplace separately owns
+`mapping.go` and the active geometry-to-stable-space mapping. Booking validates
+dated-inventory and commitment impact before Workplace activates that mapping.
+One admin workflow can coordinate both steps when validation succeeds, exposing
+an approved-but-not-active result if activation fails. Until verification succeeds, status remains processing or
 awaiting recovery protection and no durable/published acknowledgement is issued.
 [Azure concurrency](https://learn.microsoft.com/en-us/azure/storage/blobs/concurrency-manage),
 [GCS preconditions](https://docs.cloud.google.com/storage/docs/request-preconditions).
@@ -1287,17 +1292,42 @@ and one-second p95 initial response at the agreed representative workload need
 contention, load and recovery measurements; ten modules and five role manifests
 do not establish those outcomes.
 
-### Workplace retirement and deletion
+### Workplace retirement, reactivation and deletion
 
 `internal/workplace/retirement.go` handles explicit retirement and dependency-checked removal
-through the existing owning interfaces. Retiring an office, building, floor or space stops
-new booking eligibility, including descendant spaces, while confirmed commitments
-remain readable and manageable. Booking revalidates retirement at claim commit;
-a stale snapshot cannot authorise new use. Deletion reports blocking bookings,
+through the existing owning interfaces. Retirement is immediate or scheduled at an
+office-local date/time. Publishing the schedule immediately excludes new bookings
+for use on/after that point, including descendant spaces; confirmed commitments
+remain readable and manageable. Booking compares requested use with the published
+lifecycle revision at claim commit. A stale snapshot cannot bypass the schedule.
+Authorised reactivation revalidates definitions, calendars and dated inventory,
+preserving the same identity, commitments and history. Deletion reports blocking bookings,
 children or other dependencies and never silently retires, cancels or cascades.
 Retired resources remain present for authorised read/refresh/import, including
 Terraform. The [workplace lifecycle contract](../api-surfaces/workplace-lifecycle.md)
 applies independently of this candidate's technical organisation.
+
+### Evidence custody and operational plan activation
+
+Booking owns validated operational occupancy evidence used for desk-release
+commands. Source adapters authenticate and translate observations; Booking checks
+scope, provenance, granularity and freshness, deduplicates and commits evidence
+facts. Attendance/Reporting consumes committed facts into projections with
+separately configured reporting retention. A report or delayed projection never
+authorises release. Personal check-in remains the only transition to taken;
+anonymous occupancy cannot prevent a no-show returning to the pool.
+
+Plans approval identifies an immutable, durable asset. Workplace owns publication
+of geometry-to-stable-space mappings; Booking validates dated inventory and
+confirmed-claim impact before operational activation. A combined administrator
+workflow may complete both steps, but reports approval separately when activation
+cannot succeed. The [mapping publication contract](../api-surfaces/plan-publication.md)
+and [operational evidence decision](../../adr/0029-keep-operational-occupancy-evidence-in-booking.md)
+apply in this candidate's directory style. Version guards, atomic visibility and
+retry outcomes need transaction-level validation; this owner agreement does not
+choose a repository architecture. Confirmed outage-record custody is a separate
+[shared ownership question](README.md#remaining-shared-design-questions); existing
+incident placement below remains a proposal until that decision is resolved.
 
 ## Walkthroughs
 
@@ -1587,7 +1617,7 @@ unit tests are excluded. Root overview and prose examples are not counted.
 | Business modules | 10 |
 | Gateway packages | 2 |
 | Go packages | 114 |
-| Named Go files, including generated and test files | 238 |
+| Named Go files, including generated and test files | 239 |
 | Named SQL migration files | 14 |
 | Named non-Go frontend files | 19 |
 | Named Kubernetes manifest files | 7 |
@@ -1652,8 +1682,9 @@ tradeoffs that matter when selecting this candidate.
   enlist owned stores without giving callers SQL access. Their transaction
   semantics and failure behaviour require assembly tests and documented lock
   order; "only published APIs" does not by itself establish correctness.
-- **Workplace publication is separate from dated inventory.** Baseline changes
-  become versioned inputs; Booking owns effective dated applicability and
+- **Asset approval and operational publication have distinct owners.** Plans
+  approves immutable assets; Workplace owns active geometry mappings and baseline
+  changes as versioned inputs. Booking validates impact and owns dated applicability and
   temporary moves of unallocated desks within a building. A new definition
   cannot silently shrink protected confirmed inventory. This creates a visible
   publication/materialisation boundary and demands a clear admin status model.

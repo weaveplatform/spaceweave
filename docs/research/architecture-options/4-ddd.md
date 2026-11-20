@@ -222,11 +222,14 @@ internal/
         space.go                  kind, features, active definition and capacity
       neighbourhood/
         bundle.go                 one-building baseline desks/optional rooms
+      mapping/
+        mapping.go                versioned geometry-to-stable-space associations
       repository.go
     application/
+      publish_mapping.go          activate approved mapping after Booking impact validation
       configure.go                validation and committed-booking impact checks
       queries.go                  versioned workplace snapshots
-      retirement.go               stop new use and report deletion dependencies
+      retirement.go               scheduled retirement/reactivation and deletion dependencies
     adapters/
       http/
         workplace.go
@@ -259,6 +262,7 @@ internal/
       booking.go                  request/transfer/cancel/check-in/capacity interface
       allocation.go               snapshot, proposal and group commit interface
       venue.go                    restricted event-managed venue operations
+      evidence.go                 validate/store operational observations and publish facts
       events.go                   committed booking/check-in/release facts
     domain/
       intent/
@@ -277,6 +281,8 @@ internal/
         offer.go                  timed capacity offer and acceptance state
       inventory/
         dated.go                  dated capacity and unallocated-desk bundle movements
+      evidence/
+        evidence.go               typed operational observations, provenance and freshness
       repository.go               Booking-owned repository interfaces
       events.go
     application/
@@ -287,11 +293,14 @@ internal/
       direct.go                   post-run direct request and waitlist priority
       transfer.go                 named acquire-replacement/release-old transaction
       checkin.go                  owner-only personal transition
+      ingest.go                   validate scope/provenance, deduplicate and commit evidence
       release.go                  no-show/vacancy timers and outage protection
       promote.go                  reserve/accept/expire eligible waitlist offers
       room.go                     reconcile acceptance and external room intentions
       venue.go                    event-governed capacity participant
     adapters/
+      occupancy/
+        input.go                  concrete source translation into Booking commands
       solver/
         solver.go                 replaceable search using domain constraints/objective
       http/
@@ -303,6 +312,7 @@ internal/
         allocation.go             snapshot versions, runs and group commit progress
         waitlist.go               competing offers and acceptance
         inventory.go              dated neighbourhood/capacity rows
+        evidence.go               Booking-owned operational occupancy records
         migrations/
           0001_booking.sql
   exchange/
@@ -343,7 +353,7 @@ internal/
     application/
       upload.go                   accept staged source data
       trace.go                    retained pipeline behind a context-owned interface
-      review.go                   approve/reject and bind stable space identities
+      review.go                   approve/reject immutable assets; no inventory activation
       publish.go                  verify recovery copies before durability acknowledgement
       cleanup.go                  referenced history and abandoned staging reconciliation
     adapters/
@@ -406,21 +416,16 @@ internal/
   attendance/
     attendance.go
     api/
-      attendance.go               typed evidence, vacancy observation and scoped reports
+      attendance.go               derived attendance projections and scoped reports
     domain/
-      evidence/
-        evidence.go               person/desk/office evidence with distinct meaning
       report/
         report.go                 booking/check-in/occupancy dimensions and freshness
       repository.go
     application/
-      ingest.go                   optional occupancy integration and evidence deduplication
       project.go                  committed-fact attendance projections
       report.go                   own history or authorised office reporting
-      retention.go                attendance and raw evidence have separate policies
+      retention.go                configured reporting projection/copy retention
     adapters/
-      occupancy/
-        input.go                  concrete sensor translation seam
       http/
         attendance.go
       postgres/
@@ -475,7 +480,7 @@ two meanings of publication are deliberately distinct.
 | UI, MCP, SDK, scripts, contract tests and Terraform | Shared supported public REST with capability-specific fields/actions. | Owning contexts' HTTP adapters and app routing call application handlers; no aggregate or complete context API is serialized wholesale. |
 | Human users and enrolled applications | Internet-accessible public REST with applicable Conditional Access plus current application grants. | Credential/profile checks at the edge; Identity and the command owner preserve real actor/client/owner identity. Machine grants are separate from human delegation. |
 | Internal-event visitors, such as guest speakers | External invitation/verification and limited visitor event/visit/ticket operations. | Visitors/Events projections preserve the verified-email visitor scope; no general public event catalogue is established. |
-| Entra, Graph, Teams and source clients | Native authenticated provisioning/callback/ingestion contracts. | Identity, Exchange, Notifications and Attendance adapters retain protocol-specific semantics and caller validation. |
+| Entra, Graph, Teams and source clients | Native authenticated provisioning/callback/ingestion contracts. | Identity, Exchange, Notifications and Booking adapters retain protocol-specific semantics and caller validation. |
 | Platform workers and application contexts | Private Go interfaces and versioned committed facts/jobs. | Workers call context application handlers directly; context API and repository/provider ports do not become remote endpoints. |
 | Operators and platform dependencies | Private probes/telemetry; authorised public repair commands where supported. | Restricted operational routing plus owning commands; public repair capability does not expose SQL, repositories or transaction participation. |
 
@@ -693,7 +698,11 @@ packages until a justified change; this option does not require a geometry rewri
 Blob adapters use provider-specific conditional operations behind an opaque
 token contract. PostgreSQL metadata and object bytes do not share a transaction.
 Stage an upload, verify recovery copies, record durability/publication, then
-update a current-version pointer with concurrency control. Orphan staging and
+update a Plans-owned asset pointer with concurrency control. Workplace owns
+geometry-to-stable-space mappings through its mapping domain and publication
+command; Booking validates dated-inventory and commitment impact before
+activation. One admin workflow may approve then activate, exposing each actual
+outcome. Asset approval alone cannot change operational definitions. Orphan staging and
 missing publication work are reconciled. Keep referenced historical revisions.
 Default blob geo-replication alone does not establish the five-minute RPO.
 [Azure concurrency][azure-blob], [GCS preconditions][gcs-blob].
@@ -707,8 +716,11 @@ a new no-show duration does not silently reinterpret existing confirmations.
 The accepted numerical starting values remain configurable in
 [policy defaults][defaults].
 
-Attendance owns projection/evidence semantics and reporting queries. Consumer
-progress/freshness is visible; a lagging projection cannot authorise a claim.
+Booking owns validation, deduplication and custody of operational occupancy
+evidence through its evidence domain, ingestion command, source adapter and
+PostgreSQL evidence repository. Committed facts feed Attendance, which owns
+reporting projections, queries and separately configured reporting retention.
+Consumer progress/freshness is visible; a lagging projection cannot authorise a claim.
 Staff see their own history; reporting-capable administrators see assigned
 offices. Raw occupancy, attendance and visitor retention are separate and apply
 to identifying copies. Neither attendance reports nor app policies enforce a
@@ -808,17 +820,42 @@ queries. Generation is reproducible. Rolling releases use one controlled
 migration step, expand/contract schemas and compatible job/fact versions; older
 workers must drain before compatibility is removed.
 
-### Workplace retirement and deletion
+### Workplace retirement, reactivation and deletion
 
 `internal/workplace/application/retirement.go` handles explicit retirement and dependency-checked removal
-through the existing owning interfaces. Retiring an office, building, floor or space stops
-new booking eligibility, including descendant spaces, while confirmed commitments
-remain readable and manageable. Booking revalidates retirement at claim commit;
-a stale snapshot cannot authorise new use. Deletion reports blocking bookings,
+through the existing owning interfaces. Retirement is immediate or scheduled at an
+office-local date/time. Publishing the schedule immediately excludes new bookings
+for use on/after that point, including descendant spaces; confirmed commitments
+remain readable and manageable. Booking compares requested use with the published
+lifecycle revision at claim commit. A stale snapshot cannot bypass the schedule.
+Authorised reactivation revalidates definitions, calendars and dated inventory,
+preserving the same identity, commitments and history. Deletion reports blocking bookings,
 children or other dependencies and never silently retires, cancels or cascades.
 Retired resources remain present for authorised read/refresh/import, including
 Terraform. The [workplace lifecycle contract](../api-surfaces/workplace-lifecycle.md)
 applies independently of this candidate's technical organisation.
+
+### Evidence custody and operational plan activation
+
+Booking owns validated operational occupancy evidence used for desk-release
+commands. Source adapters authenticate and translate observations; Booking checks
+scope, provenance, granularity and freshness, deduplicates and commits evidence
+facts. Attendance/Reporting consumes committed facts into projections with
+separately configured reporting retention. A report or delayed projection never
+authorises release. Personal check-in remains the only transition to taken;
+anonymous occupancy cannot prevent a no-show returning to the pool.
+
+Plans approval identifies an immutable, durable asset. Workplace owns publication
+of geometry-to-stable-space mappings; Booking validates dated inventory and
+confirmed-claim impact before operational activation. A combined administrator
+workflow may complete both steps, but reports approval separately when activation
+cannot succeed. The [mapping publication contract](../api-surfaces/plan-publication.md)
+and [operational evidence decision](../../adr/0029-keep-operational-occupancy-evidence-in-booking.md)
+apply in this candidate's directory style. Version guards, atomic visibility and
+retry outcomes need transaction-level validation; this owner agreement does not
+choose a repository architecture. Confirmed outage-record custody is a separate
+[shared ownership question](README.md#remaining-shared-design-questions); existing
+incident placement below remains a proposal until that decision is resolved.
 
 ## Walkthroughs
 
@@ -940,8 +977,8 @@ staffing or runtime. Counts describe the representative tree in this document.
 | --- | --- |
 | Business contexts | 10, named in the full tree. |
 | Uniform context layer directories | 40: `api`, `domain`, `application`, `adapters` for each context, before their internal subdivisions. |
-| Explicit Go-bearing package paths | 110: one per parent directory with a named `.go` file in the full tree. |
-| Explicit representative Go filenames | 190, including generated examples; co-located tests and unprinted retained engine files are excluded. |
+| Explicit Go-bearing package paths | 111: one per parent directory with a named `.go` file in the full tree. |
+| Explicit representative Go filenames | 194, including generated examples; co-located tests and unprinted retained engine files are excluded. |
 | Shared-kernel packages shown | 4: IDs, principal envelope, interval values and clock. |
 | Explicit booking multi-aggregate operations | Group placement, required linked claim and office transfer. |
 | Explicit cross-context transaction families | Event venue/capacity through Events and Booking; registration-created visit/ticket through Events and Visitors. |

@@ -128,8 +128,8 @@ This benefits other API clients even before a provider exists.
 | Create | Return resource identity and committed/accepted outcome; support recovering an uncertain result without duplicate objects. |
 | Read/refresh | Return authoritative managed fields and relevant computed status; provide an explicit absence outcome. |
 | Import | Resolve an existing object by documented identity using ordinary read permissions; no privileged import endpoint is implied. |
-| Update | Distinguish mutable fields from changes requiring a new object; protect concurrent edits and retain domain validation. |
-| Delete | Explicit retirement stops new use while preserving confirmed commitments. Separate deletion refuses unresolved dependencies without cancellation/cascade; report actual completion only after permitted removal. |
+| Update | Distinguish mutable fields from changes requiring a new object; expose lifecycle schedules/current state, protect concurrent edits and retain domain validation. Reactivation keeps identity after definitions/calendar/inventory validation. |
+| Delete | Retirement is immediate or scheduled; publication excludes new bookings for use on/after the effective office-local time, preserving confirmations. Separate deletion refuses unresolved dependencies without cancellation/cascade; report actual completion only after permitted removal. |
 | Drift | Expose out-of-band changes, source ownership and effective values accurately enough for the provider to compare state. |
 
 **Fact:** HashiCorp recommends refreshing all possible values so that Terraform
@@ -177,7 +177,7 @@ Reconciliation must not fabricate or repeatedly recreate real-world evidence.
 Here “short-lived” describes domain data, not
 Terraform's separate ephemeral-resource feature. The provider resource/data-source
 catalogue and concrete dependency schemas remain open. The
-[workplace lifecycle contract](workplace-lifecycle.md) establishes retirement
+[workplace lifecycle contract](workplace-lifecycle.md) establishes scheduled retirement, identity-preserving reactivation
 and dependency-blocked deletion for all clients; retired state is not absence
 or completed Terraform destruction.
 
@@ -217,7 +217,7 @@ supported client boundary or introduce test-only production bypass routes.
 | --- | --- | --- |
 | Machine authority | Independent application grants, without personal desk check-in. | Define exact capability, office, owner and data projections per operation. |
 | Authentication | MCP retains user context; machine scripts use application identity. | Select concrete credential flows and deployment ownership for enrolled clients. |
-| Terraform | Long-lived configuration, authoritative retired-state reads and dependency-blocked deletion without cascade. | Define concrete identities, schemas, import and authorised impact/dependency representations. |
+| Terraform | Long-lived configuration, authoritative lifecycle schedules/current state, identity-preserving reactivation and dependency-blocked deletion without cascade. | Define concrete identities, schemas, import and authorised impact/dependency representations. |
 | Drift and concurrency | Authorised UI edits remain valid; updates require the version read. | Test refresh/update behaviour against concurrent changes and source-owned records. |
 | Long-running work | Public operation references and cancellation requested until execution stops, ordered against commits/publication. | Define concrete completion/progress/result schemas and validate cancellation/commit ordering. |
 | Retry and load | Atomic acceptance receipts and actor budgets across clients. | Specify fingerprint/retention details and validate bursts, polling and backpressure. |

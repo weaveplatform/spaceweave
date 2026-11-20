@@ -183,6 +183,7 @@ Placement evidence: [layered tree](../architecture-options/1-layered.md),
 | Workflow contracts | Application Plans arguments/model; persistence facets | `core/port/driving/plans.go`, driven plan/blob/tracing/validator contracts | `usecase/{drawingupload,drawingprocess,drawingreview}/port.go` | `plans/api/plans.go`; domain revision/blob/repository contracts | `plans/api/revisions.go`; `plans/core/port/{blobs,store}.go` |
 | Processing implementation | Pure `support` engines; I/O in persistence adapters | Pure `core/geometry`; I/O/tracing in driven adapters | `adapter/drawingengine` plus conversion/validator/Claude gateways | Retained existing packages behind `plans/adapters/tracing/pipeline.go` | `plans/processing/*`; local catalogue migration in `plans/adapters/localimport` |
 | Durable work owner | Application Plans plus jobs/persistence work mechanism | Core Plans plus work ports and driving jobs runner | Drawing use cases, job port and runner/queue adapters | Plans context plus shared jobs/outbox | Plans registers jobs; platform supplies queue/outbox |
+| Operational geometry mapping | Application Workplace mapping, operations coordinator and Booking validation | Workplace driving/service/store contracts plus Booking capacity port | `manageworkplace/mapping.go` consumes Booking impact port | Workplace mapping domain/publication command plus Booking API | `workplace/mapping.go` and Definitions API plus Booking inventory validation |
 
 Evidence: [layered Plans](../architecture-options/1-layered.md),
 [hexagonal pipeline](../architecture-options/2-hexagonal.md),
@@ -196,14 +197,14 @@ All five candidates use the same agreed logical owners, expressed through their
 different technical organisations. This module-first tree names
 [Identity, Workplace, Booking, Events, Exchange, Visitors, Plans, Notifications,
 Attendance and Policy](../architecture-options/5-modular-monolith.md).
-The architecture style remains pending; concrete paths and remaining evidence/
-publication boundaries are representative design work.
+The architecture style remains pending; concrete paths, evidence retention
+settings and publication-guard mechanics are representative design work.
 
 | Proposed module | Owned responsibility and private published seam |
 | --- | --- |
 | Identity | Combines workforce/directory projection, verified source correlation, sessions, capabilities and delegation; `identity/api/{access,people,delegation,events}.go`. |
-| Workplace | Versioned offices/buildings/floors/spaces/calendars and baseline neighbourhood definitions; `workplace/api/{definitions,events}.go`; no claim writes. |
-| Booking | Attendance demand/travel, cycles/groups/solver/proposals/run progress, dated claims, desk use/waitlists, business room intentions, venue claims and outage protection; `booking/api/{claims,planning,allocation,desks,rooms,venues,operations}.go`. |
+| Workplace | Versioned definitions/calendars/bundles, retirement schedules/reactivation and operational geometry mappings after Booking impact validation; `workplace/api/{definitions,events}.go`; no claim writes. |
+| Booking | Attendance demand/travel, cycles/groups/solver/proposals/run progress, dated claims, desk use/waitlists, business room intentions, venue claims, validated operational occupancy evidence and outage protection; `booking/api/{claims,planning,allocation,desks,rooms,venues,operations}.go`. |
 | Events | Event catalogue/audience/registration, ticket capacity, named tickets and admission; `events/api/{events,tickets}.go`. Coordinates venue changes through Booking's participant; owns its event/ticket SQL and migrations. |
 | Exchange | Provider mappings, desired/observed calendar state, subscriptions/delta progress and reconciliation; `exchange/api/{reconciliation,events}.go`; applies all business capacity/transitions through Booking. |
 | Visitors | Hosted/restricted visits, verification/reception/retention; `visitors/api/{visits,ticket_visits}.go`; the named `VisitTicketIssuance` transaction joins Events through owning interfaces. |

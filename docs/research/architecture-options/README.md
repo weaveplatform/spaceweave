@@ -49,8 +49,10 @@ is agreed: Events owns registration/tickets/admission and Booking owns venue
 claims, coordinated through owning interfaces in one local transaction where
 required. [Registration-created visits and tickets](../../adr/0024-create-event-visitor-visits-with-tickets-atomically.md)
 also commit together through Events and Visitors; reusing an existing valid
-visit does not make it subject to rollback on failed issuance. The rest of the
-blueprint's detailed module split remains proposed.
+visit does not make it subject to rollback on failed issuance. The agreed logical
+owners also include Booking operational evidence, Attendance reporting projections,
+Plans asset approval and Workplace mapping activation; these constrain all five
+layouts without selecting a repository style.
 
 - One organisation, many offices, 100,000 staff and 60,000 desks. Offices contain
   buildings/floors/plans. Neighbourhoods belong to one building, can span its
@@ -76,7 +78,15 @@ blueprint's detailed module split remains proposed.
 - Allocation means allocated; the owner's personal check-in means taken. A PA
   cannot check in the owner's desk. Anonymous occupancy never establishes the
   owner's attendance or withholds a no-show desk from the pool. Optional sensors
-  support post-check-in vacancy release; missing signals are not vacancy.
+  support post-check-in vacancy release; missing signals are not vacancy. Booking
+  owns validated operational evidence and commits facts for separately retained
+  Attendance/Reporting projections.
+- Retirement is immediate or scheduled at an office-local date/time. Publication
+  immediately excludes new bookings for use on/after that point, including
+  descendants, while preserving confirmed commitments. Authorised reactivation
+  validates definitions, calendars and dated inventory with the same identity
+  and history. Deletion is separate and refuses protected dependencies without
+  silent cancellation or cascade.
 - Bidirectional Exchange Online room create/edit/cancel. App requests hold local
   capacity pending room acceptance; compatible changes reconcile automatically.
   Preserve actor versus owner/organiser, source-labelled delegation, revocation
@@ -134,7 +144,10 @@ blueprint's detailed module split remains proposed.
   explain how ownership is enforced in their own organisation.
 - Azure Blob and Google Cloud Storage behind one interface, active provider by
   deployment configuration; immutable plan/render revisions, PostgreSQL metadata
-  and verified recovery copies before durable/publication acknowledgement.
+  and verified recovery copies before durable/publication acknowledgement. Plans
+  approves immutable assets; Workplace publishes geometry-to-stable-space mappings
+  after Booking validates dated-inventory/commitment impact. Approval is distinct
+  from activation even when one admin workflow performs both.
 - One image/release, independent Kubernetes HTTP/allocation/Exchange/tracing/
   maintenance roles, scoped/federated workload identities, organisational secret
   management and OpenTelemetry/JSON telemetry through a Collector.
@@ -188,6 +201,23 @@ not inherent guarantees or restrictions of the architectural labels.
 Every candidate still needs PostgreSQL capacity protection, retry-safe durable
 work, source-aware authorisation, provider reconciliation and whole-system
 recovery exercises. Those concerns are not solved by changing directory names.
+
+## Remaining shared design questions
+
+Confirmed outage-record custody still needs one logical decision across the set.
+The layered example currently stores incidents with Work, Clean stores confirmed
+windows with Policy, and the hexagonal/modular examples place protection records
+in Booking. These are unresolved ownership proposals, not differences justified
+by repository style. Separate a durable incident declaration from each owner's
+protected deadline state and from Policy's configurable rules; resolve custody
+before implementation. All affected actions must retain consistent protection
+through retries and recovery regardless of where code is organised.
+
+Retirement protects existing confirmations, but treatment of pre-existing
+unconfirmed holds and offers still needs a shared rule, including late Exchange
+acceptance. No candidate may silently treat that open policy as a completed
+booking or deletion decision. The [lifecycle contract](../api-surfaces/workplace-lifecycle.md)
+records the settled use-time and reactivation requirements.
 
 ## How to review the set
 

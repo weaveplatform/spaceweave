@@ -82,8 +82,13 @@ A place that can be booked. In-scope kinds are desks, meeting rooms, car parking
 and event spaces.
 
 **Workplace retirement**:
-Withdrawal of an office, building, floor or space from new bookings while existing
-confirmed commitments remain available to use and manage.
+Withdrawal of an office, building, floor or space from new bookings for use on or
+after its published effective date and time, while existing confirmed commitments
+remain available to use and manage. Retirement may be immediate or scheduled.
+
+**Workplace reactivation**:
+Restoration of a retired workplace resource to new-booking eligibility after
+validation, retaining its identity, commitments and history.
 
 **Space requirement**:
 A mandatory space feature that must be satisfied for a booking request to be
@@ -164,6 +169,14 @@ A representation of a floor's layout.
 
 **Plan revision**:
 An immutable version of a drawing or approved floor-plan representation.
+
+**Plan approval**:
+Acceptance of an immutable drawing revision for use in a floor plan. Approval
+alone does not change which spaces are available to book.
+
+**Operational plan mapping**:
+The published association between approved floor-plan geometry and stable space
+identities used for booking. Its activation is distinct from drawing approval.
 
 **Parking area**:
 A location offering bookable parking through specific bays or unassigned
@@ -248,6 +261,11 @@ The assigned staff member's personal confirmation that they are using their desk
 **Occupancy signal**:
 Evidence that a desk is physically occupied, separate from its assignee's
 check-in.
+
+**Operational occupancy evidence**:
+Validated observations retained to decide whether a personally checked-in desk
+has remained vacant long enough to be released. These observations are distinct
+from the derived information retained for attendance reporting.
 
 **Office-presence signal**:
 Evidence that a person is present somewhere in an office, without establishing
