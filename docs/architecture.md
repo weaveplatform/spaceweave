@@ -113,8 +113,20 @@ technical guidance and design tradeoffs.
     person/application across sessions and clients.
   - Established: durable public operation references with authorised progress,
     failure and result reads for allocation, floor-plan processing and exports.
-  - Then: receipt retention, stable-refusal replay, partial operation results and
-    cancellation boundaries; exact wire details and load-validated numeric limits.
+  - Established: recover ambiguous outcomes across reloads/client restarts and
+    a return the next working day before inviting another submission. Resource
+    visibility is independent of retry-receipt retention.
+  - Established: equivalent retries ignore JSON property order and whitespace,
+    preserve omitted/null distinctions and include owner/target/preconditions.
+  - Established: definitive refusal replay, accurate partial allocation results
+    and cancellation at workflow boundaries. Stop allocation before another group
+    commit, prevent unfinished plan publication and clean incomplete exports;
+    preserve committed groups and completed export access/expiry.
+  - Established: Events owns registration, tickets and admission; Booking owns
+    event-space claims. Capacity-coupled changes coordinate through owning
+    interfaces in one local transaction where required.
+  - Then: receipt duration/expiry/reconciliation, cancellation/completion ordering,
+    exact wire details and load-validated numeric limits.
   - Then: shared review of the detailed module map and interface contracts in
     the blueprint, followed by implementation validation.
 - Persistence and background work
@@ -236,10 +248,15 @@ retry receipts, previous-version configuration edits, two actor-owned admission
 classes and durable public operation status. Definitive refusals replay their
 retained outcome. Allocation results distinguish unfulfilled demand from technical
 interruption; cancellation stops future work at safe boundaries while preserving
-committed effects. Receipt-retention duration and expiry/reconciliation policy
-remain unresolved; no numeric default is selected.
+committed effects. JSON formatting does not change a retry identity; omitted
+fields and explicit null remain distinct. Ambiguous outcomes must be recoverable
+after reloads/client restarts and a return the next working day. Receipt-retention
+duration, the recovery calendar and expiry/reconciliation policy remain unresolved;
+no numeric default is selected.
 
-Remaining architectural work includes detailed module/data ownership, operation
+The [Events–Booking decision](adr/0023-separate-events-from-venue-booking.md)
+settles that ownership boundary and its narrow capacity transaction. Remaining
+architectural work includes the rest of the detailed module/data ownership, operation
 schemas, provider deployment permissions, load-validated limits and recovery
 validation. Numerical proposals become defaults only with an explicit requirement
 and validation rationale. Private Teams delivery is limited to an individually

@@ -33,7 +33,8 @@ privacy needs additional rules because the hexagon alone does not provide it.
 
 Booking is the single local authority for dated inventory, claims and releases.
 Exchange observations, event tickets, sensor signals, reports and the allocation
-planner cannot write capacity directly. A shared database adapter is an
+planner cannot write physical-space claims directly. Events owns its ticket
+capacity and admission. A shared database adapter is an
 implementation of several restricted store facets, not permission for every
 service to receive every facet. Logical table owners and migration reviewers
 remain explicit; [ownership](#storage-ownership-and-transactions) explains the
@@ -1113,7 +1114,7 @@ touches model, both port sides, service, persistence, transport and tests.
   make group placement, linked parking and venue/ticket invariants concrete.
   Ownership depends on facets, query checks and review because one package and
   credential cannot provide strong owner isolation by themselves.
-- **Booking is the capacity writer, including planner commits.** This preserves
+- **Booking is the physical-space claim writer, including planner commits.** This preserves
   authority across direct booking, allocation, Exchange and events. The resulting
   Booking service is substantial and needs internal decomposition; distributing
   claim SQL among adapters would weaken correctness.

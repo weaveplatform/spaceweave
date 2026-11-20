@@ -438,8 +438,8 @@ our documented contract, not a universal HTTP-server guarantee.
 | Throttled or temporarily unavailable | `429`/`503`, with retry guidance where applicable. | Not proof that a previous timed-out command failed to commit. |
 
 `GET /operations/{id}` belongs to the public REST contract with access restricted
-to the authorised initiator/owner/operator scope. Define accepted/running/succeeded/failed
-and any genuinely supported cancellation separately from the business resource.
+to the authorised initiator/owner/operator scope. Define execution states and the
+required allocation/plan-processing/export cancellation separately from the business resource.
 Return bounded error/result links and progress/freshness, not raw provider
 payloads, SQL or secrets. Expiry of operation history does not delete the booking.
 
@@ -609,12 +609,18 @@ public operation references with authorised progress and result reads.
 
 Definitive business refusals replay the same outcome for a retained command identity.
 Allocation results distinguish unfulfilled demand from technical interruption.
-Authorised cancellation stops work at safe boundaries and preserves committed
-placements/effects. These behaviours are detailed in the [request contract](request-behaviour.md).
+Authorised cancellation stops allocation before another group commit, prevents
+unfinished plan publication and cleans incomplete exports; completed effects and
+export results retain their normal rules. Ambiguous outcomes are recoverable
+across reloads/client restarts and a return the next working day. Equivalent
+JSON requests ignore property order/whitespace, preserving omitted/null values
+and original preconditions. These behaviours are detailed in the
+[request contract](request-behaviour.md).
 
 Remaining design work includes retry-retention duration and expiry/reconciliation
 behaviour, concrete operation/resource schemas, pagination/input bounds, measured
 rates and worker capacity, provider deployment permissions and compatibility-tested
-code generation. The repository/module layout remains an independent architecture
+code generation. The [Events–Booking boundary](../../adr/0023-separate-events-from-venue-booking.md)
+is agreed; the remaining repository/module layout is an independent architecture
 choice. Each unresolved item should identify a requirement, alternatives, tradeoff
 and validation criterion before becoming an implementation contract.

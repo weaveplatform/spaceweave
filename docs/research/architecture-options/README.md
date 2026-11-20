@@ -44,8 +44,10 @@ resource-level authority remain separate from directory layout.
 Use the [product scope](../../../README.md#product-scope),
 [glossary](../../../GLOSSARY.md), [architecture decisions](../../README.md) and
 [policy defaults](../../policy-defaults.md) as the authoritative requirements.
-The blueprint's detailed module split is a proposal, not a requirement for the
-other four options to reproduce.
+The [Events–Booking boundary](../../adr/0023-separate-events-from-venue-booking.md)
+is agreed: Events owns registration/tickets/admission and Booking owns venue
+claims, coordinated through owning interfaces in one local transaction where
+required. The rest of the blueprint's detailed module split remains proposed.
 
 - One organisation, many offices, 100,000 staff and 60,000 desks. Offices contain
   buildings/floors/plans. Neighbourhoods belong to one building, can span its
@@ -159,15 +161,15 @@ not inherent guarantees or restrictions of the architectural labels.
 | Decision | Layered | Hexagonal | Clean | DDD | Modular monolith |
 | --- | --- | --- | --- | --- | --- |
 | Main navigation | `transport`, `application`, `model`, `persistence`. | One `core` and driving/driven `adapter` roots. | `entity`, `usecase`, `adapter`, `infrastructure`. | Context first, then uniform `api/domain/application/adapters`. | Module first; small public interface, private implementation, inner ports/adapters where useful. |
-| Booking authority | Booking application service alone receives capacity mutation facets. | Core Booking service alone receives capacity writer ports. | Booking mutation interactor implements injected consumer-owned command ports. | Booking context owns capacity repositories and coordinated application handlers. | Booking module owns claims and all capacity-coupled workflows. |
+| Booking authority | Booking application service alone receives dated-space claim mutation facets. | Core Booking service alone receives physical-capacity writer ports. | Booking mutation interactor implements injected consumer-owned physical-claim ports. | Booking context owns physical-capacity repositories and coordinated application handlers. | Booking module owns dated-space claims; Events owns ticket capacity. |
 | Allocation placement | Sibling application planner calls Booking. | Core allocation service calls Booking through a driving contract. | Allocation use case receives a Booking command implementation through its own port. | Pure planner and allocation handlers inside Booking context. | Separate planning module computes proposals; Booking validates/commits them. |
-| Event venue and ticket consistency | Events coordinates shared transaction; Booking retains its writer. | Core Events coordinates transaction-scoped owner facets. | Capacity-coupled event/ticket operations join the Booking mutation family through Events-owned ports. | Events and Booking use an explicit shared local transaction; ordinary aggregate transactions remain the default. | Event/audience/ticket/admission behaviour lives inside Booking, so venue/ticket changes remain local. |
-| Visitor ticket linkage | Named Events/Visitors shared transaction. | Named owner-participating transaction. | Narrow visit/ticket capabilities in the capacity transaction. | Stage/reuse a visit, then publish a linked ticket idempotently. | Named Booking/Visitors transaction exception. |
+| Event venue and ticket consistency | Events coordinates shared transaction; Booking retains its writer. | Core Events coordinates transaction-scoped owner facets. | Events' manageevent family coordinates its own ticket state with Booking's venue participant through consumer-owned ports and shared unit of work. | Events and Booking use an explicit shared local transaction; ordinary aggregate transactions remain the default. | Separate Events and Booking owners join the narrow venue transaction; neither receives foreign repositories. |
+| Visitor ticket linkage | Proposed named Events/Visitors shared transaction. | Proposed named owner-participating transaction. | Proposed narrow Events/Visitors capabilities in one transaction. | Proposed staged/reused visit, then idempotently published linked ticket. | Proposed named Events/Visitors transaction exception. |
 | Identity and access | Separate Directory/Access application subjects over shared models/persistence. | Separate core Directory/Access services over central contracts. | Staff entities plus provisioning/login/authorisation operation families. | Directory and Access contexts with published eligibility views. | One Identity module combines workforce projection, access and delegation. |
 | Exchange state | Exchange application/persistence subject coordinates with Booking. | Core Exchange service and provider adapter call Booking. | Reconciliation use cases consume Booking commands through their own ports. | Exchange context translates provider observations for Booking. | Booking owns room/provider state behind its Exchange adapter. |
 | SQL and migration custody | Logical owners in a common PostgreSQL package plus ownership manifest. | Logical owners in one PostgreSQL adapter plus restricted facets/manifest. | Owner-labelled repository groups and migration manifests, assembled through narrow handles. | Context-owned repositories and migration sets. | Module-private repositories and migration sets. |
 | What enforces locality | Import/facet/query review across horizontal layers. | Core/adapter import checks plus writer/facet construction rules. | Ring checks, no use-case peer implementation imports, writer and SQL ownership checks. | Context API checks, domain purity and explicit transaction exception review. | Public-interface imports, private implementation packages and SQL ownership review. |
-| Main structural cost | One feature touches several technical roots; shared model/store can grow. | Central model/ports/store/composition can become shared hotspots. | More ports and wiring; a deliberately broad transactional interactor. | Uniform layers and context/event contracts; shared transactions couple aggregate/context boundaries. | Broad Booking ownership to keep real invariants local; a visitor transaction still crosses modules. |
+| Main structural cost | One feature touches several technical roots; shared model/store can grow. | Central model/ports/store/composition can become shared hotspots. | More ports and wiring; cross-owner venue coordination through consumer-owned interfaces. | Uniform layers and context/event contracts; shared transactions couple aggregate/context boundaries. | Module custody plus explicit Events/Booking venue coordination and proposed Events/Visitors issuance coupling. |
 
 Every candidate still needs PostgreSQL capacity protection, retry-safe durable
 work, source-aware authorisation, provider reconciliation and whole-system
@@ -184,11 +186,12 @@ The most consequential differences to review are:
 - **Where changes concentrate.** A new booking rule crosses horizontal roots in
   options 1–3, a context's four layers in option 4, and the owning module's
   implementation in option 5. Integration/composition changes remain explicit.
-- **How much transaction coupling is acceptable.** Options 1–2 make multi-owner
-  coordination natural but guard writer facets. Option 3 concentrates coupled
-  mutations in an interactor. Option 4 documents coordinated writes across
-  aggregate/context boundaries. Option 5 groups event capacity with Booking and retains
-  one visitor-link exception. Each choice has a different maintenance cost.
+- **How transaction coupling is expressed.** Options 1–2 use guarded owner
+  facets, option 3 consumer-owned participant ports, option 4 context interfaces,
+  and option 5 module APIs with registered scope participants. All retain the
+  agreed Events/Booking venue boundary. Visitor-creation atomicity remains a
+  separate product choice: the staged-visit and shared-transaction proposals
+  have different failure/cleanup costs.
 - **Whether an internal seam earns its cost.** The shared core, repeated use-case
   ports, uniform context layers and selectively deep modules expose different
   amounts of wiring. A printed folder is not automatically useful abstraction.

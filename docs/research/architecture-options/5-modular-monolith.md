@@ -21,29 +21,27 @@ proposed design choices for review.
 ## Summary
 
 Organise the application by modules with explicit public interfaces and private
-data ownership. Draw the largest module around the state that must change
-together: Booking owns all dated capacity claims, desk transitions, room holds,
-event venue bookings, ticket counts and admission. Planning proposes placements;
+data ownership. Booking owns dated physical capacity claims, desk transitions,
+room holds and event-space bookings. Events separately owns event details,
+audience, registration, tickets and admission. Planning proposes placements;
 it cannot write claims. Workplace defines spaces; it cannot reallocate a booked
 desk by editing a definition. Other modules own identity, visits, plans,
 notification delivery, reporting and policy publication.
 
-The unchanged scale is one organisation across many offices, 100,000 staff and
-60,000 desks. Bookable kinds include desks, meeting rooms, specific parking bays,
-pooled parking and event venues; events issue free tickets to named attendees.
+The scale is one organisation across many offices, 100,000 staff and 60,000
+desks. Bookable kinds include desks, meeting rooms, specific parking bays,
+pooled parking and event venues; Events issues free tickets to named attendees.
 
-This candidate deliberately brings the full event business operation into
-Booking. Its event catalogue, audience and registration windows live beside
-venue capacity and tickets, rather than leaving authoritative eligibility in an
-Events module. An event edit and registration therefore lock the same event
-state before making a decision. This is a proposed consistency boundary, not a
-claim that every event-related task is inherently booking logic.
+The [Events–Booking boundary](../../adr/0023-separate-events-from-venue-booking.md)
+is agreed. Events retains its distinct attendance lifecycle instead of placing
+all event behaviour in Booking. Venue/time/capacity changes and ticket issuance
+coordinate through owning interfaces in one short local transaction where
+required. Each owner validates and writes its own state; an Events precheck
+followed by an unrelated Booking commit would leave a race. Asynchronous events
+alone cannot enforce a simultaneous venue shrink and ticket issue.
 
-This candidate chooses a broad Booking module around local resource claims
-and event admission because those invariants change together. The alternative of separate Events and Booking
-owners is assessed in [placement choices](#placement-choices-and-friction),
-including its required shared transaction. Merely exchanging events cannot
-enforce a simultaneous venue shrink and ticket issue.
+The remaining module placements and concrete transaction-scope names below are
+representative proposals. They do not approve this entire ten-module map.
 
 Dependency rules for this candidate:
 
@@ -72,10 +70,10 @@ Dependency rules for this candidate:
    handlers. Only app and command entrypoints import module constructors.
    Provider adapters are registered explicitly; business services do not locate
    dependencies through a service registry.
-7. A module alone writes its schema and migrations. The single named write exception,
-   `VisitTicketIssuance`, lets Booking invoke Visitors' published command within
-   one local PostgreSQL transaction. Each participant still writes only its own
-   tables. Source-owned validation guards may enlist read-only participants in
+7. A module alone writes its schema and migrations. Two narrow named write
+   scopes are proposed: `EventVenueChange` coordinates Events and Booking;
+   `VisitTicketIssuance` coordinates Events and Visitors. Each participant joins
+   one local PostgreSQL transaction and still writes only its own tables. Source-owned validation guards may enlist read-only participants in
    an explicitly registered operation scope. No ambient transaction may silently
    enlist arbitrary modules or turn a validation read into a cross-owner write.
 
@@ -92,7 +90,7 @@ the same deployment roles; none implies microservices.
 ```text
 spaceweave/
 ├── cmd/spaceweave/          one Cobra executable; HTTP and worker roles
-├── internal/               app, kernel, platform, nine modules, gateways, layout
+├── internal/               app, kernel, platform, ten modules, gateways, layout
 ├── pkg/                    only reusable published clients when justified
 ├── api/                    OpenAPI source and generation configuration
 ├── web/                    staff, admin, shared UI and existing floor-plan renderer
@@ -131,12 +129,12 @@ one directory containing named Go files counts as one package. SQL directories,
 frontend folders and parent directories without Go files do not. Unlisted unit
 tests and generated expansion are not included in the totals.
 
-Nine module names are proposed: Identity, Workplace, Booking, Planning,
-Visitors, Plans, Notifications, Attendance and Policy. Identity combines access
-and workforce projection to make observed deactivation invalidate sessions in
-its own transaction. Booking combines event management with resource claims.
-These are defensible alternatives to the unapproved blueprint, not a renamed
-copy of it.
+Ten module names are represented: Identity, Workplace, Booking, Events,
+Planning, Visitors, Plans, Notifications, Attendance and Policy. Events is a
+separate owner as agreed; the remaining placements are proposed. Identity
+combines access and workforce projection to make observed deactivation invalidate
+sessions in its own transaction. This map is an alternative to the blueprint's
+remaining proposed boundaries, not a renamed copy of it.
 
 <!-- Counted candidate tree begins. -->
 ```text
@@ -253,8 +251,7 @@ spaceweave/
 │   │   │   ├── allocation.go
 │   │   │   ├── desks.go
 │   │   │   ├── rooms.go
-│   │   │   ├── events.go
-│   │   │   ├── tickets.go
+│   │   │   ├── venues.go
 │   │   │   └── operations.go
 │   │   ├── core/
 │   │   │   ├── model/
@@ -285,14 +282,8 @@ spaceweave/
 │   │   │   │   ├── request.go
 │   │   │   │   ├── reconcile.go
 │   │   │   │   └── cancel.go
-│   │   │   ├── events/
-│   │   │   │   ├── publish.go
-│   │   │   │   ├── venue.go
-│   │   │   │   └── audience.go
-│   │   │   ├── ticketing/
-│   │   │   │   ├── issue.go
-│   │   │   │   ├── visit_link.go
-│   │   │   │   └── admit.go
+│   │   │   ├── venues/
+│   │   │   │   └── claims.go
 │   │   │   ├── protection/
 │   │   │   │   ├── outages.go
 │   │   │   │   └── deadlines.go
@@ -302,18 +293,16 @@ spaceweave/
 │   │   └── adapters/
 │   │       ├── http/
 │   │       │   ├── claims.go
-│   │       │   ├── events.go
 │   │       │   └── operations.go
 │   │       ├── postgres/
 │   │       │   ├── claims.go
 │   │       │   ├── capacity.go
-│   │       │   ├── events.go
+│   │       │   ├── venues.go
 │   │       │   ├── exchange.go
 │   │       │   ├── evidence.go
 │   │       │   └── migrations/
 │   │       │       ├── 0001_inventory_claims.sql
-│   │       │       ├── 0002_events_tickets.sql
-│   │       │       └── 0003_visit_ticket_link.sql
+│   │       │       └── 0002_room_reconciliation.sql
 │   │       ├── exchange/
 │   │       │   ├── client.go
 │   │       │   ├── subscriptions.go
@@ -327,6 +316,30 @@ spaceweave/
 │   │       └── storetest/
 │   │           ├── claims.go
 │   │           └── races.go
+│   ├── events/
+│   │   ├── module.go
+│   │   ├── api/
+│   │   │   ├── events.go
+│   │   │   └── tickets.go
+│   │   ├── core/
+│   │   │   ├── publish.go
+│   │   │   ├── audience.go
+│   │   │   ├── venue.go
+│   │   │   ├── issue.go
+│   │   │   ├── revoke.go
+│   │   │   ├── visit_link.go
+│   │   │   ├── admit.go
+│   │   │   └── port/
+│   │   │       └── store.go
+│   │   └── adapters/
+│   │       ├── http/
+│   │       │   ├── events.go
+│   │       │   └── tickets.go
+│   │       └── postgres/
+│   │           ├── store.go
+│   │           └── migrations/
+│   │               ├── 0001_events_tickets.sql
+│   │               └── 0002_visit_ticket_link.sql
 │   ├── planning/
 │   │   ├── module.go
 │   │   ├── api/
@@ -572,25 +585,24 @@ public REST. Workers consume private interfaces. Internet-facing user access is
 protected by Conditional Access and application permissions; visitor and provider
 profiles keep their appropriate identity mechanisms.
 
-| Consumer/surface | Contract kind | Binding in this nine-module candidate |
+| Consumer/surface | Contract kind | Binding in this ten-module candidate |
 | --- | --- | --- |
 | UI, MCP, SDK, scripts, contract tests and Terraform | Shared supported public REST operations with scoped projections. | Module HTTP adapters/portal gateway call module `api` interfaces. Separate staff/admin experiences do not require private business APIs. |
 | Human and application callers | Session/CSRF or selected API-token profile; real actor/client/owner and distinct grants. | Identity plus owning command authorisation; shared module ownership does not merge token audiences or grant machine impersonation. |
-| Internal-event visitor, including guest speaker | Internet invitation/verification and restricted visitor/event/ticket REST. | Visitors handles visit scope; Booking owns event audience/tickets/admission. No general anonymous event catalogue follows from guest access. |
+| Internal-event visitor, including guest speaker | Internet invitation/verification and restricted visitor/event/ticket REST. | Visitors handles visit scope; Events owns event audience/tickets/admission. No general anonymous event catalogue follows from guest access. |
 | Entra SCIM and Graph callbacks | Native authenticated provisioning/provider protocols. | Identity owns SCIM; Booking's Exchange adapter owns provider observations/reconciliation. Neither is a generic public mutation backdoor. |
 | Teams and optional occupancy clients | Restricted provider/source protocols. | Notifications handles personal delivery support; Booking owns transition evidence and Attendance reports it. Installation/occupancy does not establish message consent or personal check-in. |
 | Platform workers/private collaborators | Private Go APIs and versioned jobs/facts. | App composes direct module calls; private transaction/source-validation participants cannot be supplied by public clients. |
 | Operational tooling | Private probes/metrics/telemetry plus explicitly authorised public status/repair commands. | Platform routing stays restricted; public repairs invoke owning module interfaces without exposing stores or raw event payloads. |
 
-The broad Booking module serves several public views: staff availability,
-organiser event/ticket management, visitor ticket access and room workflow state.
-One owner does not mean one exposed DTO. Authority, field visibility and operation
+Booking serves staff availability and room workflow state; Events serves organiser
+event/ticket management and scoped ticket access. Authority, field visibility and operation
 contracts are independent of module depth and the caller's SDK/tool label.
 
 Generated Go/TypeScript clients target the supported public OpenAPI contract;
 module `api` packages remain project-private Go interfaces rather than SDK types.
 The UI and automation share semantics while their credential profiles can differ.
-Private worker operations, repositories and `VisitTicketIssuance`/read-validation
+Private worker operations, repositories and named write/read-validation
 scopes are not public endpoints. Distinct human/application authority, initial
 configuration-only Terraform management, independent public API versions and
 follow-on MCP/provider delivery are agreed. Identity owns configurable RBAC;
@@ -599,10 +611,11 @@ is allowed and initial retirement notice is 180 days. Global administration,
 SCIM-backed role mappings, grant-only scoped composition and self-permission
 discovery are agreed. The [agreed request contract](../api-surfaces/request-behaviour.md)
 keeps command receipts with Booking or the other owning module's commit, retaining
-the named visitor-link exception. Previous-version configuration edits, two request
+the named venue and visitor-link scopes. Previous-version configuration edits, two request
 classes, actor budgets and public operation status are agreed; wire/retention
 details remain open. Worker execution is bounded separately. Surface
-bindings preserve the printed candidate inventory; final module selection remains open.
+bindings preserve the printed candidate inventory; the Events–Booking boundary
+is agreed while the remaining module selection stays open.
 
 ## Deep dives
 
@@ -624,7 +637,8 @@ resources it owns; a shared PostgreSQL pool belongs to app.
 | `booking/api.Allocations` | Read planning snapshot; commit one group with expected inputs; return precise stale/conflict causes. |
 | `booking/api.Desks` | Personal check-in, eligible waitlist submission/acceptance, evidence ingestion and protected expiry. |
 | `booking/api.Rooms` | Raise requests; request edits/cancellation; apply observed provider state through reconciliation. |
-| `booking/api.Events` and `Tickets` | Publish/edit audience and venue; issue/revoke ticket; admit ticket; all authoritative event state stays in Booking. |
+| `booking/api.Venues` | Validate and mutate event-space claims as Booking's participant in the named venue workflow; no event/ticket table access. |
+| `events/api.Events` and `Tickets` | Publish/edit event details, audience and registration; coordinate venue changes; issue/revoke tickets and admit attendees using Events-owned state. |
 | `planning/api.Planning` | Manage attendance dates, travel exceptions, cycles, groups, proposals and run status. |
 | `visitors/api.TicketVisits` | Ensure a verified restricted visit for a ticket operation; participates only in the named issuance transaction. |
 | `plans/api.Revisions` | Upload, process, review, publish and retrieve immutable revision metadata and authorised asset access. |
@@ -649,8 +663,9 @@ SCIM credential and a provider application token is not a human delegation.
 
 ### Booking's internal hexagon and transaction boundary
 
-The largest module is divided into private packages by operation, not split into
-independently authoritative desk, parking, venue and ticket modules. Its `model`
+Booking is divided into private packages by operation, with one authority for
+desk, parking, room and venue claims. Events separately owns ticket capacity and
+admission; its coordinated venue workflow invokes Booking's published participant. Its `model`
 package contains local claim and outcome types. Its ports express capabilities
 that its use cases need: load locked capacity guards, persist transitions,
 append work, observe Exchange and ingest occupancy. The PostgreSQL adapter
@@ -684,7 +699,7 @@ prevent an intent cancellation in the gap.
 
 Source mutation commands take those same guards. Guard rows outlive referenced
 versions, so deletion or an absent future row cannot bypass the protocol. After
-Booking's capacity/owner/event guards, validation participants are acquired in
+Booking's capacity/owner/claim guards, validation participants are acquired in
 one fixed module/key order; source writers never synchronously call Booking
 while holding their guards. Ordinary authorisation/provider reads happen before
 this short transaction; the guarded current facts are rechecked inside it.
@@ -741,7 +756,8 @@ migrations install their own tables, indexes and constraints.
 | Identity | `staff`, `source_links`, `source_checkpoints`, `workforce_facts`, `groups`, `memberships`, `sessions`, `capabilities`, `delegation_grants`, `scim_resources` | Correlation, source authority, access and lifecycle in one owned transaction. |
 | Workplace | `offices`, `buildings`, `floors`, `space_definitions`, `office_calendars`, `baseline_neighbourhoods`, `definition_versions` | Definition publication; no dated active claims. |
 | Booking | `inventory_days`, `dated_bundles`, `resource_guards`, `owner_guards`, `claims`, `parking_segments`, `waitlist_entries`, `offers`, `checkins`, `occupancy_evidence`, `protection_windows` | All claim and timeout transitions plus attendance-producing evidence. |
-| Booking, continued | `room_requests`, `exchange_links`, `exchange_observations`, `sync_cursors`, `events`, `event_audiences`, `tickets`, `admissions`, `handover_reviews` | Room reconciliation and full event/admission consistency. |
+| Booking, continued | `room_requests`, `exchange_links`, `exchange_observations`, `sync_cursors`, `handover_reviews` | Room reconciliation and venue claims; no event/ticket/admission writes. |
+| Events | `events`, `event_audiences`, `tickets`, `admissions` | Event lifecycle, registration, ticket capacity and admission, coordinated with Booking's venue state. |
 | Planning | `cycles`, `attendance_intents`, `travel_exceptions`, `collaboration_requests`, `allocation_groups`, `runs`, `proposals` | Demand and solver state; no Booking claim writes. |
 | Visitors | `visitors`, `email_proofs`, `visits`, `visit_restrictions`, `reception_entries` | Verified email, hosts, access windows and visitor-specific retention. |
 | Plans | `uploads`, `plan_revisions`, `render_revisions`, `asset_copies`, `publication_pointers`, `processing_attempts` | Metadata and publication; blob objects remain outside PostgreSQL transactions. |
@@ -752,12 +768,12 @@ migrations install their own tables, indexes and constraints.
 Each migration stream has a module ID and applied version, and startup refuses
 an incompatible schema. App runs the platform stream before module streams in
 declared dependency order; it does not use alphabetical discovery. The migration
-for Booking's visit link explicitly depends on Visitors' first stream. Schema
+for Events' visit link explicitly depends on Visitors' first stream. Schema
 changes that affect cross-owner contracts are reviewed together, with rollback
 and mixed-version behaviour documented.
 
 Cross-module foreign keys are restricted to explicit lifecycle cases. The
-initial allowlist contains only `booking.tickets.visit_id` referencing
+initial allowlist contains only `events.tickets.visit_id` referencing
 `visitors.visits.id`, nullable for staff tickets, with restrictive deletion and
 no cascade. It protects the selected shared issuance boundary. Other references
 use stable IDs, versioned facts and controlled tombstones until a specific
@@ -766,7 +782,7 @@ permission to query the other table nor a retention policy.
 
 The restrictive FK cannot extend the configured visit retention period. Visitors
 marks a retention-due visit under its guard and refuses new ticket linkage.
-An owned staged cleanup tells Booking to remove identifying ticket copies and
+An owned staged cleanup tells Events to remove identifying ticket copies and
 detach the optional link, then lets Visitors purge its details. Each step is
 idempotent and commits in its owner's transaction, with progress, deadlines and
 failure alerts; an indefinite referential hold is not acceptable. Any retained
@@ -782,57 +798,58 @@ execution/search paths, rather than granting Booking broad read/update rights
 on source tables simply to acquire validation locks. Those functions run on
 Booking's transaction connection through the source API's private adapter;
 the API exposes no raw connection. A specially scoped
-transaction connection can write Visitors and Booking solely for
-`VisitTicketIssuance`; code can still misuse its privilege, so CI checks its
-call sites and live role tests reject out-of-scope SQL. PostgreSQL grants are
+transaction connection permits only the registered owners: Events and Booking
+for `EventVenueChange`, or Events and Visitors for `VisitTicketIssuance`.
+Booking's venue-validation guard can join issuance read-only through its API.
+Code can still misuse privilege, so CI checks call sites and live role tests
+reject out-of-scope SQL. PostgreSQL grants are
 real enforcement, while the operation name and allowed participants are
 application enforcement; neither should be presented as sufficient alone.
 
-### Events, visitor tickets and the single transaction exception
+### Events, venue consistency and visitor tickets
 
-`booking/core/events` owns title, organiser, venue, audience selection,
-registration access/window and capacity; `ticketing` owns named tickets and
-admission. The organiser's publication changes and ticket issuance lock the same
-event version. Capacity may never exceed the effective venue capacity, and
-active issued tickets may never exceed the capacity selected for that event.
-Moving to a smaller venue fails or enters an explicit organiser resolution
-workflow if existing tickets cannot fit; it never quietly invalidates tickets.
+`events/core` owns title, organiser, audience, registration access/window,
+selected event capacity, named tickets and admission. Booking owns physical
+venue claims. Publication and ticket issuance lock the Events-owned event
+version; the effective venue is validated through Booking's published API in
+the same transaction. Capacity may never exceed the secured venue, and active
+issued tickets may never exceed the selected event capacity.
 
-Keeping only counters inside Booking would be an incomplete boundary: an Events
-module could close registration or exclude an audience while a stale Booking
-precheck still admitted someone. This candidate places those authoritative
-admission rules in the same module and locked event row. Staff identity and
-visitor verification are separately owned facts, but the registration decision
-uses a current validated fact/version, not a browser-supplied eligibility flag.
+`EventVenueChange` is a narrow proposed write scope: Events coordinates its
+event reference/limit with Booking's old/new venue claims. Each owner's private
+adapter performs only its own writes through the opaque scope. A too-small
+replacement fails or enters an explicit organiser resolution workflow; it
+never quietly invalidates tickets. Ticket issuance takes compatible Booking
+venue guards and the Events event guard, so it sees either the old secured
+venue or the committed replacement. Generic Booking edits cannot bypass this
+workflow. The shared transaction has a documented global lock order and cannot
+expose foreign repositories or become an all-module unit of work.
 
-A visitor ticket must reference a valid visit with a verified email identity,
-host, office and compatible time window. `VisitTicketIssuance` is the only named
-local exception because creating the visit link after ticket commitment could
-leave an unusable entitlement, and creating a durable visit first could leave
-an unexpected visit when capacity is exhausted. The Booking service starts the
-named scope, locks event/venue state, asks `visitors/api.TicketVisits.Ensure` to
-validate/create the restricted visit, inserts the ticket, and commits both
-participants' writes and outbox records together.
+Events also checks current audience and registration rules inside its guarded
+operation. Staff identity and visitor verification remain separately owned
+facts, validated through published interfaces rather than browser-supplied flags.
 
-The scope carries no raw SQL in its public API. The transaction runner authorises
-its two participants; Visitors joins only when that named scope is present and
-rejects unsupported callers. Within it, lock order extends the Booking order
-with visitor/visit guards after event guards. Visitors never calls back into
-Booking while holding visit locks. Email verification and invitation delivery
-happen before or after this transaction respectively, never during it. A repeat
-request returns the original linked ticket/visit using a shared operation key.
+A visitor ticket must reference a valid visit with verified email, host, office
+and compatible time window. `VisitTicketIssuance` joins Events and Visitors in
+one transaction: Events starts the named scope, validates secured venue and
+event eligibility, asks `visitors/api.TicketVisits.Ensure` to validate/create
+the restricted visit, then inserts its ticket. Both owners commit their writes
+and outbox records together. A failed capacity or visit check rolls both back.
 
-Ticket scans lock the ticket and create a unique admission record in Booking's
-transaction. A duplicate scan returns the already-admitted outcome and details
-appropriate to reception capability; it does not decrement a second capacity
-counter. Reception cannot trust a browser's previously rendered ticket status.
-Visit restrictions, ticket revocation and entry time are checked at admission.
-For a restriction change racing admission, Visitors supplies a version guard
-through its API; admission locks/rechecks it with the Visitors-owned narrow
-locking function in a registered read-enlisted scope, retaining the lock through
-Booking's admission commit. It does not create another cross-module write
-transaction. Identity validation follows the same short current-fact protocol.
-This read protocol is an explicit coupling cost to validate.
+The runner permits only those registered writers; Booking's venue guard joins
+read-only. Lock order covers sorted physical-resource guards, the Events event
+guard and then visitor/visit guards. Visitors never calls back into Events or
+Booking while holding visit locks. Email verification precedes the transaction;
+invitation delivery follows commit. A repeated request recovers the original
+linked ticket/visit through the shared retry identity.
+
+Ticket scans lock Events' ticket and create one unique Events admission record.
+A duplicate scan returns the prior outcome and only reception-authorised detail.
+Visit restrictions, ticket revocation and event time are rechecked; a concurrent
+restriction change uses Visitors' published locking validation in the registered
+read-enlisted scope, retained through Events' admission commit. Identity
+validation follows the same short current-fact protocol. These are explicit
+read-consistency couplings, not permission to write another owner's tables.
 
 ### Desk use, waitlists, outage protection and reporting
 
@@ -879,8 +896,9 @@ Visitor, occupancy and attendance retention are independent configured rules.
 They cover owning tables, report projections, identifiable outbox payloads,
 notification copies, diagnostic exports and recovery procedures. Prefer events
 with stable references and minimal personal data; purge/encrypt-and-expire
-payloads where necessary, without destroying the deduplication receipt needed
-for retry safety. Backups need a documented restore-and-reapply retention process.
+payloads where necessary. Retain only the minimal deduplication evidence needed
+within the supported recovery horizon and applicable deletion rules. Backups
+need a documented restore-and-reapply retention process.
 
 ### Exchange adapter, authority and graceful synchronisation
 
@@ -1082,12 +1100,14 @@ tenant installation approval does not count as individual message opt-in.
 ### Composition, generated transport and React portals
 
 App constructs platform mechanisms, Policy, Identity, Workplace, Visitors,
-Plans, Booking, Planning, Notifications and Attendance, then registers
+Plans, Booking, Events, Planning, Notifications and Attendance, then registers
 subscriptions and gateways. Construction order follows injected dependencies;
 event subscription registration follows construction, so consumers do not call
-half-built modules. Booking receives Visitors' narrow ticket-visit contract;
-Visitors does not receive Booking's constructor or stores. The special issuance
-transaction is registered with exactly those two participants.
+half-built modules. Events receives Booking's narrow venue participant and
+Visitors' ticket-visit contract; it never receives their constructors or stores.
+The proposed venue-change scope registers Events and Booking writers; the
+visitor-issuance scope registers Events and Visitors writers plus Booking's
+read-only venue validation. Neither scope authorises arbitrary owner enlistment.
 
 The single OpenAPI source describes externally visible transport; fragments
 follow capabilities and are bundled deterministically. Generated Go server
@@ -1129,7 +1149,7 @@ controls need their own tests and threat review.
 
 ### Enforcement and tests against real PostgreSQL
 
-The import test enumerates the nine allowed module roots, reads the Go import
+The import test enumerates the ten allowed module roots, reads the Go import
 graph and rejects unknown roots or non-API cross-module imports. It also
 rejects provider SDKs and generated REST packages in core and API packages.
 Generated clients remain transport clients; a module cannot circumvent the API
@@ -1148,7 +1168,7 @@ alone miss dynamic SQL and do not prove privilege boundaries.
 | Module/unit | Hard constraints, policy versions, source authority, typed outcomes and retry classification with controlled clocks. |
 | Booking store contracts on real PostgreSQL | Resource/owner exclusion, pooled capacity, transaction rollback and outbox/job atomicity; fake stores cannot prove locking. |
 | Contention suites | Concurrent group/direct/cancel, transfer/parking, check-in/release, outage/expiry, venue/ticket and duplicate admission with barriers. |
-| Cross-module assembly | Named visit/ticket rollback and duplicate request; audience/visit restriction version validation; no partial entitlement. |
+| Cross-module assembly | Named venue-change rollback/ticket race and proposed visit/ticket rollback; audience/visit restriction validation; no partial entitlement. |
 | Provider adapters | Graph subscriptions/delta, late observations and ambiguous sends against controlled Chi test servers; source/Teams errors and retries. |
 | Provisioning | Authenticated SCIM profile, deactivation/reactivation/delete, verified identity correlation and effective dates during source outages. |
 | Recovery/rolling versions | Crash after each durable boundary; old lease cannot commit; expanded schema works with old/new roles; restored database matches published asset copies. |
@@ -1215,7 +1235,7 @@ notification replay and timeout protection. A healthy database replica alone
 does not prove the whole-system target. After promotion, reconcile uncertain
 external effects before resending blindly. Target 99.95% monthly availability
 and one-second p95 initial response at the agreed representative workload need
-contention, load and recovery measurements; nine modules and five role manifests
+contention, load and recovery measurements; ten modules and five role manifests
 do not establish those outcomes.
 
 ## Walkthroughs
@@ -1344,28 +1364,29 @@ guarantee, in-place organiser reassignment or exactly-once synchronisation.
 
 ### 4. Smaller event venue, concurrent ticket and visitor admission
 
-1. An organiser edits the venue through `booking/api.Events`; an attendee calls
-   `booking/api.Tickets.Issue`. Both enter Booking and acquire the same event
-   guard after ordered venue/resource guards. Event audience/window state is
-   authoritative there too, so neither uses a stale independent Events read.
-2. `events/venue.go` locks the old/new venue claims and event state, rechecks
-   effective capacity and issued ticket count, then replaces the venue claim
-   and event capacity together. If existing tickets exceed the proposed venue,
-   the change is refused or an explicit resolution workflow begins.
-3. `ticketing/issue.go` sees either the committed smaller venue or the prior
+1. An organiser edits the venue through `events/api.Events`; an attendee calls
+   `events/api.Tickets.Issue`. Both enter Events. Through owning interfaces,
+   they take compatible Booking venue guards followed by Events' event guard;
+   audience/window state remains authoritative in Events.
+2. `events/core/venue.go` coordinates the named venue transaction. Booking
+   validates/replaces its old/new venue claims; Events rechecks issued tickets
+   and updates its venue reference/capacity. Both owners commit together. If
+   existing tickets exceed the proposed venue, the change is refused or an
+   explicit resolution workflow begins.
+3. `events/core/issue.go` sees either the committed smaller venue or the prior
    valid state, depending on which transaction wins. It checks current audience,
    invitation/public-registration rule, registration window and named attendee
    uniqueness before issuing. Capacity never depends on an eventually updated
    display counter.
 4. A visitor first completes email verification. During `VisitTicketIssuance`,
-   Booking locks event capacity, invokes Visitors' narrow API to validate/create
+   Events locks event capacity, invokes Visitors' narrow API to validate/create
    the host-linked restricted visit, inserts a ticket with that visit ID and
    commits both owned writes, receipts and outbox records in one transaction.
 5. If the ticket loses the last-capacity race, the newly created ticket visit
    rolls back too. If the visit window/host restrictions fail, ticket insertion
    rolls back. Repeating the same operation returns the same valid pair and
    never consumes another seat.
-6. At reception, `ticketing/admit.go` validates ticket, event time and current
+6. At reception, `events/core/admit.go` validates ticket, event time and current
    visit restriction version. It coordinates with Visitors' version guard before
    committing admission; the read coupling prevents a restriction changing
    between a stale eligibility read and a successful entry.
@@ -1376,9 +1397,11 @@ guarantee, in-place organiser reassignment or exactly-once synchronisation.
    identifiable visit/ticket/message/report copies in the required order;
    Attendance does not turn visitor entry into staff desk attendance.
 
-One Booking module makes the event-capacity invariant local, at the cost of
-putting audience and event management there too. The visit link remains an
-explicit two-owner local transaction, with its own assembly and migration tests.
+The event/venue transaction crosses Events and Booking through owning interfaces;
+the proposed visit-link transaction crosses Events and Visitors. These have
+separate participant allowlists, assembly tests and migration checks. Only the
+Events–Booking boundary is settled; visitor-creation atomicity remains a product
+decision rather than a consequence of selecting this candidate.
 
 ### 5. SCIM disable and Workday office/team change during a partial outage
 
@@ -1477,7 +1500,7 @@ move. Preserve algorithm tests and golden fixtures during any later migration.
 | `web/floorplan-iso` | Retained renderer plus `web/shared/FloorPlan.tsx` | React owns a wrapper; renderer owns its DOM subtree; retain JS tests. |
 | Existing tracing CLI/server/catalogue tests | Beside moved packages and new Plans assembly suites | Move incrementally with behaviour; do not rewrite merely to match directories. |
 | Staff access, source provisioning, scope/delegation | New Identity | No existing complete auth package is claimed. |
-| Location definitions, dates, resource claims, allocation, visits/events | New Workplace, Planning, Booking and Visitors | Ownership comes from invariants; Events is deliberately internal to Booking here. |
+| Location definitions, dates, resource claims, allocation, visits/events | New Workplace, Planning, Booking, Events and Visitors | Events owns registration/tickets/admission; Booking retains venue claims and joins the narrow venue transaction. |
 | Delivery, attendance, runtime policy | New Notifications, Attendance and Policy | Distinct state/retention owners; neither reports nor notifications become command truth. |
 | PostgreSQL jobs/outbox, cloud blobs, Kubernetes roles | New platform/Plans adapters/deploy | Existing local files and goroutines do not supply these guarantees. |
 
@@ -1496,16 +1519,17 @@ unit tests are excluded. Root overview and prose examples are not counted.
 
 | Measure | Printed candidate |
 | --- | --- |
-| Business modules | 9 |
+| Business modules | 10 |
 | Gateway packages | 2 |
-| Go packages | 104 |
-| Named Go files, including generated and test files | 222 |
-| Named SQL migration files | 12 |
+| Go packages | 109 |
+| Named Go files, including generated and test files | 229 |
+| Named SQL migration files | 13 |
 | Named non-Go frontend files | 19 |
 | Named Kubernetes manifest files | 7 |
-| Packages under Booking | 19 |
+| Packages under Booking | 18 |
+| Packages under Events | 6 |
 | Packages under Plans | 25 |
-| Cross-module write transaction exceptions | 1, `VisitTicketIssuance` |
+| Cross-module write transaction exceptions | 2, `EventVenueChange` and `VisitTicketIssuance` |
 | Cross-module foreign keys proposed initially | 1, nullable ticket-to-visit link, restrictive deletion |
 
 These structural counts describe the representative proposal, not lines of
@@ -1518,39 +1542,35 @@ catalogue/preference logic, app/deployment configuration and meaningful tests.
 Adding a future independent business module adds its public API, private rules,
 owned persistence/migrations, adapter registration, ownership policy and
 acceptance coverage. Neither has a defensible fixed file-count estimate before
-the capability is known. An event feature here often changes Booking instead
-of adding an Events module; that is a conscious cost of this boundary.
+the capability is known. Event registration/ticket/admission changes belong to
+Events; venue-claim changes cross its explicit Booking contract.
 
 ## Placement choices and friction
 
 The choices below identify the ownership, consistency and change-impact
 tradeoffs that matter when selecting this candidate.
 
-- **Booking includes event business ownership.** Venue claims, audience,
-  registration windows, ticket limits and admission share a local transaction
-  boundary. This avoids stale eligibility checks and broad Events–Booking
-  transaction coordination, but Booking becomes the largest business module
-  and event work competes for its reviewers and migration stream. Private
-  operation packages help navigation without pretending they are independent
-  owners.
-- **A separate Events module remains a valid alternative with a real cost.**
-  It would own audience/catalogue/registration policy and tickets while Booking
-  owned venue claims. Venue moves and ticket issuance would need one named
-  shared local transaction covering locked current event policy, issued count
-  and venue state, with a common lock order and tests. Asynchronous events alone
-  cannot prevent the last-seat race. If most event operations required that
-  exception, the seam would provide weak transactional independence. Keeping
-  mutually atomic ticket/venue state inside Booking is this candidate's
-  preferred comparison placement, not an accepted project decision.
+- **Events and Booking have distinct ownership.** Events owns catalogue,
+  audience, registration, ticket limits and admission; Booking owns venue claims.
+  This agreed boundary limits Booking's breadth and gives event work its own
+  review/migration stream, at the cost of the named shared venue transaction,
+  compatible lock ordering and cross-owner tests. Asynchronous events alone
+  cannot protect the final ticket against a concurrent venue shrink.
+- **Merged event ownership was considered.** Keeping event policy and tickets
+  inside Booking would remove that transaction seam but broaden Booking to own
+  the entire attendance lifecycle. The selected boundary instead keeps all
+  eligibility/ticket rules together in Events and joins Booking only where
+  secured venue state is needed.
+
 - **Identity combines access and workforce projection.** It can revoke known
   effective access and sessions atomically, while source adapters retain explicit
   field ownership. It also concentrates sensitive staff facts and authority
   rules. A future split needs a current security-state protocol, not merely a
   "deactivated" event eventually consumed by an otherwise permissive gateway.
-- **Visitors remains independent despite one shared write operation.** Hosted
-  visits, verification, reception restrictions and visitor retention are real
-  behaviour beyond tickets. `VisitTicketIssuance` preserves atomicity while
-  retaining those responsibilities. The exception couples migration order,
+- **Visitors remains independent despite its shared issuance operation.**
+  Hosted visits, verification, reception restrictions and visitor retention are
+  real behaviour beyond tickets. `VisitTicketIssuance` coordinates Events and
+  Visitors atomically while retaining those responsibilities. The exception couples migration order,
   locking and release compatibility; if exceptions multiply, reconsider the
   boundary rather than generalising an all-module unit of work.
 - **Read consistency still matters across modules.** Visitor restriction

@@ -17,7 +17,7 @@ The detailed repository/module layout is an independent architecture choice.
 
 | Concern | Requirement | Engineering implication |
 | --- | --- | --- |
-| Lost responses | Booking creation, ticket issuance and work submission require a retry key. | Commit the acceptance receipt with the business change or durable work submission. |
+| Lost responses | Booking creation, ticket issuance and work submission require a retry key; recover ambiguous outcomes across reloads, client restarts and a return the next working day. | Commit the acceptance receipt with the business change or durable work submission; recover before inviting another submission. |
 | Competing configuration edits | Workplace, neighbourhood, role and policy edits require the version previously read. | Reject stale edits for every consumer, including UI and Terraform. |
 | Request admission | Publish standard and expensive classes with configurable rate/burst limits. | Each admitted attempt spends one token from its class, including a replay. |
 | Budget ownership | A person/application shares its budget across sessions and clients. | UI/MCP share the person's allowance; machine scripts use the application's allowance. |
@@ -42,9 +42,12 @@ See the [standards analysis](idempotency-and-concurrency.md#what-the-primary-sou
 
 The fingerprint must include a supplied expected version. It must not change
 because a server default or policy version changed after the command was accepted.
-Exact-byte request equivalence is a possible initial convention: clients would
-retain the original body serialisation. The public contract must state the chosen
-scope, equivalence, size limits and mismatch behaviour.
+Compare the validated, client-supplied JSON values rather than raw request bytes:
+property order and insignificant whitespace do not change a request's identity.
+Changed field values, target, booking owner or expected version do. Preserve the
+distinction between an omitted field and explicit `null`; do not reapply current
+server defaults when comparing a retry. Fingerprint encoding/versioning, key
+limits and exact mismatch responses remain implementation-contract work.
 
 Persist receipt uniqueness, the accepted domain outcome and follow-up job/outbox
 records in one bounded PostgreSQL transaction. An office transfer includes its
@@ -96,10 +99,19 @@ existing booking/ticket transition as its natural identity.
 ## Retention and ambiguous outcomes
 
 Retention is a reliability/privacy tradeoff, not a duration prescribed by HTTP.
-Specify the supported automatic retry period, delayed recovery after an ambiguous
-response and the maximum lifetime of nonterminal operations. Derive a published
-receipt-retention policy from those requirements and validate it against storage,
-privacy and operational recovery needs. No initial duration is selected.
+After an ambiguous submission, a person returning the next working day must be
+able to recover its original outcome before being invited to submit again.
+Recovery must survive page reloads and client restarts, including a script
+restarting after an outage, and must recheck current access. This requirement
+does not select a numeric retention period or the calendar used to calculate
+that recovery window.
+
+Specify the supported automatic retry period, delayed recovery and maximum
+lifetime of nonterminal operations. Derive a published receipt-retention policy
+from the agreed recovery promise and validate it against storage, privacy and
+operational recovery needs. No initial duration is selected. Booking and ticket
+visibility follows resource access and retention rules independently of whether
+the original retry receipt still exists.
 
 Retaining a receipt does not hold a transaction open, reserve capacity or extend
 a booking/hold. The receipt is a small record of an outcome. Operation identities
@@ -173,10 +185,17 @@ cancellation calls require the owning workflow's permissions. Cancellation does
 not silently undo bookings, tickets or external effects already committed;
 normal authorised business commands handle later changes.
 
+| Workflow | Agreed cancellation boundary |
+| --- | --- |
+| Allocation | Stop before committing another group. Retain groups already committed and report the remaining unprocessed demand. |
+| Floor-plan processing | Stop processing cooperatively where possible and prevent an unfinished revision from being published. |
+| Export generation | Stop generation and clean up incomplete output. An already completed result retains its normal access and expiry rules. |
+
 Public monitors return bounded status/progress, safe errors and result links.
 Queue payloads, SQL failures, provider credentials and worker repair controls
-remain private. Define terminal states, progress freshness and per-workflow
-cancellation boundaries in the concrete operation schemas.
+remain private. Define terminal states, progress freshness and the ordering of
+concurrent completion/cancellation in the concrete operation schemas, preserving
+these workflow boundaries.
 
 ## Proposed error and retry profile
 
@@ -205,13 +224,15 @@ transport failure. Apply native response rules to SCIM and provider callbacks.
 | DDD | Owning application command/coordinator with explicit local coordination. |
 | Modular monolith | Owning module and named cross-module transaction participants where required. |
 
-Every implementation must demonstrate simultaneous identical commands, response
-loss after commit, fingerprint mismatch, stale edits, partial group placement,
-refusal replay, revoked access, visitor-data removal, cancellation during commits,
-shared budgets across replicas and saturation of heavy-work queues. Test clients
+Every implementation must demonstrate simultaneous equivalent commands, JSON
+formatting changes, omitted/null distinction, response loss after commit,
+recovery across reloads/restarts and the next-working-day window, fingerprint
+mismatch, stale edits, partial group placement, refusal replay, revoked access,
+visitor-data removal, each cancellation boundary, shared budgets across replicas
+and saturation of heavy-work queues. Test clients
 through supported public contracts as well as real PostgreSQL concurrency paths.
 
 Remaining design items are retention/expiry policy, exact operation and response
-schemas, fingerprint equivalence, rate-header conventions and load-validated
+schemas, fingerprint encoding/versioning, rate-header conventions and load-validated
 numeric limits. These are explicit engineering decisions supported by the
 requirements and primary-source research, rather than unexplained defaults.

@@ -34,11 +34,12 @@ Narrowly constructed repository handles preserve one local booking authority.
 A concrete SQL adapter may satisfy several interfaces, but constructor wiring
 must prevent use cases from receiving a general unrestricted store.
 
-One `usecase/booking` interactor family owns every local capacity mutation.
+One `usecase/booking` interactor family owns every dated physical-space claim mutation.
 Allocation, lifecycle and Exchange workflows invoke it through their own ports.
 Pure `entity/claim` rules are shared without importing booking orchestration.
-Capacity-coupled event changes and ticket issuance also enter this family; this
-is an intentional concentration of transactional work, discussed below.
+Events' `manageevent` family separately owns registration, tickets and admission.
+Its venue workflow coordinates Booking's published participant in one local
+transaction through consumer-owned ports; neither family receives foreign SQL.
 It avoids copying claim logic into twenty small interactors while preserving
 this candidate's prohibition on use-case implementation imports.
 
@@ -185,8 +186,8 @@ internal/usecase/
   job/               enqueuer.go
                      enqueue durable work in the active transaction
   booking/           port.go command.go commit.go direct.go transfer.go release.go
-                     checkin.go offer.go room.go event.go ticket.go adjustment.go
-                     one local capacity/state writer; no external provider calls
+                     checkin.go offer.go room.go venue.go adjustment.go
+                     one physical-space claim writer; no external provider calls
   availability/      port.go query.go
                      eligible search and authoritative reads; no promises from cache
   collectintent/     port.go intent.go cycle.go
@@ -217,8 +218,8 @@ internal/usecase/
                      reduce source state; revoke access; booking cleanup/handover jobs
   managevisit/      port.go invite.go arrival.go departure.go
                      host/window checks and reception operations
-  manageevent/      port.go publish.go edit.go register.go
-                     descriptive/audience edits; capacity operations via booking port
+  manageevent/      port.go publish.go edit.go register.go venue.go issue.go revoke.go admit.go
+                     Events owns registration/tickets/admission; Booking venue participant
   notify/           port.go compose.go deliver.go preference.go
                      recipients, message-specific consent and bounded delivery
   drawingupload/    port.go upload.go attach.go
@@ -363,8 +364,9 @@ package imports another implementation merely because both are exposed by
 public REST. Controllers/composition can reuse the same authorised interactor
 for all client kinds. Generated transport stays outside entities and use cases.
 
-The broad Booking mutation interactor still enforces capacity and event/ticket
-consistency. Publishing its supported business commands does not expose the
+Booking enforces physical-space claims; Events' manageevent interactor owns
+ticket capacity and coordinates venue consistency through owning interfaces.
+Publishing supported business commands does not expose the
 transaction handle or every internal transition. SDKs derive from the public
 OpenAPI source; private entity/port changes do not automatically change that
 schema. Compatibility must cover independently upgraded clients as well as the
@@ -395,7 +397,7 @@ snapshot result is never final authority.
 
 ```text
 internal/usecase/booking/
-  port.go          Claims, Inventory, Waitlist, EventCapacity, Authority, Policies,
+  port.go          Claims, Inventory, Waitlist, Authority, Policies,
                    unitofwork.Runner, event.Appender, job.Enqueuer
   command.go       entity-valued commands/results and operation dispatch
   commit.go        whole allocation-group validation and one transaction
@@ -405,14 +407,14 @@ internal/usecase/booking/
   checkin.go       personal assignee check-in under current claim lock
   offer.go         capacity holds, acceptance, decline and protected expiry
   room.go          pending holds, acceptance/decline and external observation apply
-  event.go         venue claim + event capacity change under event guard lock
-  ticket.go        issue/revoke named tickets and admit one valid ticket once
+  venue.go         Booking-owned venue validation/claim participant in shared scope
   adjustment.go    dated unallocated-desk movement; preserve confirmed claims
 ```
 
 The file split does not create new importable packages. This candidate accepts
-a substantial booking interactor because the alternative would be replicated
-or externally composed capacity rules. Pure rule tests sit beside `entity/claim`;
+a substantial booking interactor for physical claims without copying their
+rules into unrelated use cases. Events retains its own eligibility/ticket rules.
+Pure rule tests sit beside `entity/claim` and `entity/event`;
 transactional race tests exercise the interactor against PostgreSQL.
 
 Consumer-owned composition uses entity request/result types, not another use
@@ -423,7 +425,7 @@ case's `Input` struct:
 | `allocate` | `PlacementCommitter.CommitGroup(context, allocation.Proposal)` | booking interactor |
 | `roomrequest` | `RoomCommands.Request/Change/Cancel(context, claim.RoomCommand)` | booking interactor |
 | `exchangesync` | `RoomObserver.Apply(context, exchange.Observation)` | booking interactor |
-| `manageevent` | `CapacityCommands.MoveVenue/IssueTicket/Admit(context, event.Command)` | booking interactor |
+| `manageevent` | `VenueParticipant.Validate/Replace(context, unitofwork.Scope, claim.VenueCommand)` | Booking's owning venue participant; Events keeps its ticket/admission writer. |
 | `lifecycle` | `PersonalClaims.ReleaseFuture(context, staff.Departure)` | booking interactor |
 | `recordoccupancy` | `VacancyReviewer.Review(context, attendance.EvidenceRef)` | booking interactor |
 | `manageworkplace` | `DatedInventory.ApplyDefinition(context, workplace.Change)` | booking interactor |
@@ -463,8 +465,8 @@ labels describe data responsibility, not self-contained domain packages.
 | staff | source links, observations, effective staff state, membership, sessions | provisioning/workforce/lifecycle through distinct handles |
 | delegation | source-labelled grants and verification observations | delegation; booking reads current authority |
 | exchange | external mappings, common baseline, cursors, subscriptions, conflicts | exchangesync; no direct mutation of booking claims |
-| visits | visitors, host/window, arrival/departure and verified access | managevisit; constrained ticket-link capability for booking |
-| events | descriptions, audience/access, venue reference, limit, tickets, admission | manageevent handles descriptions; booking alone gets capacity-write handle |
+| visits | visitors, host/window, arrival/departure and verified access | managevisit; constrained ticket-link capability consumed by manageevent |
+| events | descriptions, audience/access, venue reference, limit, tickets, admission | manageevent owns all event/ticket/admission mutations; Booking receives no Events repository. |
 | drawings | source/render revisions, manifests, review/current pointers | upload/process/review, each with limited operations |
 | policies | versions, publication and confirmed outage windows | policy/outage operations; booking reads frozen/current versions |
 | notifications | preferences, recipient-purpose deliveries, provider attempts | notify; no authority to change booking outcome |
@@ -704,36 +706,38 @@ event admission. A visitor principal can act only for the associated visit or
 eligible event; it never receives a general staff session.
 Reception requires the visitor capability and an office in scope.
 
-`manageevent` handles title, audience and registration access; `booking` handles
-venue claims, ticket limits, named entitlements and admission. Its event-capacity
-port is implemented by the events-owned SQL handle, preserving migration/data
-ownership while concentrating the transaction's mutation authority. This is an
-explicit clean-layout compromise: table owner and use-case package are not the
-same namespace, and event capacity behaviour is spread across rings.
+`manageevent` is Events' operation family: it owns title, audience, registration,
+ticket limits, named entitlements and admission. `booking` owns venue claims.
+The [agreed boundary](../../adr/0023-separate-events-from-venue-booking.md) is
+represented across rings rather than by a self-contained domain directory.
+App injects Events repositories only into manageevent and supplies Booking's
+venue participant through the consumer-owned interface; no Events SQL handle
+is handed to Booking.
 
 Event/ticket business rules remain pure functions in `entity/event`, including
 audience eligibility, named-attendee uniqueness and admission transitions.
 Tickets are free and capacity-limited. Event audience may be staff-only or admit
 external visitors; registration access independently selects invitation-only
 or public registration for eligible attendees.
-`manageevent` owns event publication, descriptive changes and registration
-orchestration; it does not hand arbitrary ticket rows to booking. Booking calls
-those rules against fresh event/visit state and uses narrowly typed event
-repository operations in its transaction. Schema review stays with the events
-owner. The ownership manifest prohibits direct ticket/capacity SQL from
-manageevent, controllers and queue runners, and prohibits booking from changing
-unrelated event descriptions. This keeps one capacity writer without quietly
-making booking the owner of all event behaviour.
+Manageevent applies those rules to current Events state and validated
+identity/visit facts. Events owns its repositories and migrations. Its venue
+coordinator joins Booking's owner-specific operation to the opaque unit of work;
+Booking validates/writes only venue claims and Events validates/writes only
+event/ticket state. Controllers, queue runners and Booking never receive an
+Events writer. The peer-implementation import ban remains: app wires the
+structurally compatible venue participant instead of importing Booking in manageevent.
 
-Design inference: all venue changes and ticket issue/revoke operations lock the
-same event guard. A venue move validates issued active tickets, event limit and
-new venue capacity, updates the venue claim and event reference/limit atomically,
-then appends notifications. It either preserves existing ticket entitlements or
+Design inference: the coordinated venue workflow and ticket issuance take
+compatible physical-resource guards followed by the Events-owned event guard.
+Events validates issued tickets and its event limit; Booking validates the
+new venue. Each owner updates its own state and appends follow-up notification
+work in one shared transaction. It either preserves existing ticket entitlements or
 rejects with an impact result; it cannot confirm a too-small venue and repair
 overselling afterwards. Publish the limit no higher than the booked venue.
 
-For an external attendee, create/link the visit and named ticket in one local
-transaction via a narrowly injected visits capability. Ticket uniqueness and
+This candidate proposes creating/linking an external attendee's visit and named
+ticket in one local transaction through a narrowly injected visits capability.
+Visitor-creation atomicity remains a separate product decision. Ticket uniqueness and
 capacity checks share the event guard. Admission validates audience, usable
 ticket and event window, then records one admission under a unique ticket key.
 A repeated scan returns already admitted with the prior record; a visit arrival
@@ -1044,11 +1048,11 @@ workflow, and actual end-to-end recovery must be exercised on the chosen platfor
 ### 4. Smaller event venue races ticket issuance
 
 1. Admin controller checks event-management capability and office scope.
-   `manageevent` sends the venue change to its capacity command port.
-2. Booking locks the event guard, old/new venue inventory and relevant claims,
-   then reads issued entitlements and current limit.
-3. A simultaneous registration reaches the same booking interactor and waits
-   on the event guard; it cannot inspect an old ticket count and oversell.
+   Events' `manageevent` starts the named venue-coordination unit of work.
+2. Booking's participant locks/validates its old/new venue claims; Events locks
+   its event guard and reads its own issued tickets and current limit.
+3. A simultaneous registration reaches manageevent and takes compatible venue
+   validation and event guards; it cannot use an old ticket count and oversell.
 4. If issued entitlements exceed the new capacity, the move returns an impact
    result with the original venue intact. Otherwise venue claim, reference,
    event limit and follow-up work commit together.
@@ -1153,8 +1157,9 @@ as required by [CLAUDE.md](../../../CLAUDE.md).
 `layout_test.go` checks the import DAG including test imports, entity I/O bans,
 and the exact three shared-contract exceptions. Generated adapter imports do
 not need an outward exception. `ownership_test.go` checks table/migration owner
-and SQL write allowlists. `wiring_test.go` checks that only booking receives
-capacity handles, every durable event/job has a registered versioned handler,
+and SQL write allowlists. `wiring_test.go` checks that only Booking receives
+physical-claim handles and only Events receives event/ticket/admission handles,
+every durable event/job has a registered versioned handler,
 and each role gets only required capabilities.
 
 Acceptance must prove adversarial cases, not mirror implementation: an anonymous
@@ -1186,7 +1191,7 @@ They are structural design counts, not estimates of final implementation size.
 | Infrastructure packages | 7 |
 | Composition/enforcement/devtool packages | 3 |
 | Total explicitly inventoried Go packages | 111 |
-| Explicit `.go` file entries, including generated/enforcement examples | 324 |
+| Explicit `.go` file entries, including generated/enforcement examples | 327 |
 | Core dependency rules plus ownership/port rules | 9 |
 | Common comparison scenarios traced | 6 |
 
@@ -1207,9 +1212,9 @@ Choices made here:
   directories containing their own HTTP, SQL and application implementation.
 - **Exactly three ring-2 shared contracts.** Unit of work, event append and job
   enqueue are explicitly allowlisted; they contain no booking convenience API.
-- **One substantial local capacity interactor.** Consumers declare command ports
-  and app assigns booking. Event/ticket transactions use events-owned SQL through
-  that writer instead of composing independent capacity writers.
+- **One physical-claim interactor and a distinct Events owner.** Consumers declare
+  command ports and app assigns Booking's implementation. Events owns ticket SQL
+  and joins Booking's venue participant through a narrow shared transaction.
 - **Owner-labelled SQL groups.** Limited repository handles express ownership
   within the shared persistence adapter.
 - **Generated Go transport is an adapter.** Wire types remain outside entities
@@ -1229,10 +1234,9 @@ Friction and compromises:
   capacity and the peer-import ban. If it becomes unmanageable, revisiting that
   rule or selecting a consistency-oriented module layout is more honest than
   creating peer implementations under an innocently named contract package.
-- Event data ownership and capacity mutation authority have different locations.
-  Its repository owns schema and non-capacity edits, while booking performs
-  coupled venue/ticket/admission writes. Tests and ownership metadata must make
-  that split obvious to reviewers.
+- Event and venue writes have distinct owners. The coordinator must preserve
+  atomicity and a common lock order through owning interfaces; tests must reject
+  both stale cross-owner checks and injection of foreign repository handles.
 - Ring tests do not stop a new operation declaring an illicit writer port.
   Construction/SQL ownership checks and review remain necessary; per-runtime
   database roles cannot fully enforce an intra-process boundary.

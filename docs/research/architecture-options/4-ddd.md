@@ -52,7 +52,7 @@ modelling sources; the placements here are SpaceWeave design inferences.
    provider. A shared `Staff` or `Booking` entity is deliberately excluded.
 6. Only composition imports context root factories and assembles more than one
    context's concrete adapters. HTTP adapters do not write repositories directly.
-7. Each context owns tables/migrations. Booking is the sole capacity writer,
+7. Each context owns tables/migrations. Booking is the sole physical-space claim writer,
    including calls from allocation, Exchange observations and timers.
 8. Default transactions change one aggregate and its outbox records. The named
    booking consistency operations and event-venue coordinator are documented

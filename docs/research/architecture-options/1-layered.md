@@ -51,7 +51,7 @@ Dependency rules:
 6. Public `pkg` packages import neither internal nor cmd. Generated clients may
    depend on public transport schemas, never internal booking contracts.
 7. Within application, calls follow a reviewed acyclic allowlist. Only Booking
-   uses capacity mutation facets; only Events can invoke its venue transaction
+   uses dated-space claim mutation facets; only Events can invoke its venue transaction
    entry point; only the named coordinators can open shared business transactions.
 8. SQL and migration ownership follows a checked manifest, even though files sit
    in common technical packages. A shared database is not shared write authority.

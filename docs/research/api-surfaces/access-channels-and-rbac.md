@@ -84,7 +84,7 @@ not with floor definitions or a new public copy of worker internals:
 | Hexagonal | Core Access service/contracts with its restricted persistence facets. |
 | Clean | Authorisation/role-management use cases and access-owned repositories; pure evaluation remains inward. |
 | DDD | Access context owns roles/assignments; Directory supplies approved source membership facts. |
-| Modular monolith | Identity module owns roles/assignments and source correlations in the nine-module candidate. |
+| Modular monolith | Identity module owns roles/assignments and source correlations in the ten-module candidate. |
 
 These placements show how each architecture candidate can own the same access
 model. Library selection and final module boundaries remain separate decisions.

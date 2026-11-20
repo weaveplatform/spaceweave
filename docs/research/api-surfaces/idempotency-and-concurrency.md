@@ -135,11 +135,17 @@ preserve that distinction, rather than presenting an old body/ETag as current.
 permits successful recovery where a conditional change already succeeded; it
 does not define SpaceWeave's key lookup or fingerprint protocol.
 
-**Open:** key namespace, length, randomness requirements, raw-byte versus
-canonical payload comparison, relevant headers and versioned fingerprint
-rules. The identity must distinguish actor, command, authorised owner/context
-and relevant preconditions. Preserve the actor, client and booking owner as
-separate values; a fingerprint is not an authorisation mechanism.
+**SpaceWeave decision:** compare validated, client-supplied JSON values, ignoring
+property order and insignificant whitespace. Preserve omitted versus explicit
+`null`; changed values, target, owner or expected version change the command.
+Later server-default or policy changes must not change the accepted fingerprint.
+This selects equivalence behaviour, not a particular canonicalisation library.
+
+**Open:** key namespace, length, randomness requirements, relevant headers and
+versioned fingerprint encoding. The identity must distinguish actor, command,
+authorised owner/context and relevant preconditions. Preserve the actor, client
+and booking owner as separate values; a fingerprint is not an authorisation
+mechanism.
 
 ## Domain transactions and external effects
 
@@ -205,6 +211,10 @@ boundaries and preserves committed placements and other completed effects.
 Allocation cancellation requires allocation-management authority. Report both
 the cancellation outcome and effects already committed. Cancellation is a
 durable request, not proof that an in-flight provider call was undone.
+Allocation stops before another group commit and preserves committed groups.
+Floor-plan processing stops cooperatively and cannot publish an unfinished
+revision. Exports stop generation and clean incomplete output; completed results
+retain their normal access/expiry. These boundaries constrain the implementation.
 **Open:** cancellation endpoints, race resolution at completion, operation
 state names and progress schema; these need workflow-specific contracts.
 
@@ -224,9 +234,11 @@ Avoid storing credentials, reusable admission secrets or unnecessary personal
 data in a general response cache. Reissue sensitive access material through
 its own currently authorised protocol where needed.
 
-**Retention is unselected.** Derive a
-published horizon from bounded supported client retries, ambiguous-outcome
-recovery after outages and the maximum supported nonterminal operation lifetime.
+**Recovery purpose is agreed; numerical retention is unselected.** Recover
+ambiguous outcomes across reloads/client restarts and a return the next working
+day before inviting another submission. Derive a published horizon from that
+promise, bounded supported retries, outage recovery and maximum supported
+nonterminal operation lifetime; the recovery calendar still needs definition.
 Choose when terminal retention starts and ensure an accepted operation's
 identity remains recoverable throughout its supported processing/retry horizon.
 This does not require holding a transaction, physical lock or booking capacity
@@ -236,6 +248,8 @@ Minimum outcome receipts can outlive bulky response bodies where justified,
 subject to privacy/deletion rules and access controls. Resource history, audit,
 operation results and deduplication receipts need explicit, potentially
 different retention purposes; no unlimited raw-response archive is implied.
+Booking and ticket visibility does not end when their original retry receipt
+expires; the resources have their own access and retention contracts.
 
 **Open:** expiry/reconciliation behaviour and how clients recognise the end of
 supported recovery. After purge, the server cannot reconstruct an old refusal

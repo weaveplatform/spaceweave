@@ -22,7 +22,7 @@ explains the industry principles and primary sources behind each style.
 | Group placement and required parking commit atomically | Planning may be expensive and asynchronous, but acceptance needs a bounded shared consistency protocol. |
 | Confirmed bookings survive replanning | A proposal and a committed claim must be different states with explicit authority. |
 | Check-in races no-show release | The booking owner decides the transition against current state; anonymous occupancy is not staff identity. |
-| Event capacity and ticket issue remain consistent | Venue changes and issuance must share a consistency boundary or an explicit coordination protocol. |
+| Event capacity and ticket issue remain consistent | Events owns registration/tickets/admission; its venue coordinator joins Booking's venue claims through owning interfaces in one local transaction where required. |
 | Exchange Online changes both ways | Local desired state and observed provider state need durable correlation, progress and reconciliation. |
 | Entra and Workday own different identity facts | Source authority, stable correlation and observed effective deactivation must be explicit. |
 | UI and automation share supported REST | Wire DTOs, domain interfaces, identity profiles and compatibility have separate owners. |
@@ -56,11 +56,13 @@ They can be combined; the candidate layouts make different combinations concrete
 
 The preferred direction is a domain-oriented modular monolith with ports and
 adapters inside substantial modules. The reason is the ownership of local booking
-invariants and integration state. The final module split remains open: placing
-events inside Booking reduces shared transaction boundaries but increases that
-module's breadth. Separating Events requires a precise venue/ticket protocol.
+invariants and integration state. Events is agreed as a separate owner from
+Booking, with an explicit venue/ticket transaction through their published
+interfaces. This preserves Events' attendance lifecycle at the cost of local
+transaction coordination; the remaining detailed module split stays open.
 [Architecture decision](../adr/0009-use-a-domain-first-modular-monolith.md),
-[modular-monolith candidate](architecture-options/5-modular-monolith.md).
+[modular-monolith candidate](architecture-options/5-modular-monolith.md),
+[Events–Booking decision](../adr/0023-separate-events-from-venue-booking.md).
 
 ## Transaction and workflow ownership
 

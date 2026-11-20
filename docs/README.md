@@ -104,3 +104,7 @@ here. Decision records live in `docs/adr/`.
 - [Commit retry receipts with command acceptance](adr/0022-commit-retry-receipts-with-command-acceptance.md):
   recover accepted outcomes after response loss without repeating the mutation
   or durable work submission.
+
+- [Separate Events from venue booking](adr/0023-separate-events-from-venue-booking.md):
+  keep registration, tickets and admission in Events while coordinating venue
+  capacity changes with Booking through a narrow local transaction.

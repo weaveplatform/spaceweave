@@ -4,8 +4,10 @@ This blueprint combines the workplace-booking requirements and technology choice
 with a proposed module/data-ownership map. It is intended for technical architects
 and engineers evaluating the local consistency boundaries, enterprise integrations
 and operating model. The [five architecture candidates](research/architecture-options/README.md)
-compare alternative repository organisations; this exact module map remains a
-proposal rather than a requirement imposed on every candidate.
+compare alternative repository organisations. The
+[Events–Booking boundary](adr/0023-separate-events-from-venue-booking.md) is agreed;
+the rest of this exact module map remains a proposal rather than a requirement
+imposed on every candidate.
 
 This is a design record. The existing implementation is the floor-plan tool;
 the booking platform described here has not yet been implemented. The
@@ -66,6 +68,9 @@ and automatic reconciliation wherever intentions are compatible.
 Each module owns its state and migrations, publishes a small interface and
 contains its provider/storage adapters where needed. The allocation planner is
 inside Booking so planning and direct requests share one capacity authority.
+Events is a separate owner for registration, tickets and admission; Booking
+retains the event-space claims. That boundary is agreed independently of the
+remaining proposed module placements.
 
 | Module | Owned state and behaviour | Interface callers rely on |
 | --- | --- | --- |
@@ -171,8 +176,8 @@ booking/check-in health distinct from degraded Exchange or notification delivery
 | Visitor ticket issuance | Secure a visit link before publishing a usable visitor ticket; retries reuse completed work. Visit arrival and event admission remain distinct actions. |
 | Notifications and reporting | Consume committed facts through durable work. Their delay or failure does not undo the booking; projections expose freshness and cannot authorise a capacity claim. |
 
-The event venue coordinator is an explicit, narrow exception to a single-module
-transaction. It prevents a venue/time/capacity change racing ticket issuance.
+The agreed event venue coordinator is an explicit, narrow exception to a
+single-module transaction. It prevents a venue/time/capacity change racing ticket issuance.
 It does not expose foreign repositories or a general-purpose cross-module unit
 of work. If an external change invalidates a secured venue, record that fact,
 block further ticket issuance against the invalid venue and open recovery work.
@@ -190,9 +195,15 @@ submission; previous-version configuration edits; standard/expensive admission;
 actor-owned budgets across clients/sessions; and durable public operation status.
 Keep bounded inputs and worker execution separate from HTTP rate admission.
 Definitive refusal replay, partial allocation reporting and safe cancellation
-are required. Retention/expiry, wire details and numeric limits remain open. The
-contract applies across all five candidate layouts; it does not approve this
-blueprint's detailed module split.
+are required. Recovery survives reloads/client restarts and a return the next
+working day; booking visibility does not depend on retry-receipt retention.
+Equivalent retries compare client-supplied JSON values, ignoring property order
+and whitespace while preserving omitted/null distinctions and original
+preconditions. Allocation cancellation stops before another group commit;
+unfinished plans cannot publish; incomplete exports are cleaned up and completed
+results retain normal access/expiry. Receipt duration/expiry, completion races,
+wire details and numeric limits remain open. The contract applies across all
+five candidate layouts; the remaining detailed module split is still proposed.
 
 ## Identity, lifecycle and privacy
 
