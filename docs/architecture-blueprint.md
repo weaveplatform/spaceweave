@@ -173,14 +173,22 @@ booking/check-in health distinct from degraded Exchange or notification delivery
 | Check-in, no-show and vacancy | Booking decides the transition against current state/policy. A personal check-in wins only if the allocation remains valid. Anonymous occupancy cannot reserve a released desk. Sensor outages do not establish vacancy. |
 | Room requests and reconciliation | Booking owns local holds/claims and transitions; Exchange owns provider observations/progress. Confirm only after acceptance and capacity revalidation. Keep external observations even if they conflict with local claims; reconcile rather than discarding provider truth. |
 | Venue changes and ticket issuance | Events coordinates its ticket state with Booking's venue state through owning interfaces in a named shared local transaction where required. Generic booking edits cannot bypass the event venue workflow. |
-| Visitor ticket issuance | Secure a visit link before publishing a usable visitor ticket; retries reuse completed work. Visit arrival and event admission remain distinct actions. |
+| Visitor ticket issuance | Events and Visitors atomically commit a visit created specifically for registration with its ticket and retry outcome, or neither. A reused existing valid visit survives failed issuance. Visit arrival and event admission remain distinct actions. |
 | Notifications and reporting | Consume committed facts through durable work. Their delay or failure does not undo the booking; projections expose freshness and cannot authorise a capacity claim. |
 
 The agreed event venue coordinator is an explicit, narrow exception to a
 single-module transaction. It prevents a venue/time/capacity change racing ticket issuance.
 It does not expose foreign repositories or a general-purpose cross-module unit
-of work. If an external change invalidates a secured venue, record that fact,
-block further ticket issuance against the invalid venue and open recovery work.
+of work. Confirmed venue loss moves existing tickets into pending recovery while
+retaining their entitlements; pause admission and further issuance. The organiser
+explicitly secures a suitable replacement or cancels the event, and confirmed
+changes are communicated to attendees. This is the event venue recovery workflow,
+not an instruction to erase tickets or invent replacement capacity.
+
+The [visitor-ticket decision](adr/0024-create-event-visitor-visits-with-tickets-atomically.md)
+adds a second narrow transaction across Events and Visitors for registration-created
+visits. It does not roll back an existing independently valid visit when ticket
+issuance fails.
 
 Every modifying interface carries the actual actor and relevant booking owner,
 expected state/version where applicable, and a retry identity for retryable
@@ -196,13 +204,18 @@ actor-owned budgets across clients/sessions; and durable public operation status
 Keep bounded inputs and worker execution separate from HTTP rate admission.
 Definitive refusal replay, partial allocation reporting and safe cancellation
 are required. Recovery survives reloads/client restarts and a return the next
-working day; booking visibility does not depend on retry-receipt retention.
+working day, through the end of that day in the booking/event office calendar,
+including weekends/closures. Publish the recovery deadline; after expiry,
+reconcile authorised resources before offering an explicit new attempt when
+uncertainty remains. Booking visibility does not depend on retry-receipt retention.
 Equivalent retries compare client-supplied JSON values, ignoring property order
 and whitespace while preserving omitted/null distinctions and original
 preconditions. Allocation cancellation stops before another group commit;
 unfinished plans cannot publish; incomplete exports are cleaned up and completed
-results retain normal access/expiry. Receipt duration/expiry, completion races,
-wire details and numeric limits remain open. The contract applies across all
+results retain normal access/expiry. Cancellation remains requested until work
+stops and is serialized against commit/publication; preserve work committed first
+and prevent the next commit/publication when cancellation wins. Receipt duration,
+retained expiry evidence, wire details and numeric limits remain open. The contract applies across all
 five candidate layouts; the remaining detailed module split is still proposed.
 
 ## Identity, lifecycle and privacy

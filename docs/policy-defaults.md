@@ -43,8 +43,12 @@ clients. Bound inputs and worker execution separately; establish numerical
 limits through representative load validation.
 
 No numerical initial rate/burst or retry-retention value is adopted yet.
-The [request contract](research/api-surfaces/request-behaviour.md) records
-the required request behaviour and remaining retention/expiry decisions.
+Booking/ticket recovery covers the end of the next working day in the relevant
+office calendar, including weekends/closures, with a published deadline.
+Post-expiry reconciliation precedes another submission; inconclusive recovery
+requires explained uncertainty and an explicit new attempt. The
+[request contract](research/api-surfaces/request-behaviour.md) records that
+behaviour and the remaining receipt-duration/expiry-evidence decisions.
 
 ## Outage protection
 

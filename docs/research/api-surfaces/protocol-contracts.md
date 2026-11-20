@@ -250,8 +250,8 @@ scheme for it.
 | Consumer grants | UI/MCP/SDK/script/test/Terraform are supported audiences; exact client grants and allowed operations remain to define. |
 | Publication/reachability | Supported contract audience, listener/route exposure, and authentication independently. |
 | Concurrency | Required previously read versions for configuration edits; exact validator representation and precondition responses. |
-| Retry policy | Booking/ticket/work creation requires keys and atomic receipts with JSON-value equivalence; resolve fingerprint encoding/versioning, retention and expiry/reconciliation details. |
-| Asynchronous contract | Allocation/plan processing/export monitors are required; define schemas, progress freshness, cancellation races and result expiry. |
+| Retry policy | Keys/atomic receipts and JSON-value equivalence are required. Office-calendar recovery deadlines and reconciliation before another submission are agreed; resolve fingerprint encoding/versioning, receipt duration and retained expiry evidence. |
+| Asynchronous contract | Allocation/plan processing/export monitors and requested-until-stopped cancellation ordered against commits/publication are required; define concrete schemas, progress freshness and result expiry. |
 | Errors and lists | Problem catalogue, protocol-specific mappings, pagination and consistency guarantees. |
 | Browser security | Origins, session separation/lifecycle and concrete redirect/write CSRF controls. |
 | Token profiles | Define audiences and concrete grants for the separate human/application authority profiles. |

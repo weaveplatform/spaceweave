@@ -71,7 +71,7 @@ Dependency rules for this candidate:
    Provider adapters are registered explicitly; business services do not locate
    dependencies through a service registry.
 7. A module alone writes its schema and migrations. Two narrow named write
-   scopes are proposed: `EventVenueChange` coordinates Events and Booking;
+   scopes represent agreed boundaries: `EventVenueChange` coordinates Events and Booking;
    `VisitTicketIssuance` coordinates Events and Visitors. Each participant joins
    one local PostgreSQL transaction and still writes only its own tables. Source-owned validation guards may enlist read-only participants in
    an explicitly registered operation scope. No ambient transaction may silently
@@ -834,7 +834,10 @@ and compatible time window. `VisitTicketIssuance` joins Events and Visitors in
 one transaction: Events starts the named scope, validates secured venue and
 event eligibility, asks `visitors/api.TicketVisits.Ensure` to validate/create
 the restricted visit, then inserts its ticket. Both owners commit their writes
-and outbox records together. A failed capacity or visit check rolls both back.
+and outbox records together. A failed capacity or visit check rolls back a newly
+created registration visit and its ticket, retaining the required definitive
+refusal receipt without either new business record. An existing valid reused
+visit survives failed issuance.
 
 The runner permits only those registered writers; Booking's venue guard joins
 read-only. Lock order covers sorted physical-resource guards, the Events event
@@ -845,11 +848,17 @@ linked ticket/visit through the shared retry identity.
 
 Ticket scans lock Events' ticket and create one unique Events admission record.
 A duplicate scan returns the prior outcome and only reception-authorised detail.
-Visit restrictions, ticket revocation and event time are rechecked; a concurrent
+The venue-recovery pause, visit restrictions, ticket revocation and event time
+are rechecked; a concurrent
 restriction change uses Visitors' published locking validation in the registered
 read-enlisted scope, retained through Events' admission commit. Identity
 validation follows the same short current-fact protocol. These are explicit
 read-consistency couplings, not permission to write another owner's tables.
+
+Confirmed venue loss keeps ticket entitlements pending recovery and pauses
+admission and further issuance. Events requires an explicit organiser decision
+to secure a suitable replacement or cancel, and communicates confirmed changes
+to attendees. Prior admission records are retained.
 
 ### Desk use, waitlists, outage protection and reporting
 
@@ -1168,7 +1177,7 @@ alone miss dynamic SQL and do not prove privilege boundaries.
 | Module/unit | Hard constraints, policy versions, source authority, typed outcomes and retry classification with controlled clocks. |
 | Booking store contracts on real PostgreSQL | Resource/owner exclusion, pooled capacity, transaction rollback and outbox/job atomicity; fake stores cannot prove locking. |
 | Contention suites | Concurrent group/direct/cancel, transfer/parking, check-in/release, outage/expiry, venue/ticket and duplicate admission with barriers. |
-| Cross-module assembly | Named venue-change rollback/ticket race and proposed visit/ticket rollback; audience/visit restriction validation; no partial entitlement. |
+| Cross-module assembly | Named venue-change rollback/ticket race and new-visit/ticket rollback versus existing-visit preservation; audience/visit restriction validation; no partial entitlement. |
 | Provider adapters | Graph subscriptions/delta, late observations and ambiguous sends against controlled Chi test servers; source/Teams errors and retries. |
 | Provisioning | Authenticated SCIM profile, deactivation/reactivation/delete, verified identity correlation and effective dates during source outages. |
 | Recovery/rolling versions | Crash after each durable boundary; old lease cannot commit; expanded schema works with old/new roles; restored database matches published asset copies. |
@@ -1384,10 +1393,12 @@ guarantee, in-place organiser reassignment or exactly-once synchronisation.
    commits both owned writes, receipts and outbox records in one transaction.
 5. If the ticket loses the last-capacity race, the newly created ticket visit
    rolls back too. If the visit window/host restrictions fail, ticket insertion
-   rolls back. Repeating the same operation returns the same valid pair and
-   never consumes another seat.
-6. At reception, `events/core/admit.go` validates ticket, event time and current
-   visit restriction version. It coordinates with Visitors' version guard before
+   rolls back; a reused existing valid visit remains intact. A definitive refusal
+   retains its receipt without new visit/ticket records. Repeating a successful
+   operation returns the same linked pair and never consumes another seat.
+6. At reception, `events/core/admit.go` checks that venue recovery no longer
+   pauses admission, then validates ticket, event time and current visit
+   restriction version. It coordinates with Visitors' version guard before
    committing admission; the read coupling prevents a restriction changing
    between a stale eligibility read and a successful entry.
 7. The first scan creates the unique admission record. A concurrent scan reports
@@ -1397,11 +1408,10 @@ guarantee, in-place organiser reassignment or exactly-once synchronisation.
    identifiable visit/ticket/message/report copies in the required order;
    Attendance does not turn visitor entry into staff desk attendance.
 
-The event/venue transaction crosses Events and Booking through owning interfaces;
-the proposed visit-link transaction crosses Events and Visitors. These have
-separate participant allowlists, assembly tests and migration checks. Only the
-Events–Booking boundary is settled; visitor-creation atomicity remains a product
-decision rather than a consequence of selecting this candidate.
+The agreed venue transaction crosses Events and Booking through owning interfaces;
+registration-created visits and tickets also commit together through Events and
+Visitors. The scopes have separate participant allowlists, assembly tests and
+migration checks. Their exact names and the remaining module map stay proposed.
 
 ### 5. SCIM disable and Workday office/team change during a partial outage
 

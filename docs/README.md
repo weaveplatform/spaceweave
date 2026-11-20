@@ -108,3 +108,7 @@ here. Decision records live in `docs/adr/`.
 - [Separate Events from venue booking](adr/0023-separate-events-from-venue-booking.md):
   keep registration, tickets and admission in Events while coordinating venue
   capacity changes with Booking through a narrow local transaction.
+
+- [Create event visitor visits with tickets atomically](adr/0024-create-event-visitor-visits-with-tickets-atomically.md):
+  roll back a visit created solely for failed registration while retaining an
+  existing valid visit reused by the attempt.

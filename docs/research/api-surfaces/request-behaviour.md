@@ -102,9 +102,11 @@ Retention is a reliability/privacy tradeoff, not a duration prescribed by HTTP.
 After an ambiguous submission, a person returning the next working day must be
 able to recover its original outcome before being invited to submit again.
 Recovery must survive page reloads and client restarts, including a script
-restarting after an outage, and must recheck current access. This requirement
-does not select a numeric retention period or the calendar used to calculate
-that recovery window.
+restarting after an outage, and must recheck current access. For booking and
+ticket commands, recovery covers the end of the next working day in the
+booking/event office's calendar, including weekends and closures. Publish the
+guaranteed recovery deadline so clients do not calculate office-calendar rules.
+This requirement does not select a fixed numeric retention period.
 
 Specify the supported automatic retry period, delayed recovery and maximum
 lifetime of nonterminal operations. Derive a published receipt-retention policy
@@ -118,10 +120,16 @@ a booking/hold. The receipt is a small record of an outcome. Operation identitie
 must remain usable during nonterminal execution and the documented recovery
 period. Personal-data deletion rules apply to receipts and derived copies.
 
-The expiry contract remains open: clients must know when replay is guaranteed,
-how to reconcile after expiry and when a new action is safe. After deleting all
-identity evidence, a server cannot reliably distinguish an expired key from one
-it never received. Do not claim that distinction without an explicit mechanism.
+After replay expiry, clients must reconcile against authorised bookings, tickets
+or operations before offering another submission. Never automatically replace
+an uncertain request with a fresh key. If reconciliation remains inconclusive,
+explain the uncertainty and require an explicit new attempt. Resource access
+and current authority still apply to reconciliation.
+
+The retained evidence and wire mechanism for recognising expiry remain open.
+After deleting all identity evidence, a server cannot reliably distinguish an
+expired key from one it never received. Do not claim that distinction without
+an explicit mechanism, or that a retained refusal can be recovered after purge.
 
 ## Concurrent configuration edits
 
@@ -191,11 +199,17 @@ normal authorised business commands handle later changes.
 | Floor-plan processing | Stop processing cooperatively where possible and prevent an unfinished revision from being published. |
 | Export generation | Stop generation and clean up incomplete output. An already completed result retains its normal access and expiry rules. |
 
+Acknowledging cancellation initially means cancellation requested, not that
+execution has stopped. Report cancellation as complete only after execution has
+stopped at its boundary. Serialize the durable cancellation decision against
+each commit/publication: work committed first remains; cancellation recorded
+first prevents the next commit/publication. If an export completed first, its
+outcome remains completed and its result retains normal access/expiry.
+
 Public monitors return bounded status/progress, safe errors and result links.
 Queue payloads, SQL failures, provider credentials and worker repair controls
-remain private. Define terminal states, progress freshness and the ordering of
-concurrent completion/cancellation in the concrete operation schemas, preserving
-these workflow boundaries.
+remain private. Define concrete state names, progress freshness and response
+schemas around these agreed cancellation/completion outcomes.
 
 ## Proposed error and retry profile
 
@@ -229,10 +243,12 @@ formatting changes, omitted/null distinction, response loss after commit,
 recovery across reloads/restarts and the next-working-day window, fingerprint
 mismatch, stale edits, partial group placement, refusal replay, revoked access,
 visitor-data removal, each cancellation boundary, shared budgets across replicas
-and saturation of heavy-work queues. Test clients
+and saturation of heavy-work queues. Include office weekends/closures, published
+recovery deadlines, expiry with inconclusive reconciliation, cancellation versus
+commit/publication and cancellation after completed export. Test clients
 through supported public contracts as well as real PostgreSQL concurrency paths.
 
-Remaining design items are retention/expiry policy, exact operation and response
+Remaining design items are receipt duration and retained expiry evidence, exact operation and response
 schemas, fingerprint encoding/versioning, rate-header conventions and load-validated
 numeric limits. These are explicit engineering decisions supported by the
 requirements and primary-source research, rather than unexplained defaults.

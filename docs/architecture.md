@@ -125,8 +125,19 @@ technical guidance and design tradeoffs.
   - Established: Events owns registration, tickets and admission; Booking owns
     event-space claims. Capacity-coupled changes coordinate through owning
     interfaces in one local transaction where required.
-  - Then: receipt duration/expiry/reconciliation, cancellation/completion ordering,
-    exact wire details and load-validated numeric limits.
+  - Established: booking/ticket recovery covers the end of the next working day
+    in the relevant office calendar, including weekends/closures; publish the
+    deadline. After expiry, reconcile authorised resources before offering a new
+    submission; explain inconclusive recovery and require an explicit new attempt.
+  - Established: cancellation stays requested until execution stops, serialized
+    against commits/publication. Earlier commits survive; cancellation winning
+    the ordering prevents the next commit/publication.
+  - Established: a registration-created visit and event ticket commit together;
+    failed issuance leaves an existing valid reused visit intact. Confirmed venue
+    loss retains tickets pending recovery, pauses admission/issuance and requires
+    explicit organiser replacement/cancellation with confirmed changes communicated.
+  - Then: receipt duration/retained expiry evidence, exact wire details and
+    load-validated numeric limits.
   - Then: shared review of the detailed module map and interface contracts in
     the blueprint, followed by implementation validation.
 - Persistence and background work
@@ -250,13 +261,19 @@ retained outcome. Allocation results distinguish unfulfilled demand from technic
 interruption; cancellation stops future work at safe boundaries while preserving
 committed effects. JSON formatting does not change a retry identity; omitted
 fields and explicit null remain distinct. Ambiguous outcomes must be recoverable
-after reloads/client restarts and a return the next working day. Receipt-retention
-duration, the recovery calendar and expiry/reconciliation policy remain unresolved;
-no numeric default is selected.
+after reloads/client restarts through the end of the next working day in the
+relevant office calendar, including weekends/closures. Publish that deadline;
+after expiry, reconcile authorised resources before offering an explicit new
+attempt when uncertainty remains. Cancellation stays requested until work stops
+and is ordered against commits/publication. Receipt duration and retained expiry
+evidence remain engineering decisions; no numeric default is selected.
 
 The [Events–Booking decision](adr/0023-separate-events-from-venue-booking.md)
-settles that ownership boundary and its narrow capacity transaction. Remaining
-architectural work includes the rest of the detailed module/data ownership, operation
+settles that ownership boundary and its narrow capacity transaction. The design
+also preserves [atomic visitor registration](adr/0024-create-event-visitor-visits-with-tickets-atomically.md)
+and the agreed organiser-controlled venue recovery, retaining tickets while
+admission and issuance are paused. Remaining architectural work includes the
+rest of the detailed module/data ownership, operation
 schemas, provider deployment permissions, load-validated limits and recovery
 validation. Numerical proposals become defaults only with an explicit requirement
 and validation rationale. Private Teams delivery is limited to an individually

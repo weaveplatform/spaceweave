@@ -735,13 +735,19 @@ work in one shared transaction. It either preserves existing ticket entitlements
 rejects with an impact result; it cannot confirm a too-small venue and repair
 overselling afterwards. Publish the limit no higher than the booked venue.
 
-This candidate proposes creating/linking an external attendee's visit and named
-ticket in one local transaction through a narrowly injected visits capability.
-Visitor-creation atomicity remains a separate product decision. Ticket uniqueness and
+Create a registration-specific visit and ticket in one local transaction through
+Events' narrowly injected Visitors capability, as agreed. Failed issuance rolls
+back that new visit, while a reused existing valid visit remains intact. Ticket uniqueness and
 capacity checks share the event guard. Admission validates audience, usable
 ticket and event window, then records one admission under a unique ticket key.
 A repeated scan returns already admitted with the prior record; a visit arrival
 does not consume a ticket and a ticket scan does not fabricate a reception visit.
+
+Confirmed venue loss retains tickets pending recovery and pauses admission and
+further issuance. Events requires an explicit organiser decision to secure a
+suitable replacement or cancel, communicating confirmed changes to attendees.
+Admission rechecks that venue recovery has been resolved as well as ticket,
+audience, visit and event-window validity.
 
 ### Durable jobs, outbox and visible failure
 

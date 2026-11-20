@@ -682,12 +682,14 @@ the shared transaction, checks issued tickets against prospective limit/capacity
 asks Booking to acquire/release venue claims, updates event state and appends
 facts. A move to capacity below issued tickets fails rather than revoking
 entitlements incidentally. Generic Booking venue edits route through this
-workflow; externally invalidated venue facts block new ticket issuance and open
-recovery work.
+workflow. Confirmed venue loss retains tickets pending recovery and pauses
+admission and new issuance; the organiser explicitly secures a suitable
+replacement or cancels, and confirmed changes are communicated to attendees.
 
-Visitors creates/reuses the named visit link inside ticket issuance; publish only
-a committed linked ticket. Retry identities prevent duplicate tickets/visits;
-conditional admission allows one successful scan. Reception remains separate;
+Events and Visitors commit a registration-created visit and its ticket together;
+failed issuance leaves no new visit. A reused existing valid visit remains intact.
+Publish only a committed linked ticket. Retry identities prevent duplicates;
+conditional admission checks the venue-recovery pause and allows one successful scan. Reception remains separate;
 verified-email access reveals only relevant visit/event actions.
 
 ### Plans: evolve the current pipeline without losing it
@@ -926,8 +928,9 @@ mapping, authority and failures; exclude only explicit generated outputs.
    publication; retries reuse the same outcome.
 5. Ticket delivery happens after commit. A unique admission transition allows
    one successful scan; reception arrival remains a separate visit operation.
-6. External venue invalidation is recorded, blocks new issuance and opens
-   recovery work rather than silently reducing already issued entitlements.
+6. Confirmed venue loss is recorded, retains tickets pending recovery and pauses
+   admission/new issuance. The organiser explicitly replaces the venue or cancels;
+   confirmed changes are communicated to attendees.
 
 ### 5. SCIM disable plus effective workforce change during outage
 

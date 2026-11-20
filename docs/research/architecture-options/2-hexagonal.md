@@ -717,14 +717,18 @@ Venue changes, ticket issuance and admission use Events' event guard. A venue's
 capacity is an upper bound on event capacity; issued tickets cannot be silently
 invalidated by a smaller replacement venue. The coordinator either validates the
 new venue/capacity against current commitments and changes both local owners
-together, or rejects the move. An external venue invalidation freezes further
-issuance and opens recovery work. Admission uses a unique ticket/admission key
+together, or rejects the move. Confirmed venue loss retains tickets pending
+recovery and pauses admission/further issuance. The organiser explicitly secures
+a suitable replacement or cancels, communicating confirmed changes to attendees.
+Admission checks the venue-recovery pause and uses a unique ticket/admission key
 so concurrent scans return the recorded admission without granting two entries.
 A unique event/attendee identity also prevents duplicate active named tickets.
 
-A visitor ticket is publishable only after a valid visit link exists. Propose a
-named shared local issuance transaction through Visitors and Events facets;
-retry identities reuse the visit/ticket pair. If verification or external email
+A visitor ticket is publishable only after a valid visit link exists. Use a
+named shared local issuance transaction through Visitors and Events facets:
+a registration-created visit and ticket commit together or neither does. A
+reused existing valid visit survives failed issuance; retries recover the
+same linked outcome. If verification or external email
 is pending, the ticket remains unpublished and no email is sent inside that
 transaction. Host deactivation raises review rather than inventing a new host.
 
@@ -1007,8 +1011,9 @@ reapplication; a successful database promotion alone is not the RTO test.
 5. Replayed issue requests reuse that pair. Concurrent scanners insert one
    admission record; the second sees already admitted and cannot grant another
    entry. Reception arrival is recorded separately.
-6. An external venue invalidation is retained, freezes new tickets and creates
-   recovery work. No ordinary booking edit bypasses these checks.
+6. Confirmed venue loss retains tickets pending recovery and pauses admission/new
+   issuance until an explicit organiser replacement or cancellation; communicate
+   confirmed changes. No ordinary booking edit bypasses these checks.
 
 ### 5. SCIM deactivation and effective workforce change during an outage
 

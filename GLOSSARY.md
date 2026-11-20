@@ -267,6 +267,11 @@ tickets controlling attendance capacity.
 **Venue booking**:
 The booking securing an event space for an event.
 
+**Event venue recovery**:
+The period after an event loses its secured venue while its organiser arranges
+a suitable replacement or cancels the event. Existing tickets retain their
+entitlements, with admission and further ticket issuance paused until resolution.
+
 **Event audience**:
 The people eligible to attend an event, selected by its organiser. It can be
 staff-only or include external visitors.

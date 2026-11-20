@@ -47,7 +47,10 @@ Use the [product scope](../../../README.md#product-scope),
 The [Events–Booking boundary](../../adr/0023-separate-events-from-venue-booking.md)
 is agreed: Events owns registration/tickets/admission and Booking owns venue
 claims, coordinated through owning interfaces in one local transaction where
-required. The rest of the blueprint's detailed module split remains proposed.
+required. [Registration-created visits and tickets](../../adr/0024-create-event-visitor-visits-with-tickets-atomically.md)
+also commit together through Events and Visitors; reusing an existing valid
+visit does not make it subject to rollback on failed issuance. The rest of the
+blueprint's detailed module split remains proposed.
 
 - One organisation, many offices, 100,000 staff and 60,000 desks. Offices contain
   buildings/floors/plans. Neighbourhoods belong to one building, can span its
@@ -164,12 +167,12 @@ not inherent guarantees or restrictions of the architectural labels.
 | Booking authority | Booking application service alone receives dated-space claim mutation facets. | Core Booking service alone receives physical-capacity writer ports. | Booking mutation interactor implements injected consumer-owned physical-claim ports. | Booking context owns physical-capacity repositories and coordinated application handlers. | Booking module owns dated-space claims; Events owns ticket capacity. |
 | Allocation placement | Sibling application planner calls Booking. | Core allocation service calls Booking through a driving contract. | Allocation use case receives a Booking command implementation through its own port. | Pure planner and allocation handlers inside Booking context. | Separate planning module computes proposals; Booking validates/commits them. |
 | Event venue and ticket consistency | Events coordinates shared transaction; Booking retains its writer. | Core Events coordinates transaction-scoped owner facets. | Events' manageevent family coordinates its own ticket state with Booking's venue participant through consumer-owned ports and shared unit of work. | Events and Booking use an explicit shared local transaction; ordinary aggregate transactions remain the default. | Separate Events and Booking owners join the narrow venue transaction; neither receives foreign repositories. |
-| Visitor ticket linkage | Proposed named Events/Visitors shared transaction. | Proposed named owner-participating transaction. | Proposed narrow Events/Visitors capabilities in one transaction. | Proposed staged/reused visit, then idempotently published linked ticket. | Proposed named Events/Visitors transaction exception. |
+| Visitor ticket linkage | Named Events/Visitors shared transaction. | Named owner-participating transaction. | Narrow Events/Visitors capabilities in one transaction. | Named Events/Visitors coordination through published owner interfaces. | Named Events/Visitors transaction exception. |
 | Identity and access | Separate Directory/Access application subjects over shared models/persistence. | Separate core Directory/Access services over central contracts. | Staff entities plus provisioning/login/authorisation operation families. | Directory and Access contexts with published eligibility views. | One Identity module combines workforce projection, access and delegation. |
 | Exchange state | Exchange application/persistence subject coordinates with Booking. | Core Exchange service and provider adapter call Booking. | Reconciliation use cases consume Booking commands through their own ports. | Exchange context translates provider observations for Booking. | Booking owns room/provider state behind its Exchange adapter. |
 | SQL and migration custody | Logical owners in a common PostgreSQL package plus ownership manifest. | Logical owners in one PostgreSQL adapter plus restricted facets/manifest. | Owner-labelled repository groups and migration manifests, assembled through narrow handles. | Context-owned repositories and migration sets. | Module-private repositories and migration sets. |
 | What enforces locality | Import/facet/query review across horizontal layers. | Core/adapter import checks plus writer/facet construction rules. | Ring checks, no use-case peer implementation imports, writer and SQL ownership checks. | Context API checks, domain purity and explicit transaction exception review. | Public-interface imports, private implementation packages and SQL ownership review. |
-| Main structural cost | One feature touches several technical roots; shared model/store can grow. | Central model/ports/store/composition can become shared hotspots. | More ports and wiring; cross-owner venue coordination through consumer-owned interfaces. | Uniform layers and context/event contracts; shared transactions couple aggregate/context boundaries. | Module custody plus explicit Events/Booking venue coordination and proposed Events/Visitors issuance coupling. |
+| Main structural cost | One feature touches several technical roots; shared model/store can grow. | Central model/ports/store/composition can become shared hotspots. | More ports and wiring; cross-owner venue coordination through consumer-owned interfaces. | Uniform layers and context/event contracts; shared transactions couple aggregate/context boundaries. | Module custody plus explicit Events/Booking venue coordination and Events/Visitors issuance coupling. |
 
 Every candidate still needs PostgreSQL capacity protection, retry-safe durable
 work, source-aware authorisation, provider reconciliation and whole-system
@@ -189,9 +192,9 @@ The most consequential differences to review are:
 - **How transaction coupling is expressed.** Options 1–2 use guarded owner
   facets, option 3 consumer-owned participant ports, option 4 context interfaces,
   and option 5 module APIs with registered scope participants. All retain the
-  agreed Events/Booking venue boundary. Visitor-creation atomicity remains a
-  separate product choice: the staged-visit and shared-transaction proposals
-  have different failure/cleanup costs.
+  agreed Events/Booking venue and Events/Visitors registration boundaries.
+  Creating a visit specifically for registration must commit with its ticket;
+  the remaining differences concern how each layout enforces owner participation.
 - **Whether an internal seam earns its cost.** The shared core, repeated use-case
   ports, uniform context layers and selectively deep modules expose different
   amounts of wiring. A printed folder is not automatically useful abstraction.

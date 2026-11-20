@@ -55,7 +55,8 @@ modelling sources; the placements here are SpaceWeave design inferences.
 7. Each context owns tables/migrations. Booking is the sole physical-space claim writer,
    including calls from allocation, Exchange observations and timers.
 8. Default transactions change one aggregate and its outbox records. The named
-   booking consistency operations and event-venue coordinator are documented
+   booking consistency operations, event-venue coordination and registration-created
+   visit/ticket coordination are documented
    exceptions; a generic transaction handle does not authorise foreign writes.
 9. Published context facts and wire contracts are versioned separately. Generated
    HTTP/SCIM/provider types stay outside domain models.
@@ -536,6 +537,7 @@ just to change one desk.
 | Required desk plus parking both confirm or neither does | A request-set root alone cannot prevent another request-set claiming the same desk/pool capacity. | Shared Booking transaction coordinates request-set and competing resource/staff guards. |
 | A person has no overlapping desks across offices | Independent office/date aggregates cannot alone enforce the global interval invariant. | A canonical Booking claim protocol and PostgreSQL staff-overlap protection apply to every writer. |
 | Venue capacity remains at least active issued tickets | Venue claim is Booking-owned; registration/tickets are Events-owned. | Events' named venue coordinator uses both published interfaces in one local transaction and serialises ticket issuance against venue changes. |
+| A visit created for registration commits with its ticket or neither does | Events and Visitors own separate records. | Events' registration coordinator joins Visitors' published participant in one local transaction; failed issuance preserves any reused existing valid visit. |
 
 A strict alternative could use a huge aggregate containing office/date capacity,
 all affected people and related tickets. Cross-office transfers and staff overlap
@@ -661,13 +663,18 @@ and named entitlements. A venue is a Booking-owned claim referenced by stable ID
 Generic booking edits reject an uncoordinated change to an event-governed claim.
 The venue coordinator revalidates secured venue/time/capacity and serialises with
 ticket issuance before either context commits. An observed external invalidation
-is retained, stops new issuance against an invalid venue and creates recovery
-work; the model does not invent capacity to keep old tickets looking valid.
+is retained. Existing tickets keep their entitlements pending venue recovery;
+admission and further issuance pause. The organiser explicitly secures a suitable
+replacement or cancels, with confirmed changes communicated to attendees. The
+model does not invent capacity to keep old tickets looking valid.
 
-A visitor ticket requires a valid visit link before a usable ticket is published.
-Create/reuse that visit idempotently, then issue the ticket with its link. A
-failed later step may leave a staged visit for cleanup, not an unlinked usable
-ticket. Reception arrival/departure and single-use event admission are separate
+A visitor ticket requires a valid visit link before publication. Events'
+registration handler coordinates Visitors' published participant in one named
+local transaction: a visit created specifically for registration and its ticket
+commit together or neither does. A reused existing valid visit survives failed
+issuance. This agreed exception rejects staged orphan-visit cleanup; each context
+still writes only its own state. Admission also rechecks the venue-recovery pause.
+Reception arrival/departure and single-use event admission are separate
 transitions. Retention removes aged visit data and identifying projection copies;
 the retained event view cannot quietly restore deleted visitor details.
 
@@ -919,7 +926,7 @@ staffing or runtime. Counts describe the representative tree in this document.
 | Explicit representative Go filenames | 189, including generated examples; co-located tests and unprinted retained engine files are excluded. |
 | Shared-kernel packages shown | 4: IDs, principal envelope, interval values and clock. |
 | Explicit booking multi-aggregate operations | Group placement, required linked claim and office transfer. |
-| Explicit cross-context transaction family | Event venue/capacity coordination through Events and Booking. |
+| Explicit cross-context transaction families | Event venue/capacity through Events and Booking; registration-created visit/ticket through Events and Visitors. |
 | Runtime role families | 5: HTTP, allocation, Exchange, tracing and maintenance. |
 | Blob provider implementations | 2: Azure and GCS, selected per deployment. |
 | Notification purposes allowed in Teams | 1: private booking-raised message with individual opt-in for that message. |

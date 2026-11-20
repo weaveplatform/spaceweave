@@ -216,7 +216,7 @@ supported client boundary or introduce test-only production bypass routes.
 | Authentication | MCP retains user context; machine scripts use application identity. | Select concrete credential flows and deployment ownership for enrolled clients. |
 | Terraform | Long-lived workplace/permitted configuration and useful data sources. | Define resource identities, schemas, import, impact and deletion behaviour. |
 | Drift and concurrency | Authorised UI edits remain valid; updates require the version read. | Test refresh/update behaviour against concurrent changes and source-owned records. |
-| Long-running work | Public operation references for allocation, plan processing and exports. | Define completion/progress/result schemas and workflow-specific cancellation races. |
+| Long-running work | Public operation references and cancellation requested until execution stops, ordered against commits/publication. | Define concrete completion/progress/result schemas and validate cancellation/commit ordering. |
 | Retry and load | Atomic acceptance receipts and actor budgets across clients. | Specify fingerprint/retention details and validate bursts, polling and backpressure. |
 | Compatibility | Public support independent of portal release; initial 180-day retirement notice. | Exercise generated SDK/provider clients against supported mixed versions. |
 

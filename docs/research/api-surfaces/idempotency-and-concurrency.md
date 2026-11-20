@@ -215,8 +215,11 @@ Allocation stops before another group commit and preserves committed groups.
 Floor-plan processing stops cooperatively and cannot publish an unfinished
 revision. Exports stop generation and clean incomplete output; completed results
 retain their normal access/expiry. These boundaries constrain the implementation.
-**Open:** cancellation endpoints, race resolution at completion, operation
-state names and progress schema; these need workflow-specific contracts.
+A cancellation acknowledgement means requested until execution actually stops.
+Serialize its durable decision against commit/publication: preserve earlier
+commits and prevent the next one when cancellation wins. A completed export
+remains completed. **Open:** cancellation endpoints, concrete state names and
+progress/response schemas; they must preserve this ordering.
 
 ## Replay authorisation, privacy and retention
 
@@ -238,7 +241,9 @@ its own currently authorised protocol where needed.
 ambiguous outcomes across reloads/client restarts and a return the next working
 day before inviting another submission. Derive a published horizon from that
 promise, bounded supported retries, outage recovery and maximum supported
-nonterminal operation lifetime; the recovery calendar still needs definition.
+nonterminal operation lifetime. For booking/ticket commands, use the relevant
+office calendar through the end of its next working day, including weekends
+and closures, and publish the guaranteed deadline for clients.
 Choose when terminal retention starts and ensure an accepted operation's
 identity remains recoverable throughout its supported processing/retry horizon.
 This does not require holding a transaction, physical lock or booking capacity
@@ -251,8 +256,13 @@ different retention purposes; no unlimited raw-response archive is implied.
 Booking and ticket visibility does not end when their original retry receipt
 expires; the resources have their own access and retention contracts.
 
-**Open:** expiry/reconciliation behaviour and how clients recognise the end of
-supported recovery. After purge, the server cannot reconstruct an old refusal
+**SpaceWeave decision:** after replay expiry, reconcile authorised bookings,
+tickets or operations before offering another submission. Never automatically
+replace an unknown outcome with a new command key. If recovery is inconclusive,
+explain that uncertainty and require an explicit new attempt.
+
+**Open:** retained expiry evidence and exact wire representation of the recovery
+deadline/expiry. After purge, the server cannot reconstruct an old refusal
 from an absent record or distinguish it from every never-seen key without
 additional information. Do not claim the stable-refusal guarantee beyond the
 published window. Document how clients reconcile known resource/operation

@@ -190,6 +190,12 @@ hatch. The application validates transitions regardless of which surface calls.
 | Identity/integration configuration | Global admins manage correlation review, mappings, client/source enrolment and integration status. | Source-owned membership is not locally editable; secret references/status are not secret values. |
 | Failure repair | Operators inspect redacted job/operation status, retry an eligible failure or resolve incompatible calendar intent. | Narrow authorised action, current version, reason and audit; replay is not permission to bypass owner checks. |
 
+Confirmed event venue loss retains tickets pending recovery and pauses both
+admission and new issuance. The organiser explicitly secures a suitable
+replacement or cancels; confirmed changes are communicated to attendees.
+When registration creates a visit solely for a ticket, Events and Visitors
+commit both or neither; an existing valid reused visit survives failed issuance.
+
 An admin portal remains a separate user experience. Its route prefix alone is
 not an authorisation mechanism, and broad Kubernetes access is not automatically
 application reporting or booking-repair authority.
@@ -614,11 +620,16 @@ unfinished plan publication and cleans incomplete exports; completed effects and
 export results retain their normal rules. Ambiguous outcomes are recoverable
 across reloads/client restarts and a return the next working day. Equivalent
 JSON requests ignore property order/whitespace, preserving omitted/null values
-and original preconditions. These behaviours are detailed in the
+and original preconditions. The recovery guarantee covers the end of that day
+using the relevant office calendar, including weekends/closures, with a published
+deadline. After expiry, reconcile authorised resources before offering a new
+submission; explain inconclusive recovery and require an explicit new attempt.
+Cancellation is requested until execution stops, ordered against commits and
+publication; earlier commits survive. These behaviours are detailed in the
 [request contract](request-behaviour.md).
 
-Remaining design work includes retry-retention duration and expiry/reconciliation
-behaviour, concrete operation/resource schemas, pagination/input bounds, measured
+Remaining design work includes receipt duration and retained expiry evidence,
+concrete operation/resource schemas, pagination/input bounds, measured
 rates and worker capacity, provider deployment permissions and compatibility-tested
 code generation. The [Events–Booking boundary](../../adr/0023-separate-events-from-venue-booking.md)
 is agreed; the remaining repository/module layout is an independent architecture
