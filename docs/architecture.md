@@ -77,7 +77,8 @@ technical guidance and design tradeoffs.
   - Established: Workplace owns location/space definitions and baseline
     neighbourhoods; Booking owns dated capacity and temporary neighbourhood
     adjustments. Booking's private planner uses a versioned snapshot outside long transactions;
-    Booking revalidates bounded commits and protects confirmed allocations.
+    Booking revalidates completed-plan publication and protects previously
+    published allocations; staged groups remain provisional.
   - Established: Identity combines source/workforce facts, sessions, permissions
     and delegation through distinct interfaces. Booking owns intents, cycles,
     groups and planning; Exchange separately owns provider state/progress and
@@ -138,10 +139,11 @@ technical guidance and design tradeoffs.
     visibility is independent of retry-receipt retention.
   - Established: equivalent retries ignore JSON property order and whitespace,
     preserve omitted/null distinctions and include owner/target/preconditions.
-  - Established: definitive refusal replay, accurate partial allocation results
-    and cancellation at workflow boundaries. Stop allocation before another group
-    commit, prevent unfinished plan publication and clean incomplete exports;
-    preserve committed groups and completed export access/expiry.
+  - Established: definitive refusal replay, completed-plan unmet-demand results
+    distinct from interrupted provisional processing, and cancellation ordered
+    against allocation publication. Cancellation winning prevents publication;
+    publication winning preserves the completed plan. Keep floor-plan and export
+    cancellation separate, including cleanup and completed-result access/expiry.
   - Established: Events owns registration, tickets and admission; Booking owns
     event-space claims. Capacity-coupled changes coordinate through owning
     interfaces in one local transaction where required.
@@ -196,8 +198,12 @@ technical guidance and design tradeoffs.
   - Established: PostgreSQL-backed durable jobs/outbox processing, with leased
     claims, retry backoff and operator-visible failures. Production PostgreSQL is
     a managed platform service operated separately from application workloads.
-  - Established: commit one allocation-group placement atomically, including
-    required linked parking. Replan affected uncommitted groups on changed state.
+  - Established: first form collaborator groups, including singletons, then pack
+    groups into existing desks. Revalidate and publish the completed plan together,
+    including required parking; no progressive group confirmations. Sitting
+    together precedes walking distance, with allocation quality taking precedence
+    over computation cost. The [decision](adr/0037-form-collaborator-groups-before-packing-desk-allocations.md)
+    and [research](research/two-phase-desk-allocation.md) record the contract.
   - Then: concrete database constraints, job lease/fencing contracts and
     validation of asset publication, retention and recovery workflows.
 - Identity and administration
@@ -262,7 +268,7 @@ technical guidance and design tradeoffs.
     intent cutoff and processing time; late changes are incremental.
   - Established: among placements accommodating the same number of people, order
     objectives as explicit collaboration, general team proximity, then previously
-    unfulfilled demand. Direct desk booking opens after the date's main run;
+    unfulfilled demand. Direct desk booking opens after the date's main plan is published;
     ordinary requests before it enter intent collection.
   - Established: policies are versioned database records editable through
     administration, separate from deployment configuration. Apply changes to new

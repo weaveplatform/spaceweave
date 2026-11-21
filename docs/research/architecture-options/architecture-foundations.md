@@ -18,8 +18,9 @@ HTTP handlers and background processing roles from one application release.
 The business scope includes desks, meeting rooms, parking, internal events and
 hosted visitors. Advance attendance intents are planned together under hard
 constraints, with collaboration, team proximity and packing objectives.
-Planning produces proposals; committing each
-group's desks and required parking must succeed or fail together. Direct
+Planning first forms collaborator groups, including singletons, then packs them
+into existing desks. Publish the completed, validated plan together, preserving
+group and required-parking consistency; intermediate work stays provisional. Direct
 requests, cancellations and waitlist promotions can compete for that inventory.
 
 Room bookings synchronise bidirectionally with Exchange Online through
@@ -206,9 +207,11 @@ retries. [PostgreSQL: transactions](https://www.postgresql.org/docs/current/tuto
 
 **SpaceWeave implications, regardless of layout:**
 
-- Plan group placements outside long database transactions. At commitment,
-  validate the relevant inventory and policy state again and atomically write
-  the group's desks and required parking, or reject that placement.
+- Form groups then pack them outside long database transactions. Revalidate the
+  complete proposal's relevant inputs before publishing it, preserving group and
+  required-parking consistency. Staging does not confer claim authority; see the
+  [decision](../../adr/0037-form-collaborator-groups-before-packing-desk-allocations.md)
+  and [publication research](../two-phase-desk-allocation.md).
 - Allocation, direct requests and waitlist promotion must use one authoritative
   claim protocol. A planner's earlier snapshot cannot reserve capacity by itself.
 - Protect against concurrent claims using an explicit combination of database
@@ -256,7 +259,7 @@ Review the five candidates against the same evidence:
 
 1. Can an engineer locate each invariant, transaction owner and authorised
    writer without following a general-purpose shared store throughout the app?
-2. Can concurrent group commitment, direct booking and waitlist work preserve
+2. Can concurrent completed-plan publication, direct booking and waitlist work preserve
    capacity and retry safely when inventory changes during planning?
 3. Do framework/provider types stop at meaningful boundaries, and can delayed
    integration observations be reconciled without bypassing booking authority?

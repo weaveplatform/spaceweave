@@ -109,7 +109,8 @@ here. Decision records live in `docs/adr/`.
   plan from snapshots and revalidate capacity when committing bookings.
 
 - [Use explicit allocation cycles and atomic group placement](adr/0014-use-explicit-allocation-cycles-and-atomic-group-placement.md):
-  coordinate attendance cohorts and commit linked placements atomically.
+  coordinate attendance cohorts and preserve group/parking consistency under
+  the completed-plan publication boundary in ADR 0037.
 
 - [Use React portals with Go-managed sessions](adr/0015-use-react-portals-with-go-managed-sessions.md):
   share frontend capabilities while keeping authentication tokens server-side.
@@ -188,3 +189,8 @@ here. Decision records live in `docs/adr/`.
 - [Follow Exchange room policy and native check-in](adr/0036-follow-exchange-room-policy-and-native-check-in.md):
   use provider-native admission, eligibility and autorelease across entry paths;
   retain unsupported requested behaviour as explicit capability gaps.
+
+- [Form collaborator groups before packing desk allocations](adr/0037-form-collaborator-groups-before-packing-desk-allocations.md):
+  group collaborators, including singletons, then pack groups into existing
+  desks and publish the completed plan together; see the
+  [supporting research](research/two-phase-desk-allocation.md).

@@ -152,9 +152,12 @@ mechanism.
 **SpaceWeave decisions:** Booking owns local availability. A desk plus required
 parking commits together; an office transfer acquires replacement claims and
 releases previous claims atomically. A failed transfer preserves the existing
-allocation. An allocation run commits each group and its required parking
-atomically while preserving previously committed groups, as recorded in the
-[allocation-cycle decision](../../adr/0014-use-explicit-allocation-cycles-and-atomic-group-placement.md).
+allocation. An allocation run first forms collaborator groups, including
+singletons, then packs them into existing seats. Intermediate placements remain
+proposals; publish the completed, validated plan together with required parking
+and its durable outcome, preserving older published bookings. The
+[two-phase decision](../../adr/0037-form-collaborator-groups-before-packing-desk-allocations.md)
+refines the [allocation-cycle contract](../../adr/0014-use-explicit-allocation-cycles-and-atomic-group-placement.md).
 
 **Implementation proposal:** combine uniqueness/exclusion constraints with
 consistent lock ordering or serializable transactions where multi-row rules
@@ -201,9 +204,10 @@ provider confirmation or successful allocation. Replayed acceptance stays
 stable; current operation/resource reads show subsequent progress.
 
 An allocation run that completes planning but cannot place every group reports
-completed work with unfulfilled demand, committed placement counts and safe
-unplaced reasons. A technical interruption reports failure or partial progress
-with its committed groups preserved. A capacity shortfall must not be disguised
+a published completed plan with unfulfilled demand, placement counts and safe
+unplaced reasons. A technical interruption before publication reports failure
+and provisional progress without confirming any groups from that run. Older
+published bookings remain protected. A capacity shortfall must not be disguised
 as a transient server failure that invites blind resubmission of the whole run.
 
 **SpaceWeave decision:** authorised cancellation stops additional work at safe
@@ -211,7 +215,9 @@ boundaries and preserves committed placements and other completed effects.
 Allocation cancellation requires allocation-management authority. Report both
 the cancellation outcome and effects already committed. Cancellation is a
 durable request, not proof that an in-flight provider call was undone.
-Allocation stops before another group commit and preserves committed groups.
+Allocation cancellation fences completed-plan publication: cancellation winning
+prevents publication; publication winning remains completed. Staged placements
+are not committed booking effects.
 Floor-plan processing stops cooperatively and cannot publish an unfinished
 revision. Exports stop generation and clean incomplete output; completed results
 retain their normal access/expiry. These boundaries constrain the implementation.
@@ -302,7 +308,10 @@ worker instances where coordination is claimed:
   attendance fact and reject an app-only actor.
 - Crash workers around provider calls, duplicate delivery and lease takeover;
   reconcile without claiming exactly-once external execution.
-- Cancel during group commits or provider work; preserve completed effects,
-  distinguish capacity shortfall from technical partial failure, and report both.
+- Race cancellation with allocation publication and provider work; preserve
+  published effects, distinguish completed-plan unmet demand from provisional
+  technical failure, and confirm no partial groups from interrupted planning.
+- Lose publication responses, replace a stale worker and replay publication;
+  recover the same result without duplicate claims or premature notifications.
 - Exercise the chosen retention boundary, privacy deletion and recovery after
   expiry once their contract is specified; measure contention at expected peaks.

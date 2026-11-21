@@ -56,9 +56,9 @@ within a configurable advance planning window. The initial lookahead is 28 days,
 with a configurable cutoff 14 days before the cycle start date.
 The advance planning window and allocation cadence are configured separately.
 Attendance intents are collected and processed together on that cadence. The
-allocation process uses staff-chosen attendance dates, considers proximity to
-team members, forms groups separately for each attendance date, and assigns
-groups to neighbourhoods across available floors. Teams may be split across
+allocation process uses staff-chosen attendance dates in two phases: first form
+collaborator groups for each date, including groups of one, then pack those
+groups into existing desks across neighbourhoods and floors. Teams may be split across
 floors when that allows more people to receive desks. Other space kinds have
 booking rules suited to each kind.
 
@@ -90,9 +90,9 @@ SpaceWeave exposes an authenticated SCIM 2.0 interface for Entra user and mapped
 group provisioning, including creation, updates, deactivation, reactivation and
 deletion. Workday remains a separate integration with the agreed field ownership.
 
-A successful allocation run automatically creates confirmed bookings; staff are
-notified and can cancel. Staff may directly
-book spare desks after the date's main allocation run, while existing confirmed
+Publication of a completed allocation plan automatically confirms its bookings;
+staff are notified and can cancel. Staff may directly book spare desks after
+the date's main allocation plan is published, while existing confirmed
 bookings are protected. Before that run, ordinary requests enter intent collection.
 Unmet desk demand enters a waitlist, with affected staff notified and unmet
 demand visible to administrators. Eligible waitlisted requests get newly
@@ -127,6 +127,12 @@ the staff member deliberately sets that priority on their request.
 Among placement plans accommodating the same number of people, prioritise
 explicit collaboration, then general team proximity, then previously unfulfilled
 demand.
+Within the proximity objectives, sitting together takes precedence over minimum
+walking distance. Allocation quality is the goal; computation cost does not set
+a cutoff that silently weakens the result, and unequal placement quality is
+expected. The [decision](docs/adr/0037-form-collaborator-groups-before-packing-desk-allocations.md)
+and [supporting research](docs/research/two-phase-desk-allocation.md) explain the
+two-phase model and its validation needs.
 
 ### Attendance and desk use
 
@@ -339,12 +345,13 @@ with explicit current-version pointers, preserving referenced historical version
 Workplace owns offices, buildings, floors, space definitions and baseline
 neighbourhoods. Booking owns dated capacity and temporary neighbourhood
 adjustments. Allocation calculates placements from a versioned snapshot outside
-long transactions; Booking revalidates and commits bounded batches while
-preserving confirmed allocations.
+long transactions; Booking revalidates the completed plan before publishing its
+bookings together, preserving previously published allocations.
 Each office defines allocation cycles with attendance dates, an intent cutoff
-and processing time; late changes are handled incrementally. Each allocation
-group placement commits atomically, including required linked parking. Changed
-capacity triggers replanning of affected uncommitted groups.
+and processing time; late changes are handled incrementally. Internal preparation
+does not progressively confirm groups. Publication preserves group consistency
+and required linked parking; relevant capacity/input changes require repair and
+revalidation of the complete proposal before publication.
 
 A staff member has only one overlapping desk allocation. An office move secures
 replacement capacity and releases the previous allocation transactionally,

@@ -657,6 +657,16 @@ package placement and concrete publication-guard mechanics stay under review.
 
 ## Deep dives
 
+The [two-phase allocation decision](../../adr/0037-form-collaborator-groups-before-packing-desk-allocations.md)
+and [supporting research](../two-phase-desk-allocation.md) apply here: phase one
+forms collaborator groups, including singletons; phase two packs those groups
+into existing seats with member-specific requirements and required parking.
+Sitting together precedes minimum walking distance within the agreed proximity
+objectives. Quality takes precedence over compute cost; unequal placement quality
+is expected. Completed-plan publication preserves previously published bookings;
+intermediate persistence creates no protected confirmations. Algorithms, handling
+of groups that cannot fit, and the publication mechanism remain unselected.
+
 ### Published interfaces and module construction
 
 Each `module.go` constructs private services and exposes a small bundle of API
@@ -673,7 +683,7 @@ resources it owns; a shared PostgreSQL pool belongs to app.
 | `identity/api.Delegation` | Evaluate app-managed grants and fresh native delegation evidence through Identity-owned authority adapters. |
 | `workplace/api.Definitions` | Read/version definitions, retire/reactivate resources and publish approved geometry mappings after Booking validates dated impact. |
 | `booking/api.Claims` | Query availability, create claims, resolve linked cancellation from either booking ID, and transfer desk/parking. Before either starts, both-required cancellation ends both atomically; once either starts, cancel the selected booking unless both are explicitly chosen. Optional links cancel independently. |
-| `booking/api.Allocations` | Read planning snapshot; commit one group with expected inputs; return precise stale/conflict causes. |
+| `booking/api.Allocations` | Read grouping/packing snapshots and proposals; validate/publish the completed plan; return stale/conflict causes without progressive confirmations. |
 | `booking/api.Desks` | Personal check-in, eligible waitlist submission/acceptance, validated operational evidence ingestion and protected expiry; commit facts for Attendance projections. |
 | `booking/api.Rooms` | Own local room intentions/occurrences, delegated native check-in requests and observed native release outcomes; native policy decides admission/use. Explicit/leaver cancellation follows supported provider operations. |
 | `exchange/api.Reconciliation` | Durably accept provider observations, reconcile committed room intentions and expose integration progress; no claim writes. |
@@ -710,12 +720,14 @@ process. Core scoring expresses the agreed business priorities, while the solver
 implementation remains replaceable. Package separation inside Booking does not
 create a second owner or permission to bypass its capacity writer.
 
-`CommitGroup` rechecks current local intent/group/cycle versions, hard requirements,
-bundles, owner overlap, required parking and waitlist priority, then commits every
-member or none. Confirmed groups remain protected; only affected uncommitted
-groups are replanned. Group receipts, claim changes, essential run/proposal
-progress and outbox facts share the Booking transaction; derived status views
-can lag without creating a cross-module Planning authority.
+`PublishPlan` rechecks complete-plan intent/group/cycle versions, hard requirements,
+bundles, owner overlap, required parking, authority and waitlist priority. Phase one
+forms collaborator groups, including singletons; phase two packs those groups into
+existing desks. Intermediate persistence remains provisional and creates no protected
+group confirmations. Repair relevant changed inputs before publishing placements,
+required parking and the durable result/follow-up work consistently. Previously
+published bookings remain protected. Final-transaction versus guarded-staging
+mechanics need validation; derived views cannot authorise partial publication.
 
 `TransferDesk` acquires replacement desk/required parking and retires previous
 claims in one transaction, checking the final one-desk-per-owner invariant.
@@ -754,9 +766,11 @@ when versions disappear. Ordinary remote/provider calls stay outside the short
 claim transaction. Guard granularity and SQL-role mechanics remain engineering
 validation, rather than guarantees supplied by a folder layout.
 
-Cancellation stops before another group commit and preserves earlier placements.
-A later change to an already committed intent uses the authorised Booking change
-workflow; removing an intent alone cannot silently erase its claims.
+Cancellation and completed-plan publication have one guarded ordering: cancellation
+winning prevents publication; publication winning remains completed. Staged work
+cannot send booking confirmations or leave authoritative partial capacity behind.
+Later changes to published bookings use authorised Booking commands; removing an
+intent alone cannot silently erase published claims.
 
 
 
@@ -1432,45 +1446,34 @@ unavailability inputs/declarations remain unselected.
 Each trace uses the same scenarios as the other four options. Package paths
 refer to the candidate tree; no production behaviour is implemented by this note.
 
-### 1. Commit a group while inventory changes
+### 1. Publish the completed allocation plan while inventory changes
 
-1. `booking/core/planning/intents.go` collects staff-selected attendance dates, hard space
-   requirements, explicit travel and linked parking requirements in a configured
-   office cycle. Before the main run, ordinary desk requests join this demand.
-2. `booking/core/planning/groups.go` creates per-date groups distinct from source-maintained
-   teams. Booking assembles versioned snapshots with Identity and Workplace facts
-   and passes them to its private solver adapter outside a long transaction.
-3. `booking/core/planning/score.go` first maximises accommodated demand under hard constraints, then
-   compares explicit collaboration, team proximity and previously unfulfilled
-   demand in that order among equally accommodating plans. No attendance
-   minimum or compulsory anchor-day setting enters the score.
-4. `booking/core/planning/proposals.go` persists group placements and relevant input versions. The
-   allocation worker calls `booking/api.Allocations.CommitGroup` with one
-   idempotent group operation, not one booking call per person.
-5. `booking/core/allocation/commit.go` authorises the operation and acquires
-   protection, resource/pool and owner guards in the common order. A direct
-   caller or cancellation can win a conflicting guard first; a snapshot gives
-   no entitlement to overwrite the resulting confirmed state.
-6. `validate.go` reloads current capacity, bundle membership, requirements,
-   eligibility and relevant policy versions. Required parking participates in
-   the same validation and transaction. A pooled place is not treated as an
-   unconstrained "parking available" flag.
-7. If all members still fit, the PostgreSQL adapter writes all claims, group
-   commit receipt and durable work/outbox records together. Any failed member
-   rolls back the whole group, including its parking. Commit success names the
-   canonical Booking claim IDs.
-8. On conflict, Booking records precise reasons and replans affected
-   uncommitted groups against a fresh snapshot. Confirmed groups remain fixed.
-   Once the main run completes, direct booking opens while eligible waitlist
-   demand retains priority over fresh requests.
-9. A later office transfer uses Booking's own command to acquire replacements
-   and retire old claims atomically. A planner cannot simulate a transfer with
-   separate cancel and book calls.
+1. `booking/core/planning/intents.go` collects staff-chosen dates, mandatory
+   features, collaboration, explicit travel and required parking for the cohort.
+2. Booking records relevant Identity/Workplace/Policy and owned inventory inputs.
+   `groups.go` first forms date-specific collaborator groups, including singletons;
+   the private solver adapter then packs those groups into existing desks.
+3. `score.go` preserves the agreed priorities, with sitting together before walking
+   distance. Solving holds no long transaction and has no arbitrary quality cutoff.
+4. `proposals.go` persists provisional group placements and input versions. The
+   worker calls `booking/api.Allocations.PublishPlan` for the completed proposal;
+   internal progress is not a set of confirmed bookings.
+5. `booking/core/allocation/commit.go` orders publication against cancellation and
+   current authority/resource/pool/owner guards. `validate.go` checks all relevant
+   input revisions, current capacity and each member's seat/parking compatibility.
+6. A relevant change requires repair and revalidation before publication. An unchanged
+   selected desk alone does not prove unchanged solution quality; no earlier proposed
+   group becomes protected and older published bookings cannot be overwritten.
+7. Publish the completed plan, required parking, retry outcome and durable follow-up
+   work consistently; measure the final transaction or guarded-staging candidate.
+8. Cancellation winning prevents publication; publication winning remains completed.
+   Duplicate delivery or response loss recovers the same result. Direct booking opens
+   after publication, with eligible waitlist demand retaining precedence.
 
-The contention test must show that the group is never partly confirmed, no owner
-gets overlapping desks, parking never exceeds its pool and retry returns the
-same committed group. The tradeoff is Booking's broad transaction knowledge;
-the benefit is no choreography across independent Desk and Parking modules.
+The contention tests must show no partial plan or group becomes confirmed, no
+owner gets overlapping desks, parking stays within capacity and stale workers
+cannot publish. A publication mechanism is an engineering hypothesis to validate,
+not a property supplied by module boundaries.
 
 ### 2. Race check-in, release and waitlist promotion during an outage
 

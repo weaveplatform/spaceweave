@@ -30,7 +30,8 @@ buildings and floors with plans; a neighbourhood bundles desks and optional
 meeting rooms within one building and can flex by date.
 
 Staff choose attendance days and usual-office exceptions. Configurable advance
-intents are allocated together, forming per-date allocation groups distinct from
+intents are allocated in two phases: form per-date collaborator groups, including
+singletons, then pack those groups into existing desks. Groups are distinct from
 externally maintained teams. The objective is to accommodate demand within hard constraints,
 then prioritise explicit collaboration, team proximity and previously unfulfilled
 demand. Divisional anchor days are organisational context. Attendance is reported;
@@ -183,7 +184,7 @@ booking/check-in health distinct from degraded Exchange or notification delivery
 | Desk allocation, direct requests and waitlist promotion | Booking serialises competing claims; enforce mandatory features, dated neighbourhood membership, one overlapping desk per person and existing waitlist priority. Confirmed assignments are protected. |
 | Required desk plus parking | Secure both in one Booking transaction or confirm neither. A transfer acquires replacement capacity and releases the old claims together. |
 | Linked booking cancellation/release | Before either booking starts, explicit cancellation of either part of a both-required pair cancels both atomically; optional links permit independent cancellation. Once either starts, cancel only the selected booking unless both are explicitly chosen. Automatic desk no-show/vacancy release leaves parking booked until its own end or explicit release, retaining bay/pool usage. |
-| Main allocation run | Plan outside long transactions using a versioned snapshot. Commit each group's placement atomically, including required parking; replan only affected uncommitted groups on conflicts. |
+| Main allocation run | Form collaborator groups, including singletons, then pack them into existing desks outside long transactions. Revalidate and publish the completed plan together, including required parking; intermediate placements remain proposals and previously published bookings remain protected. |
 | Workplace retirement/reactivation/deletion | Published immediate/scheduled retirement excludes new use on/after the office-local effective time, including descendants. Booking compares requested use with the lifecycle revision. Reactivation revalidates definitions/calendars/inventory while retaining identity/history; unconfirmed holds/offers cannot confirm excluded use and late Exchange effects reconcile. Confirmations remain manageable and deletion never silently cancels/cascades. |
 | Operational plan activation | Plans approves immutable assets; Workplace owns geometry-to-stable-space mappings. Booking validates dated inventory and confirmed-claim impact under version guards before activation. Approval and activation have distinct public outcomes. |
 | Check-in, no-show and vacancy | Booking decides the transition against current state/policy. A personal check-in wins only if the allocation remains valid. Anonymous occupancy cannot reserve a released desk. Sensor outages do not establish vacancy. |
@@ -240,8 +241,9 @@ The [REST request contract](research/api-surfaces/request-behaviour.md) records
 required keys/atomic receipts for booking creation, tickets and work
 submission; previous-version configuration edits; standard/expensive admission;
 actor-owned budgets across clients/sessions; and durable public operation status.
-Keep bounded inputs and worker execution separate from HTTP rate admission.
-Definitive refusal replay, partial allocation reporting and safe cancellation
+Keep input/admission/concurrency controls separate from allocation quality;
+worker controls must not impose a cutoff that publishes a lesser allocation.
+Definitive refusal replay, completed-plan unmet-demand reporting and safe cancellation
 are required. Recovery survives reloads/client restarts and a return the next
 working day, through the end of that day in the booking/event office calendar,
 including weekends/closures. Publish the recovery deadline; after expiry,
@@ -252,14 +254,21 @@ the next office working day after restoration; retain evidence and publish the
 extension while booking periods and capacity keep their normal rules.
 Equivalent retries compare client-supplied JSON values, ignoring property order
 and whitespace while preserving omitted/null distinctions and original
-preconditions. Allocation cancellation stops before another group commit;
-unfinished plans cannot publish; incomplete exports are cleaned up and completed
+preconditions. Allocation cancellation winning before publication prevents any
+placements from that run becoming confirmed; a published plan remains completed.
+Unfinished plans cannot publish; incomplete exports are cleaned up and completed
 results retain normal access/expiry. Cancellation remains requested until work
 stops and is serialized against commit/publication; preserve work committed first
 and prevent the next commit/publication when cancellation wins. Receipt duration,
 retained expiry evidence, wire details and numeric limits remain open. The contract applies across all
 five candidate layouts; repository style, concrete activation guards and evidence
 retention settings remain under review.
+
+The [two-phase decision](adr/0037-form-collaborator-groups-before-packing-desk-allocations.md)
+and [research](research/two-phase-desk-allocation.md) retain the agreed priority
+order, sitting together before minimum walking distance, and quality over compute
+cost. Grouping, packing and publication mechanisms require evidence; no solver
+or repository architecture is selected.
 
 ## Identity, lifecycle and privacy
 

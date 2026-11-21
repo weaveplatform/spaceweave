@@ -234,17 +234,24 @@ The link may require both bookings to be secured together or allow each to be
 secured independently.
 
 **Allocation group**:
-A group of staff formed within SpaceWeave for assignment to a neighbourhood's
-desks, separate from externally defined teams.
+One or more staff grouped within SpaceWeave for placement together among a
+neighbourhood's desks, separate from externally defined teams.
+
+**Collaborator grouping**:
+The first allocation phase, forming groups from staff attending on a particular
+date and their collaboration relationships.
+
+**Group packing**:
+The second allocation phase, placing the formed groups into available desks.
 
 **Allocation run**:
-A scheduled round that considers attendance intents together and forms groups for
-each attendance date using team proximity. It assigns those groups to
-neighbourhoods and confirms desk bookings.
+A scheduled round that considers attendance intents together, forms collaborator
+groups for each attendance date, then packs those groups into available desks.
+Its completed plan is published together as confirmed bookings and unmet demand.
 
 **Allocation proposal**:
-A set of planned desk placements for attendance intents, awaiting validation and
-commitment as bookings.
+A planned set of group placements and unmet demand, awaiting validation and
+publication as an allocation result.
 
 **Allocated desk**:
 A desk assigned by the system to a staff member for a specified period.

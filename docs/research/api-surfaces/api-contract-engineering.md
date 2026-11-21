@@ -200,14 +200,16 @@ its two request classes; one admitted call must not expand into unbounded work.
 | Availability/search | Date span, offices/resources, filters and result page. |
 | Booking/ticket creation | Named owner/attendee scope, interval and supported recurrence/batch size. |
 | Drawing processing | Upload bytes, pages, pixels/entities and generated output size. |
-| Allocation | Cycle/cohort size, outstanding runs and bounded atomic placement groups. |
+| Allocation | Admitted cohort scope, outstanding runs, worker concurrency and publication workload; no quality-reducing solver-time cutoff or invented group-size limit. |
 | Reports/exports | Date/scope/volume, outstanding exports and authorised result size. |
 | Operation reads | Response size, bounded polling and retention-aware lookup. |
 
 No numeric rate, burst, page/window, queue or concurrency value is selected here.
 Rate admission does not reserve worker execution. Bound backlog, active jobs,
 per-kind concurrency, execution time and retries separately; decline unsafe new
-acceptance with a typed overload outcome. Keep core availability, booking and
+acceptance with a typed overload outcome. Allocation interruptions remain
+provisional; execution controls must not publish a lesser result as the completed
+plan merely because a compute budget expired. Keep core availability, booking and
 check-in responsive while allocation, tracing and export work runs.
 
 ## Share admission across replicas
@@ -308,9 +310,11 @@ is still pending.
 [asynchronous pattern](https://learn.microsoft.com/en-us/azure/architecture/patterns/asynchronous-request-reply).
 
 A completed allocation may contain unfulfilled demand without being a processing
-failure. Report committed placements and safe unplaced reasons separately from
-technical failure. Authorised cancellation stops future work at safe boundaries
-and preserves committed effects; expose what completed before cancellation.
+failure. Report published placements and safe unplaced reasons separately from
+technical failure before publication, which confirms no partial groups. Allocation
+status separates grouping/packing progress from the completed published result.
+Authorised cancellation fences publication; if publication wins, preserve its
+completed result. Other workflows retain their own safe boundaries and effects.
 Allocation cancellation requires allocation-management authority. These are
 SpaceWeave outcomes, not guarantees supplied by a queue or HTTP status code.
 

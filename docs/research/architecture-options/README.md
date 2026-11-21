@@ -70,9 +70,15 @@ layouts without selecting a repository style.
   groups distinct from externally maintained teams; allocate within hard
   constraints, then prioritise explicit collaboration, team proximity and
   previously unfulfilled demand among plans accommodating the same demand.
-- Plan outside long transactions; commit a group placement atomically,
-  including both-required parking. Replan affected uncommitted groups. Protect
-  confirmed bookings; ordinary direct desk booking opens after the main run.
+- Form collaborator groups, including singletons, then pack those groups into
+  existing desks outside long transactions. Sitting together precedes minimum
+  walking distance within proximity objectives; quality takes precedence over
+  computation cost and unequal placement quality is expected. Publish the
+  completed, validated plan together, including required parking. Repair stale
+  provisional work before publication; preserve older published bookings.
+  Ordinary direct desk booking opens after main-plan publication. The
+  [decision](../../adr/0037-form-collaborator-groups-before-packing-desk-allocations.md)
+  and [research](../two-phase-desk-allocation.md) apply to all five candidates.
 - Enforce one overlapping desk per person. Required desk/parking claims confirm
   both or neither; office transfers acquire replacements and release old claims
   atomically. Before either booking starts, explicit cancellation of either part
@@ -152,9 +158,10 @@ layouts without selecting a repository style.
   layouts. Required keys/atomic acceptance receipts, versioned
   configuration edits, two admission classes, actor budgets across clients and
   public operation status are application requirements. Definitive refusal replay,
-  partial allocation reporting and safe cancellation preserve completed effects.
+  completed-plan unmet-demand reporting and cancellation preserve published effects.
   Retention, wire conventions and numeric limits remain open; each layout
-  preserves bounded inputs and worker execution.
+  protects admission and worker concurrency without a quality-reducing allocation
+  time cutoff. Partial execution remains provisional until plan publication.
 - PostgreSQL durable state, logical ownership of tables/migrations and one
   authoritative local booking/availability write path. Durable PostgreSQL jobs
   and transactional outbox; external effects after commit, retry-safe handlers,
@@ -186,8 +193,8 @@ layouts without selecting a repository style.
 Every document traces the same work so a reader can compare where it lives and
 which interfaces/transactions carry it:
 
-1. Commit an allocation group's desk placements and required parking from a
-   snapshot while direct requests and cancellations change inventory.
+1. Form collaborator groups, pack them into existing desks with required parking,
+   and publish the completed plan while permitted concurrent changes affect inventory.
 2. Race an assignee's check-in against no-show release and waitlist promotion,
    including anonymous occupancy and a confirmed application outage.
 3. A PA creates a room request; room acceptance and an external Outlook edit

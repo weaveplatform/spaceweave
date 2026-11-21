@@ -25,6 +25,14 @@ preferred candidate; agreed logical owners apply across all five layouts, while
 concrete package placement remains subject to validation; a candidate tree illustrates an option,
 rather than proving its correctness or performance.
 
+## Allocation research
+
+[Two-phase desk allocation](two-phase-desk-allocation.md) explains collaborator
+grouping followed by packing into existing desks, completed-plan publication,
+technology candidates and required proof cases. It supports
+[ADR 0037](../adr/0037-form-collaborator-groups-before-packing-desk-allocations.md)
+without selecting a solver or repository architecture.
+
 ## API reading path
 
 1. [API catalogue](api-surfaces/README.md): consumers, public/private contracts,

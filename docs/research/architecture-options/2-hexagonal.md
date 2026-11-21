@@ -283,7 +283,7 @@ spaceweave/
 │   │       │   ├── inventory.go
 │   │       │   ├── intents.go
 │   │       │   ├── allocation.go
-│   │       │   ├── commit_group.go
+│   │       │   ├── publish_plan.go
 │   │       │   ├── transfer.go
 │   │       │   ├── waitlist.go
 │   │       │   ├── checkin.go
@@ -639,6 +639,16 @@ These bindings refine the proposal, not its printed counts.
 
 ## Deep dives
 
+The [two-phase allocation decision](../../adr/0037-form-collaborator-groups-before-packing-desk-allocations.md)
+and [supporting research](../two-phase-desk-allocation.md) apply here: phase one
+forms collaborator groups, including singletons; phase two packs those groups
+into existing seats with member-specific requirements and required parking.
+Sitting together precedes minimum walking distance within the agreed proximity
+objectives. Quality takes precedence over compute cost; unequal placement quality
+is expected. Completed-plan publication preserves previously published bookings;
+intermediate persistence creates no protected confirmations. Algorithms, handling
+of groups that cannot fit, and the publication mechanism remain unselected.
+
 Booking consumes the driven solver interface, implemented by its solver adapter
 using pure allocation rules. Demand, planning progress and claims remain one
 Booking owner, with calculation outside claim transactions.
@@ -652,25 +662,26 @@ office/date/calendar, effective policy, workplace definition, dated bundle
 membership, teams, eligible intents, explicit collaboration, claim versions and
 parking capacity. Keep source versions and a stable input digest for diagnosis.
 
-`groups.go` forms per-date allocation groups; a directory team is an input, not
-the group itself. `constraints.go` filters mandatory features, availability,
+`groups.go` forms per-date allocation groups, including singletons; a directory
+team is an input, not the group itself. `constraints.go` filters mandatory features, availability,
 building boundaries and linked parking. `packing.go` fits groups to dated
 neighbourhoods, including bundles spanning floors of one building. The objective
 first accommodates demand; among plans accommodating the same demand it ranks
 explicitly prioritised collaboration, team proximity and previous unmet demand.
-Deterministic tie breaking makes the same snapshot explainable. Heuristics,
-fairness windows and acceptable solve budgets require workload validation.
+Sitting together precedes minimum walking distance within proximity objectives.
+Record objective values and solver evidence against the input snapshot; compute
+cost is measured without introducing a solve cutoff that weakens quality.
 
-Planning runs outside a write transaction. `commit_group.go` rechecks each
-group's current versions, eligibility, policy and capacity in a short transaction.
-All desks for that placement and every both-required parking claim succeed
-together. A conflicted group remains uncommitted; repair affected uncommitted
-groups without moving protected confirmations. A run is not one enormous atomic
-transaction, and a proposal never counts as a booking.
+Planning runs outside a write transaction. `publish_plan.go` validates the complete
+proposal's relevant versions, eligibility, policy, capacity and required parking.
+A proposal never counts as a booking. Repair changed provisional work before
+publishing all placements in the completed plan together; existing published
+bookings remain protected. Transactional publication or a guarded staging ledger
+requires validation; the solve itself never holds a long transaction.
 
 Ordinary direct desk requests enter intent collection before the main run and
-open afterward. Later requests, cancellations, waitlist promotion and dated
-neighbourhood adjustments all enter Booking. Adjustments can move unallocated
+open after completed-plan publication. Later requests, cancellations, waitlist
+promotion and dated neighbourhood adjustments all enter Booking. Adjustments can move unallocated
 desks between bundles, never silently revoke a confirmed claim. A desk transfer
 locks old and replacement resources in a canonical order, obtains the replacement
 desk/required parking and releases the former claims in the same transaction.
@@ -1246,26 +1257,23 @@ unavailability inputs/declarations remain unselected.
 
 ## Walkthroughs
 
-### 1. Commit a group while direct requests and cancellations change capacity
+### 1. Publish the completed plan while capacity changes
 
-1. `scheduler` calls `driving.Allocation.Start`; Booking creates a cycle/run job
-   using its effective office policy. A duplicate trigger returns the same run.
-2. An allocation worker calls `Snapshot`; Booking reads consistent dated
-   inventory/intents/team/workplace inputs and records their revisions.
-3. `rules/allocation` forms groups and packs a proposal outside a write
-   transaction, including every both-required parking dependency.
-4. `driving.Booking.Cancel` resolves the pair under Booking guards and creates
-   committed waitlist work.
-   Before either starts, a both-required cancellation ends both atomically; an
-   optional link cancels only the selected booking.
-   A premature ordinary direct request becomes intent; after the main run it
-   still cannot jump eligible waitlisted demand.
-5. `CommitGroup` locks resource/owner/pool guards in canonical order, reloads
-   changed inputs and validates all members. Its one UoW either writes all desk
-   and required parking claims plus outcomes/outbox, or writes none.
-6. A competing claim makes that group stale/unavailable. Booking replans affected
-   uncommitted groups; groups already confirmed remain protected. The response
-   distinguishes committed, pending repair and unmet demand.
+1. `scheduler` calls `driving.Allocation.Start`; Booking durably identifies the
+   cycle/run and consistent input snapshot. Duplicate triggers return the same run.
+2. `rules/allocation/groups.go` forms date-specific collaborator groups, including
+   singletons. `packing.go` places those groups in existing desks, retaining each
+   member's mandatory features and both-required parking dependencies.
+3. The driven solver adapter works outside a transaction; persisted placements
+   are proposals and cannot protect early groups from subsequent improvements.
+4. Booking cancellation or another permitted writer can change inventory. Ordinary
+   direct requests remain intents until the main plan is published.
+5. The `publish_plan.go` command validates the complete plan through Booking's
+   current authority/version/resource/pool guards. Repair a stale proposal before
+   publication rather than confirming unaffected groups independently.
+6. Publish the completed allocation and its durable result/facts together; required
+   parking and group consistency hold. Cancellation winning blocks publication;
+   publication winning remains completed. Notify only published assignments.
 
 ### 2. Check-in races no-show release, promotion and an outage
 

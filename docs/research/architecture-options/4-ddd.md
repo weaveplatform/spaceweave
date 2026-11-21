@@ -267,7 +267,7 @@ internal/
 │   ├── booking.go
 │   ├── api/
 │   │   ├── booking.go                        claim commands, scoped cancellation and room recovery
-│   │   ├── allocation.go                     snapshot, proposal and group commit interface
+│   │   ├── allocation.go                     snapshot, proposal and completed-plan publication interface
 │   │   ├── venue.go                          restricted event-managed venue operations
 │   │   ├── evidence.go                       validate/store operational observations and publish facts
 │   │   └── events.go                         committed booking/check-in/release facts
@@ -298,8 +298,8 @@ internal/
 │   │   ├── submit_intent.go                  app-owned preferences and dated travel choices
 │   │   ├── plan_cycle.go                     assemble immutable snapshot and run planner
 │   │   ├── solver.go                         consumed solver interface; calculation outside tx
-│   │   ├── commit_group.go                   named multi-aggregate local transaction
-│   │   ├── direct.go                         post-run direct request and waitlist priority
+│   │   ├── publish_plan.go                   completed-plan publication across affected aggregates
+│   │   ├── direct.go                         direct requests after plan publication; waitlist priority
 │   │   ├── transfer.go                       named acquire-replacement/release-old transaction
 │   │   ├── checkin.go                        owner-only personal transition
 │   │   ├── protection.go                     apply shared incidents to Booking-owned deadlines
@@ -322,7 +322,7 @@ internal/
 │       │   └── checkin.go
 │       └── postgres/
 │           ├── claims.go                     overlap protection and consistent resource lock protocol
-│           ├── allocation.go                 snapshot versions, runs and group commit progress
+│           ├── allocation.go                 snapshot versions, runs and provisional/publication progress
 │           ├── waitlist.go                   competing offers and acceptance
 │           ├── inventory.go                  dated neighbourhood/capacity rows
 │           ├── evidence.go                   Booking-owned desk evidence; native room outcome refs
@@ -531,6 +531,16 @@ to the printed context tree rather than these explanatory surface bindings.
 
 ## Deep dives
 
+The [two-phase allocation decision](../../adr/0037-form-collaborator-groups-before-packing-desk-allocations.md)
+and [supporting research](../two-phase-desk-allocation.md) apply here: phase one
+forms collaborator groups, including singletons; phase two packs those groups
+into existing seats with member-specific requirements and required parking.
+Sitting together precedes minimum walking distance within the agreed proximity
+objectives. Quality takes precedence over compute cost; unequal placement quality
+is expected. Completed-plan publication preserves previously published bookings;
+intermediate persistence creates no protected confirmations. Algorithms, handling
+of groups that cannot fit, and the publication mechanism remain unselected.
+
 ### Domain model and context map
 
 Identity's `Staff` is a correlated identity with effective source facts.
@@ -566,7 +576,7 @@ just to change one desk.
 
 | Invariant | Aggregate-local transaction challenge | Proposed coordination |
 | --- | --- | --- |
-| Every placement in one allocation group commits together | Independent claims/resource capacity belong to several roots. | Booking's `commit_group.go` validates the affected roots and commits all affected claims/capacity guards/outbox records in one bounded transaction. |
+| The completed allocation plan publishes together, preserving group and required-parking consistency | Independent claims/resource capacity belong to several roots. | Booking's `publish_plan.go` validates the complete proposal and coordinates publication across affected roots; final-transaction versus guarded-staging mechanics require proof. |
 | Required desk plus parking both confirm or neither does | A request-set root alone cannot prevent another request-set claiming the same desk/pool capacity. | Shared Booking transaction coordinates request-set and competing resource/staff guards. |
 | Before either starts, both-required pair cancellation ends both bookings or neither | The pair contains separate Booking claim roots. | Booking's release handler resolves the pair from either ID and revalidates link/start state, authority and resource/pool guards; both claims, retry outcome and facts commit together. |
 | A person has no overlapping desks across offices | Independent office/date aggregates cannot alone enforce the global interval invariant. | A canonical Booking claim protocol and PostgreSQL staff-overlap protection apply to every writer. |
@@ -637,7 +647,7 @@ Only specific unallocated desks may move between dated bundles. Every proposed
 movement is versioned with the group placement that relies on it, and Booking
 revalidates that the desks remain unallocated. A changed proposal does not move
 another person's confirmed booking or silently alter a staff-chosen attendance
-day. After the main run, direct spare-desk booking uses the same claim interface
+day. After the main plan is published, direct spare-desk booking uses the same claim interface
 and waitlist priority. Late intents are incremental work, not a second writer.
 
 ### Check-in, occupancy and timed work
@@ -805,7 +815,7 @@ runtime identities. Jobs are PostgreSQL-backed with leases/fencing and observabl
 lag/failure states. A Graph outage degrades room synchronisation, not otherwise
 healthy desk check-in. A failed notification consumer cannot stall allocation.
 
-Track core success/latency, group commit conflicts, unmet demand, timer lag,
+Track core success/latency, allocation publication conflicts, unmet demand, timer lag,
 room-pending age, Exchange freshness and notification backlog. Export
 OpenTelemetry traces/metrics and JSON logs through the Collector. Probe liveness,
 readiness and dependency degradation deliberately rather than restarting healthy
@@ -973,20 +983,23 @@ unavailability inputs/declarations remain unselected.
 
 ## Walkthroughs
 
-### Commit one allocation group while capacity changes
+### Publish the completed allocation plan while capacity changes
 
-1. A durable cycle job calls `booking/application/plan_cycle.go` with a cycle ID.
-2. Published Identity/Workplace/Policy views and Booking-owned inventory/claims
-   produce a versioned planning snapshot. No database transaction spans packing.
-3. `domain/allocation/planner.go` forms the per-date group and suitable desk/parking
-   proposal, preserving attendance choices and required features.
-4. `commit_group.go` enters the named local multi-aggregate transaction and checks
-   intent, policy, definition and dated-inventory dependencies.
-5. PostgreSQL claim/staff/pool guards arbitrate a competing direct request or
-   cancellation; the whole group and required parking commit or none does.
-6. Append group/booking outcome facts with the committed state. A conflict
-   replans affected uncommitted work; already committed groups stay protected.
-7. Separate consumers notify, project attendance and monitor unmet demand.
+1. A durable cycle job calls `booking/application/plan_cycle.go` for the relevant
+   office/date cohort and records its input snapshot and generation.
+2. Identity/Workplace/Policy views and Booking-owned inventory supply versioned
+   planning facts. No database transaction spans grouping or packing.
+3. `domain/allocation/planner.go` first forms collaborator groups, including
+   singletons, then packs those groups into existing desks while retaining
+   member-specific requirements, relationships and required parking.
+4. Proposals remain movable. `publish_plan.go` validates the complete plan against
+   current authority, intent, policy, definitions and dated inventory dependencies.
+5. Booking guards arbitrate concurrent changes and cancellation; stale provisional
+   work requires repair before publication. Older published bookings remain fixed.
+6. Publish the completed plan, required parking and durable outcome/follow-up work
+   consistently. No early group becomes confirmed; publication/cancellation have
+   a guarded ordering and retries recover the same published result.
+7. Separate consumers notify and report published outcomes and unmet demand.
 
 ### Race check-in, release and waitlist promotion
 
