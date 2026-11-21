@@ -255,8 +255,8 @@ internal/
 │   │   ├── intents.go                collect/amend attendance demand and travel exceptions
 │   │   ├── cycles.go                 main-run cutoff, processing state and direct-open gate
 │   │   ├── snapshot.go               consistent versioned allocation input query
-│   │   ├── placement.go              revalidate and atomically commit one whole group
-│   │   ├── direct.go                 spare capacity after run; waitlist precedence
+│   │   ├── placement.go              revalidate and publish the completed allocation plan
+│   │   ├── direct.go                 spare capacity after plan publication; waitlist precedence
 │   │   ├── parking.go                bay/pool claims and required desk+parking linkage
 │   │   ├── transfer.go               acquire replacements/release old claims atomically
 │   │   ├── adjustment.go             dated movement of unallocated neighbourhood desks
@@ -277,10 +277,10 @@ internal/
 │   │   └── planning/                 private calculation; Booking owns demand/progress/claims
 │   │       ├── run.go                    load snapshot; plan outside database transaction
 │   │       ├── groups.go                 per-date grouping distinct from external teams
-│   │       ├── packing.go                neighbourhood/floor placement and split candidates
+│   │       ├── packing.go                existing-seat group placement within dated bundles
 │   │       ├── eligibility.go            mandatory features, calendars and required parking
 │   │       ├── objective.go              demand, explicit collaboration, proximity, unmet demand
-│   │       └── replan.go                 affected uncommitted groups after stale proposal
+│   │       └── replan.go                 repair provisional work after changed inputs
 │   ├── workplace/
 │   │   ├── workplace.go              office/building/floor/space definitions
 │   │   ├── neighbourhood.go          baseline bundles within one building
@@ -490,11 +490,22 @@ wire version. Counts above still describe the printed candidate tree only.
 
 ## Deep dives
 
+The [two-phase allocation decision](../../adr/0037-form-collaborator-groups-before-packing-desk-allocations.md)
+and [supporting research](../two-phase-desk-allocation.md) apply here: phase one
+forms collaborator groups, including singletons; phase two packs those groups
+into existing seats with member-specific requirements and required parking.
+Sitting together precedes minimum walking distance within the agreed proximity
+objectives. Quality takes precedence over compute cost; unequal placement quality
+is expected. Completed-plan publication preserves previously published bookings;
+intermediate persistence creates no protected confirmations. Algorithms, handling
+of groups that cannot fit, and the publication mechanism remain unselected.
+
 ### Desk demand, group planning and commitment
 
 `booking/intents.go` records chosen dates, usual-office defaults, travel,
 requirements/preferences and explicit collaboration priority. Imported teams,
-including multiple memberships, inform per-date groups in `booking/planning/groups.go`;
+including multiple memberships, inform per-date groups, including singletons,
+in `booking/planning/groups.go`;
 group IDs never replace source team identities.
 
 Cycles pin office calendars, cohorts and policy versions. Seven-day cycles and
@@ -503,17 +514,20 @@ Allocation snapshots include dated neighbourhoods, claims, required parking and
 source-effective eligibility; computation holds no long transaction.
 
 `packing.go` evaluates placements satisfying mandatory space features before
-preferences. It can split teams across floors to fit more demand; neighbourhoods
-remain within one building even when they span floors. `objective.go` compares
+preferences. Groups derived from the same source team may occupy different
+floors; this does not select a policy for splitting an allocation group.
+Neighbourhoods remain within one building even when they span floors. `objective.go` compares
 accommodated demand first, then explicit collaboration, general team proximity
 and previously unfulfilled demand. It does not enforce anchor-day attendance.
 
-Booking commits a whole group plus both-required parking in one bounded
-transaction, revalidating affected snapshot dependencies, current eligibility,
-policy and claim constraints. Replan affected uncommitted groups; preserve
-confirmations. Bound group size without breaking atomicity.
+Booking revalidates the completed proposal, including member-specific desk and
+both-required parking compatibility, input revisions and current eligibility.
+Changed relevant inputs require repair and revalidation before publication;
+proposals remain movable and previously published bookings remain protected.
+Do not invent a group-size limit to fit the transaction design. A final claim
+transaction or a guarded staging ledger needs workload validation before selection.
 
-`direct.go` opens ordinary direct booking only after the date's main run.
+`direct.go` opens ordinary direct booking only after the date's main plan is published.
 Earlier requests join intents. Eligible waitlist demand precedes fresh requests;
 same-day offers hold capacity until acceptance/expiry through Booking's current
 state transition. A stale offer cannot displace a later confirmation.
@@ -524,21 +538,23 @@ Only composition receives aggregate `Store`; services receive narrow facets.
 Exchange and Events call Booking; its planner is private for capacity. Booking's transaction
 facet names supported transitions, avoiding generic `Save(any)` access.
 
-Proposed pseudocode illustrates placement, not a promised Go API:
+Proposed pseudocode illustrates a final-transaction publication candidate, not a
+selected mechanism or promised Go API. All solve work is already complete;
+transaction size and lock contention must be validated.
 
 ```go
 // internal/application/booking/placement.go
-func (s *Service) CommitGroup(ctx context.Context, req GroupPlacement) error {
+func (s *Service) PublishPlan(ctx context.Context, req CompletedPlan) error {
     return s.DB.Tx(ctx, func(tx store.Tx) error {
         claims := s.Bookings.WithTx(tx)
-        // Stable lock keys include people, resources and parking-pool windows.
-        if err := claims.LockPlacement(ctx, req.LockKeys()); err != nil {
+        // Guard run/generation/cancellation, people, resources and parking pools.
+        if err := claims.LockPublication(ctx, req.LockKeys()); err != nil {
             return err
         }
         if err := s.revalidate(ctx, tx, req); err != nil {
             return err
         }
-        if err := claims.CommitWholeGroup(ctx, req); err != nil {
+        if err := claims.PublishCompletedPlan(ctx, req); err != nil {
             return err
         }
         return s.Work.WithTx(tx).Append(ctx, req.CommittedFacts())
@@ -1017,21 +1033,23 @@ unavailability inputs/declarations remain unselected.
 
 ## Walkthroughs
 
-### 1. Commit a group while inventory changes
+### 1. Publish the completed allocation plan while inventory changes
 
-1. Trigger enqueues a due office cycle; Booking's allocation worker loads its versioned
-   snapshot, source-effective teams/eligibility and pinned policy/calendar.
-2. Private `booking/planning/groups.go` and `packing.go` form/date-place groups through
-   Booking's consumed solver interface outside a long transaction;
-   required parking and mandatory features constrain candidates.
-3. A direct request or cancellation reaches Booking through the same service.
-   Its transaction changes capacity/version and commits associated outbox facts.
-4. `booking/placement.go` locks stable keys for the proposed group and revalidates
-   affected snapshot dependencies, current claims, waitlist precedence and people.
-5. If required parking is unavailable, the whole group transaction rolls back;
-   no desk in that proposed group is partly confirmed.
-6. Booking replans affected uncommitted groups. Successful groups atomically
-   create claims and work records; confirmed earlier groups remain protected.
+1. Booking's allocation worker records the versioned office/date cohort,
+   inventory, source-effective teams/eligibility and policy/calendar inputs.
+2. Private `booking/planning/groups.go` forms collaborator groups, including
+   singletons; `packing.go` then places those groups into existing eligible desks
+   outside a long transaction, preserving member-specific features and parking.
+3. `objective.go` applies the agreed priorities, with sitting together before
+   walking distance. Proposals and worker progress remain provisional.
+4. A booking cancellation or other permitted capacity writer can change relevant inputs.
+   `booking/placement.go` revalidates the complete proposal and publication guards;
+   a selected desk still being free alone does not establish unchanged quality.
+5. Repair stale provisional work before publication. A required-parking failure
+   cannot produce an intermediate desk confirmation; older published bookings stay.
+6. Publish the completed plan and its durable outcome/notification work together.
+   Cancellation winning the ordering prevents publication; a lost response is
+   recovered through the same result. Then ordinary direct booking opens.
 
 ### 2. Race check-in, release and waitlist promotion
 

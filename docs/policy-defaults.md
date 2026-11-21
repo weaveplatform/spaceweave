@@ -10,7 +10,7 @@ times use the office calendar and timezone.
 | Intent lookahead | 28 calendar days | Future attendance dates staff can request. |
 | Allocation cycle | 7 days, starting Monday | Attendance dates planned as one cycle; closed dates remain unavailable. |
 | Intent cutoff | 14 calendar days before the cycle start date, at 17:00 local | Deadline for that cycle's main cohort. |
-| Main allocation run | 30 minutes after cutoff | Plan and commit the cohort; handle later changes incrementally. |
+| Main allocation run | 30 minutes after cutoff | Start grouping then packing; publish the completed, validated plan together. Handle later changes incrementally. This is a start time, not a solve deadline. |
 | Desk no-show grace | 60 minutes after booking start | Assignee must personally check in before expiry. |
 | Post-check-in vacancy | 30 minutes | Require fresh, sustained vacancy evidence; missing signals mean unknown. |
 | Same-day desk waitlist offer | 10 minutes | Acceptance deadline before offering desk capacity to the next eligible person. |
@@ -41,6 +41,10 @@ request classes, with one token per admitted attempt, including replays.
 Authenticated balances follow the person/application across sessions and
 clients. Bound inputs and worker execution separately; establish numerical
 limits through representative load validation.
+
+Allocation admission/concurrency controls protect interactive work; they do not
+set a solver-time budget that permits publishing a lower-quality plan. Measure
+the compute cost of pursuing the agreed objective separately from HTTP budgets.
 
 No numerical initial rate/burst or retry-retention value is adopted yet.
 Booking/ticket recovery covers the end of the next working day in the relevant
@@ -146,8 +150,18 @@ defines durable cancellation, provider scope and remaining policy choices.
 
 ## Agreed allocation rules
 
+Form date-specific collaborator groups, including singletons, then pack those
+groups into existing desks with member-specific requirements and required
+parking. Publish the completed, validated plan together; preparation does not
+confirm groups progressively. Unequal placement quality is expected.
+
 Among plans accommodating the same number of people, prioritise explicit
 collaboration, then general team proximity, then previously unfulfilled demand.
-Ordinary direct desk booking opens after the date's main allocation run; before
+Evaluate sitting together before minimum walking distance within proximity
+objectives. No arbitrary computation budget weakens the allocation objective.
+Ordinary direct desk booking opens after the date's main plan is published; before
 then, requests enter intent collection. Existing waitlist priority still applies
 when capacity becomes available.
+See the [decision](adr/0037-form-collaborator-groups-before-packing-desk-allocations.md)
+and [supporting research](research/two-phase-desk-allocation.md); solver choice,
+group-fitting policy and publication mechanism remain subject to validation.

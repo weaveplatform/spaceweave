@@ -23,7 +23,7 @@ The detailed repository/module layout is an independent architecture choice.
 | Budget ownership | A person/application shares its budget across sessions and clients. | UI/MCP share the person's allowance; machine scripts use the application's allowance. |
 | Deferred work | Allocation, floor-plan processing and exports expose durable operation references. | Authorised clients can inspect status, meaningful progress, failure and result links. |
 | Definitive refusal | Repeating a retained command identity returns its original refusal. | New intentional attempts use new keys; transient technical failures are handled separately. |
-| Partial allocation | Unfulfilled capacity demand differs from technical processing failure. | Report placed/unplaced groups and partial progress without erasing committed placements. |
+| Allocation outcomes | Unfulfilled demand in a completed plan differs from interrupted provisional processing. | Report published placed/unplaced outcomes separately from phase progress; technical interruption cannot confirm partial groups. |
 | Cancellation | Authorised callers can request cancellation of long-running work. | Stop at safe boundaries, preserve completed effects and report what completed. |
 
 These are SpaceWeave requirements. They are not guarantees supplied by HTTP,
@@ -170,8 +170,11 @@ Provider/provisioning/visitor protocols need their own appropriate admission
 profiles instead of inheriting a staff session identity.
 
 Bound date spans, selected resources, pages, batches, file complexity and output
-volume. Separately bound outstanding work, worker concurrency, attempts and
-execution time. One expensive submission cannot imply unlimited queued work.
+volume. Separately control outstanding work, worker concurrency and technical
+attempts. Allocation quality is not reduced by a solver-time cutoff: stop or
+recover interrupted work without publishing an inferior intermediate plan as a
+completed result. Measure solve cost independently of HTTP admission. One
+expensive submission cannot imply unlimited queued work.
 Protect core availability, booking and check-in from heavy-work load. Establish
 numeric rates and bounds through representative contention and capacity tests.
 [Admission and worker controls](api-contract-engineering.md).
@@ -194,8 +197,8 @@ Separate execution state, business result and provider synchronisation state:
 | Situation | Required result meaning |
 | --- | --- |
 | Allocation completes with sufficient capacity for some groups | Completed planning with placed/unplaced counts and permitted reasons for unfulfilled demand. |
-| Technical failure interrupts processing | Failure/interruption with accurate partial progress and preserved committed groups. |
-| Cancellation arrives after some commits | Stop further work at safe boundaries and report completed effects and remaining work. |
+| Technical failure interrupts allocation before publication | Failure/interruption with provisional progress and no new confirmed placements from that run; older published bookings remain. |
+| Allocation cancellation races publication | Cancellation winning prevents publication; publication winning remains completed. Recover the durable outcome before offering another attempt. |
 | Room request is accepted locally | Pending local request/hold until Exchange's acceptance transition. |
 | Export generation completes | Authorised result link, with download access and expiry evaluated separately. |
 
@@ -206,21 +209,25 @@ normal authorised business commands handle later changes.
 
 | Workflow | Agreed cancellation boundary |
 | --- | --- |
-| Allocation | Stop before committing another group. Retain groups already committed and report the remaining unprocessed demand. |
+| Allocation | Stop provisional work and prevent completed-plan publication when cancellation wins; preserve a plan already published and previously published bookings outside this run. |
 | Floor-plan processing | Stop processing cooperatively where possible and prevent an unfinished revision from being published. |
 | Export generation | Stop generation and clean up incomplete output. An already completed result retains its normal access and expiry rules. |
 
 Acknowledging cancellation initially means cancellation requested, not that
 execution has stopped. Report cancellation as complete only after execution has
 stopped at its boundary. Serialize the durable cancellation decision against
-each commit/publication: work committed first remains; cancellation recorded
-first prevents the next commit/publication. If an export completed first, its
+publication; staged groups are not completed allocation effects. If publication
+wins, the plan remains completed; cancellation winning prevents publication.
+Other workflows retain their own commit boundaries. If an export completed first, its
 outcome remains completed and its result retains normal access/expiry.
 
 Public monitors return bounded status/progress, safe errors and result links.
 Queue payloads, SQL failures, provider credentials and worker repair controls
-remain private. Define concrete state names, progress freshness and response
-schemas around these agreed cancellation/completion outcomes.
+remain private. Allocation status distinguishes grouping, packing, provisional
+progress and the published completed plan; no new REST endpoint is required.
+The [decision](../../adr/0037-form-collaborator-groups-before-packing-desk-allocations.md)
+and [research](../two-phase-desk-allocation.md) define the two-phase boundary.
+Define concrete state names, progress freshness and response schemas around it.
 
 ## Proposed error and retry profile
 
@@ -252,11 +259,13 @@ transport failure. Apply native response rules to SCIM and provider callbacks.
 Every implementation must demonstrate simultaneous equivalent commands, JSON
 formatting changes, omitted/null distinction, response loss after commit,
 recovery across reloads/restarts and the next-working-day window, fingerprint
-mismatch, stale edits, partial group placement, refusal replay, revoked access,
+mismatch, stale edits, interrupted provisional work, refusal replay, revoked access,
 visitor-data removal, each cancellation boundary, shared budgets across replicas
 and saturation of heavy-work queues. Include office weekends/closures, published
 recovery deadlines, expiry with inconclusive reconciliation, cancellation versus
-commit/publication and cancellation after completed export. Test clients
+allocation publication, a completed plan with unmet demand, no partial confirmations,
+lost publication acknowledgements, stale worker takeover and cancellation after
+completed export. Test clients
 through supported public contracts as well as real PostgreSQL concurrency paths.
 
 Remaining design items are receipt duration and retained expiry evidence, exact operation and response

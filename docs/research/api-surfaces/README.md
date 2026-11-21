@@ -170,7 +170,7 @@ business operations under their actual authority and permitted projections.
 | `GET /people?...` | Find intended collaborators. | Minimal directory plus agreed relevant teammate/collaborator planned-day/desk projection; no source identifiers, employment details or general raw attendance payloads. |
 | `POST /attendance-intents`, `PATCH /attendance-intents/{id}` | Declare chosen dates, office/travel, required features and explicit collaboration. | Explicit owner, authorised actor, expected revision and retry semantics. Keep imported teams distinct from internal allocation groups. |
 | `GET /me/bookings`, `/bookings/{id}`, `/waitlist-offers/{id}` | Understand allocation, room acceptance and outstanding choices. | Kind-specific business state, including no-secured-room recovery, deadlines, office timezone, policy version and permitted next actions; no inference that a booked desk proves attendance. |
-| `POST /desk-bookings`, `/linked-booking-requests` | Book spare capacity after the main run, including both-required parking. | One Booking transaction; waitlist precedence; no premature direct claim before the cohort run; never split a both-required request into client-coordinated calls. |
+| `POST /desk-bookings`, `/linked-booking-requests` | Book spare capacity after main-plan publication, including both-required parking. | One Booking transaction; waitlist precedence; a failed/cancelled run does not open direct booking; never split a both-required request into client-coordinated calls. |
 | `POST /bookings/{id}/transfers`, `/cancellations` | Secure a replacement or cancel an authorised booking. | Transfer is atomic including linked parking. Before either starts, explicit cancellation of either booking in a both-required pair cancels both atomically; optional links cancel independently. Once either starts, cancel the selected booking unless both are explicitly chosen. Room cancellation records Exchange reconciliation state. |
 | `POST /bookings/{id}/check-ins` | Personally take an allocated desk. | Actor must be the assigned owner. QR supplies a desk reference, not authority or proof of physical identity/location. |
 | `POST /waitlist-offers/{id}/acceptances` or `/declines` | Respond to a still-valid offer. | Server checks current offer/version/deadline, protected outages and required linked capacity. |
@@ -191,7 +191,7 @@ hatch. The application validates transitions regardless of which surface calls.
 | Family | Consumer/action | Required distinction |
 | --- | --- | --- |
 | Workplace definitions | Office-scoped facilities staff configure buildings/floors/spaces/features/baseline bundles and calendars. | Definitions versus dated inventory and protected confirmed claims; impactful changes return explicit impact/workflow results. |
-| Allocation control | Authorised admins inspect cycles, demand, group proposals, placement progress and unfulfilled demand; trigger permitted work. | Proposal versus committed assignment; duplicate triggers do not create duplicate runs/claims. |
+| Allocation control | Authorised admins inspect cycles, demand, grouping/packing progress, proposals and unfulfilled demand; trigger permitted work. | Intermediate work remains provisional; only completed-plan publication confirms bookings. Duplicate triggers/publication do not create duplicate runs/claims. |
 | Plan management | Upload sources, inspect trace/review and approve immutable assets through Plans; publish operational geometry-to-stable-space mappings through Workplace after Booking validates impact. | Approval versus activation have separate outcomes, including in a combined admin workflow; source/report/draft access differs from staff-facing manifests. |
 | Reception/admission | Expected visits, arrival/departure and event-ticket scans. | Office/event capabilities; reception arrival and ticket admission are different records. Duplicate admission is explicit. |
 | Event management | Authorised organisers manage event audience, access, venue and ticket cap. | Current secured venue and active issued count are checked atomically; no arbitrary cap write through a generic admin DTO. |
@@ -482,7 +482,9 @@ our documented contract, not a universal HTTP-server guarantee.
 to the authorised initiator/owner/operator scope. Define execution states and the
 required allocation/plan-processing/export cancellation separately from the business resource.
 Return bounded error/result links and progress/freshness, not raw provider
-payloads, SQL or secrets. Expiry of operation history does not delete the booking.
+payloads, SQL or secrets. For allocation, expose grouping/packing and provisional
+progress separately from a published completed plan; an interrupted run has no
+confirmed partial groups. Expiry of operation history does not delete the booking.
 
 Use RFC 9457 problems for the general application REST contract, with stable
 problem identifiers/codes and safe detail. SCIM errors, Graph validation
@@ -654,8 +656,10 @@ public operation references with authorised progress and result reads.
 
 Definitive business refusals replay the same outcome for a retained command identity.
 Allocation results distinguish unfulfilled demand from technical interruption.
-Authorised cancellation stops allocation before another group commit, prevents
-unfinished plan publication and cleans incomplete exports; completed effects and
+Authorised allocation cancellation winning before publication prevents any
+placements from that run being confirmed; publication winning remains completed.
+Floor-plan cancellation prevents unfinished revision publication and exports clean
+incomplete output; completed effects and
 export results retain their normal rules. Ambiguous outcomes are recoverable
 across reloads/client restarts and a return the next working day. Equivalent
 JSON requests ignore property order/whitespace, preserving omitted/null values
@@ -668,7 +672,8 @@ the next office working day after restoration, retaining evidence and publishing
 the extended deadline.
 Cancellation is requested until execution stops, ordered against commits and
 publication; earlier commits survive. These behaviours are detailed in the
-[request contract](request-behaviour.md).
+[request contract](request-behaviour.md) and
+[two-phase allocation research](../two-phase-desk-allocation.md).
 
 Remaining design work includes receipt duration and retained expiry evidence,
 concrete operation/resource schemas, pagination/input bounds, measured

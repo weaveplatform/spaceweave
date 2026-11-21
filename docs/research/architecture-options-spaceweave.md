@@ -84,8 +84,12 @@ a departing PA's other-owner meetings remain.
 ## Transaction and workflow ownership
 
 One owner arbitrates dated capacity. Allocation calculates against a versioned
-snapshot outside long transactions; the owner revalidates and commits each group,
-including required parking. Direct requests, waitlist promotion, check-in and
+snapshot outside long transactions: form collaborator groups, including
+singletons, then pack those groups into existing desks. The owner revalidates
+and publishes the completed plan together, including required parking; staging
+creates no protected confirmations. The [decision](../adr/0037-form-collaborator-groups-before-packing-desk-allocations.md)
+and [research](two-phase-desk-allocation.md) define the quality and publication
+contract without selecting a solver. Direct requests, waitlist promotion, check-in and
 release use the same claim protocol. Before either linked booking starts,
 explicit cancellation of a both-required pair ends both atomically; optional
 links permit independent cancellation. Once either starts, cancel the selected
