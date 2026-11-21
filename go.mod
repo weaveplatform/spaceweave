@@ -10,7 +10,7 @@ tool (
 )
 
 require (
-	github.com/anthropics/anthropic-sdk-go/v2 v2.12.0
+	github.com/anthropics/anthropic-sdk-go/v2 v2.13.0
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/go-chi/chi/v5 v5.5.0
 	github.com/peterstace/simplefeatures v0.59.0
@@ -59,7 +59,7 @@ require (
 	github.com/tidwall/pretty v1.3.0 // indirect
 	github.com/tidwall/sjson v1.2.11 // indirect
 	github.com/vladopajic/go-test-coverage/v2 v2.23.0 // indirect
-	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
+	go.opentelemetry.io/auto/sdk v1.2.2 // indirect
 	go.opentelemetry.io/otel v1.47.0 // indirect
 	go.opentelemetry.io/otel/log v1.47.0 // indirect
 	go.opentelemetry.io/otel/metric v1.47.0 // indirect
