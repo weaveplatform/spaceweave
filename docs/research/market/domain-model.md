@@ -52,7 +52,7 @@ Grey dashed cards are things spaceweave should own because no surveyed vendor of
 | 3 | **Allocation** | Who is given what, in which cycle, on what terms, and by which plan? |
 | 4 | **Bookings** | Who uses what, and when: linked bookings, events and tickets, holds, queues, approvals and check-in |
 | 5 | **Rules & availability** | What is allowed, how much, and when places are open |
-| 6 | **People & access** | Who people are, and what they may administer, and where |
+| 6 | **People & access** | Who people are, who may act for whom, and what they may administer, and where |
 | 7 | **Integration** | What crosses the boundary: connected systems and their credentials, sync runs and issues, devices and their signals, API clients |
 | 8 | **Events & history** | What happened, who is told about it, and how long it is kept |
 
@@ -134,13 +134,12 @@ Standards such as IMDF or IFC are not part of the domain. An indoor-map export m
 | **Assignment** | A resource given to a person, group or guests: always or on an RRULE, with `autoBook` and `allowOthersToBook` | Skedda `assigned`; Officely Assignment; deskbird `DEDICATED`; Envoy `assignedTo`; Robin `shared` RRULE; Clearooms part-time and multi-owner |
 | **AssignmentRelease** | Days given back: manually, as a part-time gap, or on a missed check-in | Officely AssignmentRelease; Robin RRULE exclusions; Clearooms priority auto-release |
 | **AttendanceIntent** | Who plans to be where, by day and part of day | Envoy WorkSchedule; deskbird scheduling status |
-| **Delegation** | Who may book for, or manage the allocation of, someone else | Officely Delegation |
 | **Utilisation** | A read model of booked against occupied against no-show, which feeds the next plan | Skedda Insights; Robin and deskbird analytics |
 
 ### Bookings
 | Entity | Purpose | Closest vendor equivalents |
 |---|---|---|
-| **Booking (series)** | Organiser, RRULE recurrence, visibility | Skedda Booking; Robin series; LibreBooking reservation_series; Archie Booking.recurrence |
+| **Booking (series)** | Owner (organiser) and, when someone acts for them, the acting delegate and the `Delegation` it was made under; RRULE recurrence; visibility | Skedda Booking; Robin series; LibreBooking reservation_series; Archie Booking.recurrence |
 | **BookingOccurrence** | One instance: offset times plus IANA zone, a state machine (held → pending → allocated → checked_in (taken) → released / no_show / cancelled → completed), source. *Allocated* means booked or assigned; *taken* means the person checked in | Skedda BookingOccurrence; deskbird Booking; Envoy Reservation; Officely Booking |
 | **BookingLink** | Two or more occurrences held together, such as a desk and a parking bay for one day: `required` (neither confirmed without the other) or `optional`; cancelled together before start | None documented; WARP holds a desk and parking spot in one slot, not as one unit |
 | **Beneficiary** | Who a booking is for: a person, a guest or a vehicle | deskbird guest bookings; Clearooms Vehicle IDs |
@@ -159,15 +158,16 @@ Standards such as IMDF or IFC are not part of the domain. An indoor-map export m
 | **Rule** | An ordered rule with an effect (allow, deny, limit, require approval) that applies to allocation, booking or check-in | Officely BookingRule (ordered); Skedda (strictest quota wins); Archie Area policy; deskbird `policyRule` |
 | **Quota** | A count per period | Skedda quotas; Archie Quota |
 | **Entitlement** | Audience → targets, with booking horizon and priority | Robin priority booking for groups; Skedda booking windows |
-| **OperatingHours** | Weekly hours for a venue, building, level or resource | deskbird `openingHours`; Archie `available_times` |
-| **Closure** | A dated closure of a scope | Officely Closure |
-| **CapacityLimit** | Maximum occupancy or bookings for a scope | Envoy `capacityLimit` |
+| **OperatingHours** | Weekly hours for a venue, building, level or resource, which bound when occurrences can be booked | deskbird `openingHours`; Archie `available_times` |
+| **Closure** | A dated closure of a scope, which blocks occurrences in that period | Officely Closure |
+| **CapacityLimit** | Maximum occupancy or bookings for a scope, which limits how many occurrences it accepts | Envoy `capacityLimit` |
 
 ### People & access
 | Entity | Purpose | Closest vendor equivalents |
 |---|---|---|
 | **Person / Group** | Directory identities and SCIM groups | Skedda VenueUser/VenueUserTag; Robin SCIM User; deskbird User; Clearooms User/Team |
 | **Guest** | A non-directory person with a host | Robin and Envoy guests |
+| **Delegation** | Authority for a delegate to act for a principal: book for them, manage their bookings, or manage their allocation. It comes from a calendar delegate grant or is set up in the app, and has validity dates. Bookings record the delegation they were made under, so the owner and the acting person stay distinct | Officely Delegation |
 | **Role / Membership** | A role granted to a person or group, scoped to the organisation, a venue, building, level or group. Captains are a scoped role | Officely Role; Skedda tag types (bookingAdmin, owner …); Envoy captains |
 
 ### Integration
