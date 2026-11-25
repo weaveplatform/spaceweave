@@ -4,6 +4,8 @@ Each record states the problem, the context, the options with their pros and con
 recommendation and why, and the decision. Records are numbered and never renumbered. A
 replaced decision is marked `Superseded` and links to the record that replaces it.
 
+To write a new record, copy [0000-template.md](0000-template.md) to the next free number.
+
 | # | Decision | Status |
 |---|---|---|
-| [0001](0001-indoor-map-standard-imdf.md) | Align the spatial model with IMDF and use it as the interchange format | Superseded |
+| [0000](0000-template.md) | Template for new decision records | — |

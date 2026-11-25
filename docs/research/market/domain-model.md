@@ -99,7 +99,7 @@ corrects them by hand. To keep identity:
 - a `RevisionMapping` records what happened to each prior key: unchanged, moved, renamed, split, merged, removed or added, with a confidence and who reviewed it;
 - publishing resolves through the mapping, so the resource, its assignments and its bookings carry over, and splits, merges and removals become review items rather than silent breakage.
 
-Standards such as IMDF or IFC are not part of the domain. An indoor-map export may be offered later; see [ADR 0001](../../adr/0001-indoor-map-standard-imdf.md), now superseded.
+Standards such as IMDF or IFC are not part of the domain. An indoor-map export may be offered later, and would need its own decision record.
 
 ## Proposed entities
 
