@@ -5,9 +5,9 @@ this survey. It is analysis, not sourced fact. Each vendor mapping below points 
 §12 "Data model" section of that vendor's profile, where every field is cited. Eptura's
 mapping uses its profile, which was validated last.
 
-![common-domain-model data model](diagrams/common-domain-model.drawio.svg)
+![common-domain-model data model](../architecture/diagrams/common-domain-model.drawio.svg)
 
-Source: [`diagrams/common-domain-model.drawio`](diagrams/common-domain-model.drawio). One diagram per vendor sits beside it in [`diagrams/`](diagrams/).
+Source: [`../architecture/diagrams/common-domain-model.drawio`](../architecture/diagrams/common-domain-model.drawio). The per-vendor diagrams are in [`diagrams/`](diagrams/).
 
 ## What the survey shows
 
@@ -38,24 +38,23 @@ Source: [`diagrams/common-domain-model.drawio`](diagrams/common-domain-model.dra
    - signed webhooks: Skedda and Archie document the signing, and Officely Enterprise has signed webhook endpoints
    - presence from Wi-Fi, badges or sensors as an inbound signal
 
-## The nine pillars
+## The eight pillars
 
-The model is organised as nine pillars, each a column in the diagram. Cards point to
+The model is booking first, and is organised as eight pillars, each a column in the diagram. Cards point to
 Person, Group and Role in their text (`→ Person`) instead of with drawn lines, because
 nearly every card refers to people. Drawing all of those links would hide the structure.
 Grey dashed cards are things spaceweave should own because no surveyed vendor offers them.
 
 | # | Pillar | Question it answers |
 |---|---|---|
-| 1 | **Places** | Which tenant, venue, building and level? |
-| 2 | **Geometry · IMDF / IFC** | What is physically there, and how does it carry over from one drawing revision to the next? |
-| 3 | **Bookable** | What can be used, how it is grouped, and what it can do |
-| 4 | **Allocation** | Who is given what, on what terms, and by which plan? |
-| 5 | **Bookings** | Who uses what, and when, including holds, queues, approvals and check-in |
-| 6 | **Rules & availability** | What is allowed, how much, and when places are open |
-| 7 | **People & access** | Who people are, and what they may administer, and where |
-| 8 | **Integration** | What crosses the boundary: connected systems and their credentials, sync runs and issues, devices and their signals, exports, API clients |
-| 9 | **Events & history** | What happened, who is told about it, and how long it is kept |
+| 1 | **Places & floor plans** | Which tenant, venue, building and level? Which named spaces are on each floor, and how does a revised drawing carry over? |
+| 2 | **Bookable** | What can be used, how it is grouped, and what it can do |
+| 3 | **Allocation** | Who is given what, in which cycle, on what terms, and by which plan? |
+| 4 | **Bookings** | Who uses what, and when: linked bookings, events and tickets, holds, queues, approvals and check-in |
+| 5 | **Rules & availability** | What is allowed, how much, and when places are open |
+| 6 | **People & access** | Who people are, and what they may administer, and where |
+| 7 | **Integration** | What crosses the boundary: connected systems and their credentials, sync runs and issues, devices and their signals, API clients |
+| 8 | **Events & history** | What happened, who is told about it, and how long it is kept |
 
 ### Why allocation is its own pillar
 
@@ -74,66 +73,53 @@ The vendors already treat it as a process:
 - **Envoy:** neighbourhoods are limited to named employees or SCIM groups, with neighbourhood captains, alongside WorkSchedules ([envoy](envoy.md)).
 
 The allocation lifecycle:
-- An `AllocationPlan` moves from draft to approved to applied to superseded.
+- Each office's `AllocationCycle` sets the cadence, the planning window, the intent cutoff and the processing time. `AttendanceIntent`s are collected for the cycle's dates.
+- Each run produces an `AllocationPlan`, which moves from draft to approved to applied to superseded.
 - Applying a plan writes `TeamAllocation`s and `Assignment`s.
 - An assignment then emits `AssignmentRelease`s and, when `autoBook` is on, `BookingOccurrence`s.
-- `AttendanceIntent` (demand) and `Utilisation` (what really happened) size the next plan.
+- `AttendanceIntent` (demand) and `Utilisation` (what really happened) size the next cycle's plan.
 
-### Why geometry needs stable identity
+### What floor plans are for
 
-spaceweave's input is a drawing that gets revised. If a re-import mints new ids, every
-assignment, booking and vendor mapping attached to a desk breaks. Every vendor surveyed
-avoids this by having a person re-pin desks by hand. To keep identity across revisions:
-- Each geometric feature (`Unit`, `Opening`, `Fixture`, `Anchor`) carries a **stable key**.
-- Each import is a `FloorPlanRevision` with a published coordinate reference: origin, units, scale and rotation.
-- A `RevisionMapping` records what happened to each prior key: matched, moved, split, merged, removed or added. It records a confidence and who reviewed it.
-- `BookableResource` is anchored by stable key, not by revision-local id. Publishing a revision resolves through the mapping, so the resource, its assignments and its bookings carry over. Splits, merges and removals become review items rather than silent breakage.
+These are booking maps, not architectural drawings. A floor plan matters for three things only:
+1. **Turning the organisation's drawing into a bookable inventory:** spaces with their names, and desks, rooms and bays with their positions.
+2. **Keeping identity when a revised drawing arrives,** so assignments, bookings, QR codes and external mappings carry over.
+3. **Drawing a map people recognise.**
 
-### Standards alignment
+Walls, doors and windows serve only the third, so they are *render layers* of a `FloorPlanRevision`, not domain entities. Nothing books, allocates or reports against a wall.
 
-The places and geometry pillars use IMDF feature names, so spaceweave can export a
-standards-based indoor map. No surveyed vendor offers one, and only Archibus touches IFC.
+### Why floor plans need stable identity
 
-| spaceweave | IMDF | IFC |
-|---|---|---|
-| Venue | venue | IfcSite |
-| Building | building | IfcBuilding |
-| Level | level | IfcBuildingStorey |
-| Unit | unit | IfcSpace |
-| Opening / Wall | opening (walls implied by unit boundaries) | IfcDoor / IfcWindow / IfcOpeningElement / IfcWall |
-| Fixture | fixture | IfcFurnishingElement |
-| Anchor | anchor | (placement point) |
+If a new drawing mints new ids, every assignment, booking and vendor mapping attached to a
+desk breaks. No surveyed vendor documents matching desks and rooms between drawing
+revisions. Where pins survive a new drawing, they stay where they were, and someone
+corrects them by hand. To keep identity:
+- every `Space` and `BookableResource` carries a **stable key**;
+- each import is a `FloorPlanRevision` (draft → published → superseded, with an effective date);
+- a `RevisionMapping` records what happened to each prior key: unchanged, moved, renamed, split, merged, removed or added, with a confidence and who reviewed it;
+- publishing resolves through the mapping, so the resource, its assignments and its bookings carry over, and splits, merges and removals become review items rather than silent breakage.
 
-Two IMDF terms are used differently here. IMDF's `amenity` is a point of interest, so the
-model calls resource features `Attribute` to avoid confusion. Walls are a spaceweave
-extension, because IMDF draws units and openings, not wall solids.
+Standards such as IMDF or IFC are not part of the domain. An indoor-map export may be offered later; see [ADR 0001](../../adr/0001-indoor-map-standard-imdf.md), now superseded.
 
 ## Proposed entities
 
-### Places
+### Places & floor plans
 | Entity | Purpose | Closest vendor equivalents |
 |---|---|---|
 | **Organisation** | Tenant and data-residency boundary | Skedda Venue; Officely Account/Organisation; Envoy Company; Seatsurfing organizations |
-| **Venue** | A site or campus, with an IANA timezone | Archie Campus/Space; Robin campus; Eptura Site; Officely Place; Envoy Location |
+| **Venue / Site** | A site or campus, with an IANA timezone and working hours | Archie Campus/Space; Robin campus; Eptura Site; Officely Place; Envoy Location |
 | **Building** | A physical building | Robin building; Eptura Building; Officely Space `type=building` |
 | **Level** | One storey, which anchors floor plans | deskbird Floor; Envoy Floor; Robin level; Officely Space `type=level`; Archie Area `category=floor` |
-
-### Geometry · IMDF / IFC
-| Entity | Purpose | Closest vendor equivalents |
-|---|---|---|
-| **FloorPlan** | The plan for one level, pointing at its current revision | Officely FloorPlan; Seatsurfing `location_floor_plans` |
-| **FloorPlanRevision** *(spaceweave)* | An imported drawing with its coordinate reference (origin, units, scale, rotation): draft → published → superseded | Officely's draft, preview and publish, keeping the last 3 versions; Seatsurfing `map_scale`. Elsewhere it is only an image |
-| **RevisionMapping** *(spaceweave)* | What happened to each feature key between two revisions | None. Vendors re-pin by hand |
-| **Unit** *(spaceweave)* | A room, zone, corridor, kitchen or car-park polygon taken from the drawing | Officely Space (non-bookable); Clearooms neighbourhood polygons |
-| **Opening / Wall** *(spaceweave)* | Doors, windows and walls | None exposed |
-| **Fixture** *(spaceweave)* | Furniture such as desks, tables and locker banks | Envoy desk x/y (normalised, create-only); Seatsurfing box with rotation; Mensam position, direction and size |
-| **Anchor** *(spaceweave)* | A stable point inside a unit that a resource hangs from | None |
+| **FloorPlan** | The plan for one level, pointing at its current published revision | Officely FloorPlan; Seatsurfing `location_floor_plans` |
+| **FloorPlanRevision** *(spaceweave)* | An imported drawing with scale, units and origin, and its render layers (walls, doors, windows): draft → published → superseded, with an effective date | Officely's draft, preview and publish, keeping the last 3 versions; Seatsurfing `map_scale`. Elsewhere it is only an image |
+| **RevisionMapping** *(spaceweave)* | What happened to each space and resource key between two revisions | None documented |
+| **Space** | A named room, zone, area or car park from the drawing, with a stable key, outline and level. Not bookable itself | Officely Space (non-bookable); Clearooms neighbourhood polygons |
 
 ### Bookable
 | Entity | Purpose | Closest vendor equivalents |
 |---|---|---|
-| **ResourceGroup** | A logical pool, desk group or neighbourhood, optionally drawn as a zone `Unit` | Officely ResourceGroup and pools; Archie desk groups (`table`); Robin desk groups; LibreBooking resource_groups; Envoy Neighborhood; deskbird Zone |
-| **BookableResource** | The thing people book: kind, capacity mode (whole, per seat or pooled), anchor, status | Skedda Asset; deskbird Resource/Room; Officely Resource; Envoy Space/Desk; Robin Desk (Seat); Archie Area; Eptura Engage Resource |
+| **ResourceGroup** | A logical pool, desk group or neighbourhood, optionally drawn as a zone `Space` | Officely ResourceGroup and pools; Archie desk groups (`table`); Robin desk groups; LibreBooking resource_groups; Envoy Neighborhood; deskbird Zone |
+| **BookableResource** | The thing people book: stable key, kind, capacity mode (whole, per seat or pooled), position or footprint, containing `Space`, status | Skedda Asset; deskbird Resource/Room; Officely Resource; Envoy Space/Desk; Robin Desk (Seat); Archie Area; Eptura Engage Resource |
 | **KindProfile** | Capability flags behind each kind: calendar-backed, per-seat, check-in or approval required, vehicle required, accessible. Overridable per resource | Robin's scheduling config is separate from type; Envoy rooms must be calendar resources; Clearooms parking bays (EV, Blue Badge, permit) |
 | **Attribute** | A typed feature used for filtering | Skedda tags/type; deskbird equipment; Seatsurfing typed attributes; Robin seat_amenities |
 | **ResourceLink** | Rooms that combine, depend on or contain one another | Archie `area_booking_dependencies` and event-space sub-rooms |
@@ -142,6 +128,7 @@ extension, because IMDF draws units and openings, not wall solids.
 ### Allocation
 | Entity | Purpose | Closest vendor equivalents |
 |---|---|---|
+| **AllocationCycle** | An office's allocation cadence: planning window, intent cutoff, attendance dates and processing time | Envoy WorkSchedules and deskbird scheduling statuses collect intent; no cycle entity documented |
 | **AllocationPlan** | A versioned plan that packs teams and people onto groups and resources | Robin assignment drafts; Robin space and move planning |
 | **TeamAllocation** | A team given a neighbourhood: seat count or share, priority, booking horizon | Clearooms team neighbourhoods; deskbird zone `assignedGroups`; Envoy SCIM-group neighbourhoods |
 | **Assignment** | A resource given to a person, group or guests: always or on an RRULE, with `autoBook` and `allowOthersToBook` | Skedda `assigned`; Officely Assignment; deskbird `DEDICATED`; Envoy `assignedTo`; Robin `shared` RRULE; Clearooms part-time and multi-owner |
@@ -154,9 +141,12 @@ extension, because IMDF draws units and openings, not wall solids.
 | Entity | Purpose | Closest vendor equivalents |
 |---|---|---|
 | **Booking (series)** | Organiser, RRULE recurrence, visibility | Skedda Booking; Robin series; LibreBooking reservation_series; Archie Booking.recurrence |
-| **BookingOccurrence** | One instance: offset times plus IANA zone, a state machine (held → pending → confirmed → checked_in / released / cancelled → completed), source | Skedda BookingOccurrence; deskbird Booking; Envoy Reservation; Officely Booking |
+| **BookingOccurrence** | One instance: offset times plus IANA zone, a state machine (held → pending → allocated → checked_in (taken) → released / no_show / cancelled → completed), source. *Allocated* means booked or assigned; *taken* means the person checked in | Skedda BookingOccurrence; deskbird Booking; Envoy Reservation; Officely Booking |
+| **BookingLink** | Two or more occurrences held together, such as a desk and a parking bay for one day: `required` (neither confirmed without the other) or `optional`; cancelled together before start | None documented; WARP holds a desk and parking spot in one slot, not as one unit |
 | **Beneficiary** | Who a booking is for: a person, a guest or a vehicle | deskbird guest bookings; Clearooms Vehicle IDs |
 | **Vehicle** | Plate, type (standard, EV, accessible), permit | Clearooms vehicles and bay types; Envoy parking amenities |
+| **Event** | An event with an organiser and an audience (staff only, or staff and visitors). It books its venue through an occurrence and caps attendance at or below the venue's capacity | Archie `event-space` with sub-rooms; Eptura Engage Events (not in its API); Clearooms internal Event Management |
+| **Ticket** | One attendee's place at an event: a person or a guest, issued, cancelled or admitted, with single-use admission | None documented |
 | **Visit** | A guest attached to a host | Envoy Entries/Invites; Robin Visit; Officely Visit; Eptura Engage Visitor |
 | **Hold** | A short reservation that expires | Officely Hold |
 | **WaitlistEntry** | A place in the queue for a contested resource or group | Officely Waitlist Entry |
@@ -189,9 +179,8 @@ extension, because IMDF draws units and openings, not wall solids.
 | **ConnectorMapping** | Local entity and id ↔ external id and version, with state (linked, orphaned, conflicted) | Needed because only Officely Enterprise (floor-plan documents) and Archie (Area PUT) offer a geometry write path |
 | **SyncRun** | One sync pass: trigger, cursor in and out, counts and status. Makes sync observable and resumable | None exposed by any surveyed vendor |
 | **SyncIssue** | A conflict, validation failure, missing record or rate limit raised by a run, with how it was resolved | None exposed |
-| **Device** | A sensor, room display, kiosk, badge reader or dock, with its placement (an `Anchor`) and last-seen time | Robin room displays and Universal Presence Connector; Envoy Butlr sensors and the iPad kiosk; deskbird Dock; Clearooms Room Display; Skedda PWA tablet displays |
-| **OccupancySignal** | An observation from a device, typed by a JSON schema, with its granularity (resource, unit, level or building) | Officely Signal and SignalType; Robin presence (building or floor level only); deskbird presence networks |
-| **Export** | A published floor-plan revision exported as IMDF, CSV or a vendor push, with the georeference used ([ADR 0001](../../adr/0001-indoor-map-standard-imdf.md)) | None. No surveyed vendor offers a standard geometry export |
+| **Device** | A sensor, room display, kiosk, badge reader or dock, installed in a `Space`, with its last-seen time | Robin room displays and Universal Presence Connector; Envoy Butlr sensors and the iPad kiosk; deskbird Dock; Clearooms Room Display; Skedda PWA tablet displays |
+| **OccupancySignal** | An observation from a device, typed by a JSON schema, with its granularity (resource, space, level or building) | Officely Signal and SignalType; Robin presence (building or floor level only); deskbird presence networks |
 
 ### Events & history
 | Entity | Purpose | Closest vendor equivalents |
@@ -206,7 +195,7 @@ extension, because IMDF draws units and openings, not wall solids.
 
 The previous single pillar mixed four flows that go in different directions:
 - data coming in: calendars, directories, vendors and sensors;
-- data going out: webhooks and exports;
+- data going out: webhooks and vendor pushes;
 - the record of what happened;
 - how long that record is kept.
 
@@ -214,16 +203,16 @@ With the split, each relation reads in one direction:
 - **Integration** is what crosses the boundary. Every connector run is a `SyncRun`, so a failing calendar or directory sync is visible and resumable instead of silent. Each problem is a `SyncIssue` with a resolution, not a log line.
 - **Events & history** is what happened. Every state change writes one `DomainEvent`. Audit entries, webhook deliveries and vendor-push connectors all read from that one stream, so they can never disagree.
 - **Retention** applies to the data that matters most for employee privacy: occupancy signals and audit entries. It is a policy in the model, not a config file.
-- **Devices** are first class and placed on an `Anchor`. A signal can then be tied to a desk or room rather than only to a floor, which is Robin's documented limitation.
+- **Devices** are first class and installed in a `Space`, so a signal can be tied to a room or zone rather than only to a floor, which is Robin's documented limitation. Sensors are optional: check-in works without them.
 
 ## Design recommendations for spaceweave
 
-- **Treat identity across revisions as the core contract.** Give every geometric feature a stable key and publish revisions through `RevisionMapping`. Make splits, merges and removals review items. This is what lets a revised DWG flow through without breaking bookings, and no vendor offers it.
-- **Keep geometry, grouping and booking apart.** `Unit` and `Fixture` come from the drawing. `ResourceGroup` is logical and may be drawn as a zone. `BookableResource` hangs from an `Anchor`. One drawing can then feed any vendor's flatter model.
+- **Treat identity across revisions as the core contract.** Give every space and bookable resource a stable key, and publish revisions through `RevisionMapping`. Make splits, merges and removals review items. This is what lets a revised drawing flow through without breaking bookings, and no vendor documents it.
+- **Keep floor plans in their place.** The drawing yields `Space`s and positioned `BookableResource`s. Walls, doors and windows are render layers only. `ResourceGroup` is logical and may be drawn as a zone. One drawing can then feed any vendor's flatter model.
 - **Drive behaviour from capabilities, not kind names.** Keep the kind enum for projection (Skedda category + Type, Envoy `DESK | ROOM`, Officely `type`), but let `KindProfile` flags decide check-in, approval, calendar backing and vehicles.
 - **Model allocation as an event.** Version plans, apply them on a date, and emit events. Feed vendors that only have `assignedTo` (Envoy, Skedda) a flattened copy.
 - **Evaluate rules in one place.** A single ordered rule set covers allocation, booking and check-in. Quotas and entitlements hang off rules, and availability (hours, closures, capacity) is evaluated in the scope's IANA timezone.
-- **Model bookings as series plus occurrences with an explicit state machine.** Holds, waitlists and approvals are first-class, and check-in records its method.
+- **Model bookings as series plus occurrences with an explicit state machine.** A desk is allocated when booked and taken when checked in. Holds, waitlists, approvals, linked bookings and event tickets are first-class, and check-in records its method.
 - **Make everything observable.** Every state change writes a `DomainEvent` and an `AuditEntry` in the same transaction. Webhook deliveries are recorded per attempt and can be redelivered. Every connector pass is a `SyncRun` with its issues.
 - **Keep secrets and personal data on a short leash.** Credentials live in a vault and the model holds only references, with expiry and rotation tracked. Occupancy signals and audit entries carry a retention policy that deletes or anonymises them on schedule.
 - **Treat vendor sync as connectors.** Skedda, deskbird and Robin have no layout write API, and Envoy's desk positions are create-only. Each target is a `Connector` with `ConnectorMapping`s: push where the vendor allows it, and export or CSV elsewhere.

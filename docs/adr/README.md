@@ -6,4 +6,4 @@ replaced decision is marked `Superseded` and links to the record that replaces i
 
 | # | Decision | Status |
 |---|---|---|
-| [0001](0001-indoor-map-standard-imdf.md) | Align the spatial model with IMDF and use it as the interchange format | Proposed |
+| [0001](0001-indoor-map-standard-imdf.md) | Align the spatial model with IMDF and use it as the interchange format | Superseded |

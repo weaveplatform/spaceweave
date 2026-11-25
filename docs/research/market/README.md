@@ -18,7 +18,7 @@ domain model and APIs. Researched and validated on **2026-11-25**.
 | [Eptura](eptura.md) | Condeco → Engage, iOFFICE → Workplace, SpaceIQ, Serraview, Archibus. CAD-heavy | [eptura](diagrams/eptura.drawio.svg) |
 | [Archie](archie.md) | Coworking and hybrid offices. OAuth2 client-credentials API, encrypted webhooks | [archie](diagrams/archie.drawio.svg) |
 | [Open source](open-source.md) | Seatsurfing, LibreBooking, WARP, MRBS, Mensam. Self-hostable | [five diagrams](diagrams/README.md#open-source) |
-| [Common domain model](domain-model.md) | Merged entity model, with design recommendations for spaceweave | [common-domain-model](diagrams/common-domain-model.drawio.svg) |
+| [Common domain model](domain-model.md) | Merged entity model, with design recommendations for spaceweave | [common-domain-model](../architecture/diagrams/common-domain-model.drawio.svg) |
 
 Each diagram is a draw.io source (`.drawio`) with its SVG export (`.drawio.svg`). The SVG
 embeds the diagram, so it also opens in draw.io for editing. They use the same dark-tile

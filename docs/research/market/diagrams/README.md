@@ -4,7 +4,7 @@ Each diagram is a draw.io source (`.drawio`) with its SVG export (`.drawio.svg`)
 embeds the diagram, so it also opens in draw.io for editing. They use the dark-tile style of
 the infraweave diagrams. Each column groups entities:
 
-- blue: places and hierarchy (in the common model, Places and Geometry · IMDF / IFC)
+- blue: places and hierarchy (in the common model, Places & floor plans)
 - purple: bookables
 - teal: allocation (common model only)
 - pink: bookings and policy (in the common model, Bookings)
@@ -23,8 +23,7 @@ leaving its source, so labels are never stacked on a shared line.
 
 ## Synthesis
 
-- [common-domain-model](common-domain-model.drawio.svg): the merged model in nine pillars: IMDF/IFC-aligned
-  geometry with revision-stable identity, allocation as an event, and a single rules layer.
+- [common-domain-model](../../architecture/diagrams/common-domain-model.drawio.svg): the merged, booking-first model in eight pillars. It now lives in `docs/research/architecture/diagrams/`.
 
 ## Vendors
 
