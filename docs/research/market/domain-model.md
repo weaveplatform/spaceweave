@@ -80,7 +80,7 @@ specific one, and a weekly run decides who sits where. The engine is generic, an
 its first use.
 
 **Two booking modes side by side.** Each kind has a `booking_mode` on its `KindProfile`,
-set per venue or resource group: `self_service` or `allocated`. One venue can run both at
+set per selector, such as desks at one venue: `self_service` or `allocated`. One venue can run both at
 once, for example allocated team floors alongside a self-service hot-desk zone. Rooms, event
 spaces, lockers and bike racks are self-service. Parking can be allocated later without any
 change to the model.
@@ -189,14 +189,14 @@ deliberately, after a preview, because a bad logo or unreadable colours reach ev
 | **FloorPlan** | The plan for one level, pointing at its current published revision | Officely FloorPlan; Seatsurfing `location_floor_plans` |
 | **FloorPlanRevision** *(spaceweave)* | An imported drawing with scale, units and origin, and its render layers (walls, doors, windows): draft → published → superseded, with an effective date | Officely's draft, preview and publish, keeping the last 3 versions; Seatsurfing `map_scale`. Elsewhere it is only an image |
 | **RevisionMapping** *(spaceweave)* | What happened to each space and resource key between two revisions | None documented |
-| **Space** | A named room, zone, area, car park, bike store or locker bank from the drawing, with a stable key, outline and level. Not bookable itself | Officely Space (non-bookable); Clearooms neighbourhood polygons |
+| **Space** | A named room, zone, area, car park, bike store or locker bank from the drawing, with a stable key, outline and level. Not bookable itself. It may sit inside a parent Space on the same level. Settings inherit down one path only: Venue → Building → Level → Space → resource | Officely Space (non-bookable); Clearooms neighbourhood polygons |
+| **Neighbourhood** | A named area of one building where a team sits, which may span its levels. Its members are desks and rooms, each with `from` and `until` dates, so a neighbourhood can flex for a date. It isn't drawn: its outline on the map is drawn around its members, and a new floor-plan revision carries its members over by key. It carries no inherited settings; it is what a `CollaboratorAllocation` claims | Envoy Neighborhood; Clearooms neighbourhood polygons; Robin neighbourhoods; deskbird Zone |
 
 ### Bookable
 | Entity | Purpose | Closest vendor equivalents |
 |---|---|---|
-| **ResourceGroup** | A logical pool, desk group or neighbourhood, optionally drawn as a zone `Space` | Officely ResourceGroup and pools; Archie desk groups (`table`); Robin desk groups; LibreBooking resource_groups; Envoy Neighborhood; deskbird Zone |
 | **BookableResource** | The thing people book: stable key, kind (desk, room, parking bay, bike rack, locker, event space, equipment, other), capacity mode (whole, per seat or pooled), position or footprint, containing `Space`, status | Skedda Asset; deskbird Resource/Room; Officely Resource; Envoy Space/Desk; Robin Desk (Seat); Archie Area; Eptura Engage Resource. Lockers: Robin (multi-day, optional check-in), Officely `type=locker`, Eptura personal-space type. Bike racks: no surveyed vendor documents them |
-| **KindProfile** | Booking mode (`self_service` or `allocated`, per venue or resource group) and the capability flags behind each kind: calendar-backed, per-seat, check-in or approval required, vehicle required, accessible. Overridable per resource | Robin's scheduling config is separate from type; Envoy rooms must be calendar resources; Clearooms parking bays (EV, Blue Badge, permit) |
+| **KindProfile** | Booking mode (`self_service` or `allocated`, per selector, such as desks at one venue) and the capability flags behind each kind: calendar-backed, per-seat, check-in or approval required, vehicle required, accessible. Overridable per resource | Robin's scheduling config is separate from type; Envoy rooms must be calendar resources; Clearooms parking bays (EV, Blue Badge, permit) |
 | **Label** | A tag people see and filter by: name, colour, icon, optional label set (Environment, Equipment). It replaces a separate attribute concept: with no value it is a plain tag (`quiet`, `standing`), and with a typed value it is a fact (`screens: 2`). Shown as badges on the floor-plan map, on the resource card, in filters and to assistants; rules can target labels | Skedda tags/type; deskbird equipment; Seatsurfing typed attributes; Robin seat_amenities |
 | **ResourceLink** | Rooms that combine, depend on or contain one another | Archie `area_booking_dependencies` and event-space sub-rooms |
 | **Inventory** | Counted add-on stock with a per-booking cap | Skedda add-on `quantity` / `maxQuantityPerBooking` |
@@ -210,7 +210,7 @@ deliberately, after a preview, because a bad logo or unreadable colours reach ev
 | **SeatingGroup** | One date's cluster of people to seat together: basis (org team, delivery team, declared, inferred), size, combined label needs, target level or zone | Not covered by the survey |
 | **AllocationPlan** | The output of one run (weekly or top-up) for a date: the policy version used, a score, unmet preferences; draft → published → superseded | Robin assignment drafts; Robin space and move planning |
 | **Placement** | One line of a plan: person → resource, seating group, labels met and unmet, and an explanation. Placed only if required companions are secured. Publishing creates the booking and links its companions | Not covered by the survey |
-| **CollaboratorAllocation** | A group of collaborators' claim on a resource group of any kind. The group is an org team or a time-bound delivery team, and the claim can end with it. Two modes: `ring_fenced` (hard seats the group always gets) or `home_zone` (a soft preference the packer weighs). Named for collaborators, not teams, because people often sit with the delivery team they work in, not their reporting line | Clearooms team neighbourhoods; deskbird zone `assignedGroups`; Envoy SCIM-group neighbourhoods |
+| **CollaboratorAllocation** | A group of collaborators' claim on a neighbourhood. The group is an org team or a time-bound delivery team, and the claim can end with it. Two modes: `ring_fenced` (hard seats the group always gets) or `home_zone` (a soft preference the packer weighs). Named for collaborators, not teams, because people often sit with the delivery team they work in, not their reporting line | Clearooms team neighbourhoods; deskbird zone `assignedGroups`; Envoy SCIM-group neighbourhoods |
 | **Assignment** | A resource given to a person, group or guests: always or on an RRULE, with `autoBook` and `allowOthersToBook`. Works for any kind (a personal parking bay or locker, a team's project room); where the kind is allocated, it is removed from supply before packing | Skedda `assigned`; Officely Assignment; deskbird `DEDICATED`; Envoy `assignedTo`; Robin `shared` RRULE; Clearooms part-time and multi-owner |
 | **AssignmentRelease** | Days given back: manually, as a part-time gap, or on a missed check-in. Released days go back into supply | Officely AssignmentRelease; Robin RRULE exclusions; Clearooms priority auto-release |
 | **Utilisation** | A read model of booked against occupied against no-show, which feeds the next cycle | Skedda Insights; Robin and deskbird analytics |
@@ -225,21 +225,22 @@ deliberately, after a preview, because a bad logo or unreadable colours reach ev
 | **Vehicle** | Plate, type (standard, EV, accessible), permit | Clearooms vehicles and bay types; Envoy parking amenities |
 | **Visit** | A guest attached to a host | Envoy Entries/Invites; Robin Visit; Officely Visit; Eptura Engage Visitor |
 | **Hold** | A short reservation that expires | Officely Hold |
-| **WaitlistEntry** | A place in the one first-come, first-served queue: for a resource, a group, a kind with labels, or a `SpaceRequest` the run could not place. Self-service and allocation share it. A self-service entry is offered freed space with a reply window, then the offer passes to the next; an allocation entry is placed by a top-up run | Officely Waitlist Entry |
+| **WaitlistEntry** | A place in the one first-come, first-served queue: for a resource, a selector (scope, kind and labels), or a `SpaceRequest` the run could not place. Self-service and allocation share it. A self-service entry is offered freed space with a reply window, then the offer passes to the next; an allocation entry is placed by a top-up run | Officely Waitlist Entry |
 | **Approval** | Gates a request-only booking for an approver role | Officely Approval; Robin request-only spaces; Archie `requires_approval`; LibreBooking `requires_approval` |
 | **CheckIn** | Method (QR, Wi-Fi, app, badge, sensor, kiosk, auto), time and source. Auto-release is an event | Robin Confirmation; Skedda and Clearooms check-in methods |
 
 ### Space Rules & Availability
 | Entity | Purpose | Closest vendor equivalents |
 |---|---|---|
-| **Rule** | An ordered rule with an effect (allow, deny, limit, require approval) that applies to allocation, booking or check-in, and targets resources, groups, kinds or labels | Officely BookingRule (ordered); Skedda (strictest quota wins); Archie Area policy; deskbird `policyRule` |
+| **Rule** | An ordered rule with an effect (allow, deny, limit, require approval) that applies to allocation, booking or check-in, and targets a selector or named resources | Officely BookingRule (ordered); Skedda (strictest quota wins); Archie Area policy; deskbird `policyRule` |
 | **AllocationPolicy** | The configurable business logic of desk allocation: grouping basis (org team, delivery team, declared collaborators, inferred opt-in) and its precedence, weights (proximity, floor consolidation, stability, fairness), tie-break and shortfall (first come, first served), overbooking factor. Versioned and effective-dated | Not covered by the survey |
 | **ProximityConstraint** | Who must or should sit apart or together: between groups or people, `keep_apart` or `keep_near`, hard or soft, at zone, floor, venue or metres. Hard keep-apart covers information barriers | Not covered by the survey |
 | **Quota** | A count per period | Skedda quotas; Archie Quota |
 | **Entitlement** | Audience → targets, with booking horizon and priority | Robin priority booking for groups; Skedda booking windows |
-| **OperatingHours** | Weekly hours for a venue, building, level or resource, which bound when occurrences can be booked | deskbird `openingHours`; Archie `available_times` |
+| **OperatingHours** | Weekly hours for a venue, building, level, space or resource, which bound when occurrences can be booked | deskbird `openingHours`; Archie `available_times` |
 | **Closure** | A dated closure of a scope, which blocks occurrences in that period | Officely Closure |
 | **CapacityLimit** | Maximum occupancy or bookings for a scope, which limits how many occurrences it accepts | Envoy `capacityLimit` |
+| **Selector** | Picks resources by scope (venue, building, level or space), kind and labels, such as EV parking bays at one venue. Nothing is stored: a resource matches or it doesn't, so a selector can't drift from the labels. Rules, booking mode, waitlist entries and reports use selectors. Where two apply to one resource, the more specific scope wins, then priority | Officely pools; LibreBooking resource_groups; Archie desk groups |
 
 ### Users & RBAC
 | Entity | Purpose | Closest vendor equivalents |
@@ -294,7 +295,7 @@ With the split, each relation reads in one direction:
 ## Design recommendations for spaceweave
 
 - **Treat identity across revisions as the core contract.** Give every space and bookable resource a stable key, and publish revisions through `RevisionMapping`. Make splits, merges and removals review items. This is what lets a revised drawing flow through without breaking bookings, and no vendor documents it.
-- **Keep floor plans in their place.** The drawing yields `Space`s and positioned `BookableResource`s. Walls, doors and windows are render layers only. `ResourceGroup` is logical and may be drawn as a zone. One drawing can then feed any vendor's flatter model.
+- **Keep floor plans in their place.** The drawing yields `Space`s and positioned `BookableResource`s. Walls, doors and windows are render layers only. Groupings that aren't on the drawing are either a `Neighbourhood` (where a team sits, dated, with no settings of its own) or a `Selector` (a query over scope, kind and labels), so a resource inherits settings along one physical path only. One drawing can then feed any vendor's flatter model.
 - **Drive behaviour from capabilities, not kind names.** Keep the kind enum for projection (Skedda category + Type, Envoy `DESK | ROOM`, Officely `type`), but let `KindProfile` flags decide check-in, approval, calendar backing and vehicles.
 - **Allocate as a weekly batch, from requests for a kind of space, alongside self-service.** Group, then pack, under a versioned `AllocationPolicy`; publish placements as bookings and freeze them. Feed vendors that only have `assignedTo` (Envoy, Skedda) a flattened copy.
 - **Evaluate rules in one place.** A single ordered rule set covers allocation, booking and check-in. Quotas and entitlements hang off rules, and availability (hours, closures, capacity) is evaluated in the scope's IANA timezone.
