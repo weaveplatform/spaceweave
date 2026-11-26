@@ -49,12 +49,12 @@ Grey dashed cards are things spaceweave should own because no surveyed vendor of
 |---|---|---|
 | 1 | **Places & floor plans** | Which tenant, venue, building and level? Which named spaces are on each floor, and how does a revised drawing carry over? |
 | 2 | **Bookable** | What can be used, how it is grouped, and what it can do |
-| 3 | **Allocation** | Who is given what, in which cycle, on what terms, and by which plan? |
-| 4 | **Bookings** | Who uses what, and when: linked bookings, events and tickets, holds, queues, approvals and check-in |
-| 5 | **Rules & availability** | What is allowed, how much, and when places are open |
-| 6 | **People & access** | Who people are, who may act for whom, and what they may administer, and where |
+| 3 | **Space Allocation** | Who is given what, in which cycle, on what terms, and by which plan? |
+| 4 | **Bookings** | Who uses what, and when: linked bookings, visits, holds, queues, approvals and check-in |
+| 5 | **Space Rules & Availability** | What is allowed, how much, and when places are open |
+| 6 | **Users & RBAC** | Who people are, who may act for whom, and what they may administer, and where |
 | 7 | **Integration** | What crosses the boundary: connected systems and their credentials, sync runs and issues, devices and their signals, API clients |
-| 8 | **Events & history** | What happened, who is told about it, and how long it is kept |
+| 8 | **System Events & History** | What happened, who is told about it, and how long it is kept |
 
 ### Why allocation is its own pillar
 
@@ -113,19 +113,19 @@ Standards such as IMDF or IFC are not part of the domain. An indoor-map export m
 | **FloorPlan** | The plan for one level, pointing at its current published revision | Officely FloorPlan; Seatsurfing `location_floor_plans` |
 | **FloorPlanRevision** *(spaceweave)* | An imported drawing with scale, units and origin, and its render layers (walls, doors, windows): draft → published → superseded, with an effective date | Officely's draft, preview and publish, keeping the last 3 versions; Seatsurfing `map_scale`. Elsewhere it is only an image |
 | **RevisionMapping** *(spaceweave)* | What happened to each space and resource key between two revisions | None documented |
-| **Space** | A named room, zone, area or car park from the drawing, with a stable key, outline and level. Not bookable itself | Officely Space (non-bookable); Clearooms neighbourhood polygons |
+| **Space** | A named room, zone, area, car park, bike store or locker bank from the drawing, with a stable key, outline and level. Not bookable itself | Officely Space (non-bookable); Clearooms neighbourhood polygons |
 
 ### Bookable
 | Entity | Purpose | Closest vendor equivalents |
 |---|---|---|
 | **ResourceGroup** | A logical pool, desk group or neighbourhood, optionally drawn as a zone `Space` | Officely ResourceGroup and pools; Archie desk groups (`table`); Robin desk groups; LibreBooking resource_groups; Envoy Neighborhood; deskbird Zone |
-| **BookableResource** | The thing people book: stable key, kind, capacity mode (whole, per seat or pooled), position or footprint, containing `Space`, status | Skedda Asset; deskbird Resource/Room; Officely Resource; Envoy Space/Desk; Robin Desk (Seat); Archie Area; Eptura Engage Resource |
+| **BookableResource** | The thing people book: stable key, kind (desk, room, parking bay, bike rack, locker, event space, equipment, other), capacity mode (whole, per seat or pooled), position or footprint, containing `Space`, status | Skedda Asset; deskbird Resource/Room; Officely Resource; Envoy Space/Desk; Robin Desk (Seat); Archie Area; Eptura Engage Resource. Lockers: Robin (multi-day, optional check-in), Officely `type=locker`, Eptura personal-space type. Bike racks: no surveyed vendor documents them |
 | **KindProfile** | Capability flags behind each kind: calendar-backed, per-seat, check-in or approval required, vehicle required, accessible. Overridable per resource | Robin's scheduling config is separate from type; Envoy rooms must be calendar resources; Clearooms parking bays (EV, Blue Badge, permit) |
 | **Attribute** | A typed feature used for filtering | Skedda tags/type; deskbird equipment; Seatsurfing typed attributes; Robin seat_amenities |
 | **ResourceLink** | Rooms that combine, depend on or contain one another | Archie `area_booking_dependencies` and event-space sub-rooms |
 | **Inventory** | Counted add-on stock with a per-booking cap | Skedda add-on `quantity` / `maxQuantityPerBooking` |
 
-### Allocation
+### Space Allocation
 | Entity | Purpose | Closest vendor equivalents |
 |---|---|---|
 | **AllocationCycle** | An office's allocation cadence: planning window, intent cutoff, attendance dates and processing time | Envoy WorkSchedules and deskbird scheduling statuses collect intent; no cycle entity documented |
@@ -144,15 +144,13 @@ Standards such as IMDF or IFC are not part of the domain. An indoor-map export m
 | **BookingLink** | Two or more occurrences held together, such as a desk and a parking bay for one day: `required` (neither confirmed without the other) or `optional`; cancelled together before start | None documented; WARP holds a desk and parking spot in one slot, not as one unit |
 | **Beneficiary** | Who a booking is for: a person, a guest or a vehicle | deskbird guest bookings; Clearooms Vehicle IDs |
 | **Vehicle** | Plate, type (standard, EV, accessible), permit | Clearooms vehicles and bay types; Envoy parking amenities |
-| **Event** | An event with an organiser and an audience (staff only, or staff and visitors). It books its venue through an occurrence and caps attendance at or below the venue's capacity | Archie `event-space` with sub-rooms; Eptura Engage Events (not in its API); Clearooms internal Event Management |
-| **Ticket** | One attendee's place at an event: a person or a guest, issued, cancelled or admitted, with single-use admission | None documented |
 | **Visit** | A guest attached to a host | Envoy Entries/Invites; Robin Visit; Officely Visit; Eptura Engage Visitor |
 | **Hold** | A short reservation that expires | Officely Hold |
 | **WaitlistEntry** | A place in the queue for a contested resource or group | Officely Waitlist Entry |
 | **Approval** | Gates a request-only booking for an approver role | Officely Approval; Robin request-only spaces; Archie `requires_approval`; LibreBooking `requires_approval` |
 | **CheckIn** | Method (QR, Wi-Fi, app, badge, sensor, kiosk, auto), time and source. Auto-release is an event | Robin Confirmation; Skedda and Clearooms check-in methods |
 
-### Rules & availability
+### Space Rules & Availability
 | Entity | Purpose | Closest vendor equivalents |
 |---|---|---|
 | **Rule** | An ordered rule with an effect (allow, deny, limit, require approval) that applies to allocation, booking or check-in | Officely BookingRule (ordered); Skedda (strictest quota wins); Archie Area policy; deskbird `policyRule` |
@@ -162,7 +160,7 @@ Standards such as IMDF or IFC are not part of the domain. An indoor-map export m
 | **Closure** | A dated closure of a scope, which blocks occurrences in that period | Officely Closure |
 | **CapacityLimit** | Maximum occupancy or bookings for a scope, which limits how many occurrences it accepts | Envoy `capacityLimit` |
 
-### People & access
+### Users & RBAC
 | Entity | Purpose | Closest vendor equivalents |
 |---|---|---|
 | **Person / Group** | Directory identities and SCIM groups | Skedda VenueUser/VenueUserTag; Robin SCIM User; deskbird User; Clearooms User/Team |
@@ -182,7 +180,7 @@ Standards such as IMDF or IFC are not part of the domain. An indoor-map export m
 | **Device** | A sensor, room display, kiosk, badge reader or dock, installed in a `Space`, with its last-seen time | Robin room displays and Universal Presence Connector; Envoy Butlr sensors and the iPad kiosk; deskbird Dock; Clearooms Room Display; Skedda PWA tablet displays |
 | **OccupancySignal** | An observation from a device, typed by a JSON schema, with its granularity (resource, space, level or building) | Officely Signal and SignalType; Robin presence (building or floor level only); deskbird presence networks |
 
-### Events & history
+### System Events & History
 | Entity | Purpose | Closest vendor equivalents |
 |---|---|---|
 | **DomainEvent** | The single append-only stream of typed changes (`booking.created`, `assignment.applied` …), with aggregate version, sequence, actor, correlation id and idempotency key | Skedda booking and check-in events; Archie's 21 `.created/.updated/.deleted` events; Envoy entry and desk events; Eptura Engage event types 0–8 |
@@ -190,6 +188,13 @@ Standards such as IMDF or IFC are not part of the domain. An indoor-map export m
 | **WebhookSubscription** | An outbound endpoint with an event filter, Standard Webhooks signing, and secret rotation with overlap | Officely WebhookEndpoint (event, `object.*` or `*`; Standard Webhooks; previous secret still signs during rotation); Skedda Standard Webhooks; Archie HMAC + AES-GCM payloads |
 | **Delivery** | One attempt to deliver an event: status code, next retry with backoff, dead-lettered, redeliverable | Archie 5 attempts with backoff and in-flight, delivered, failed or not-sent statuses; Eptura Engage `Attempt` count; Officely resendable deliveries |
 | **RetentionPolicy** | How long signals, audit entries, bookings and visits are kept, and whether they are then deleted or anonymised, with legal hold | deskbird anonymises personal booking data after 6 months by default; Envoy save or purge for visitor data; Robin keeps anonymised derived data |
+
+### Out of scope: events and ticketing
+
+Running events (organisers, audiences, attendee caps, tickets and admission) belongs to a
+separate product. That product books its venue as an ordinary `event_space`
+`BookableResource` through the public API, and links external attendees to `Visit`s. The
+space-booking model only knows that the event space is booked, and who is visiting.
 
 ### Why integration and history are split
 
@@ -201,7 +206,7 @@ The previous single pillar mixed four flows that go in different directions:
 
 With the split, each relation reads in one direction:
 - **Integration** is what crosses the boundary. Every connector run is a `SyncRun`, so a failing calendar or directory sync is visible and resumable instead of silent. Each problem is a `SyncIssue` with a resolution, not a log line.
-- **Events & history** is what happened. Every state change writes one `DomainEvent`. Audit entries, webhook deliveries and vendor-push connectors all read from that one stream, so they can never disagree.
+- **System Events & History** is what happened. Every state change writes one `DomainEvent`. Audit entries, webhook deliveries and vendor-push connectors all read from that one stream, so they can never disagree.
 - **Retention** applies to the data that matters most for employee privacy: occupancy signals and audit entries. It is a policy in the model, not a config file.
 - **Devices** are first class and installed in a `Space`, so a signal can be tied to a room or zone rather than only to a floor, which is Robin's documented limitation. Sensors are optional: check-in works without them.
 
@@ -212,7 +217,7 @@ With the split, each relation reads in one direction:
 - **Drive behaviour from capabilities, not kind names.** Keep the kind enum for projection (Skedda category + Type, Envoy `DESK | ROOM`, Officely `type`), but let `KindProfile` flags decide check-in, approval, calendar backing and vehicles.
 - **Model allocation as an event.** Version plans, apply them on a date, and emit events. Feed vendors that only have `assignedTo` (Envoy, Skedda) a flattened copy.
 - **Evaluate rules in one place.** A single ordered rule set covers allocation, booking and check-in. Quotas and entitlements hang off rules, and availability (hours, closures, capacity) is evaluated in the scope's IANA timezone.
-- **Model bookings as series plus occurrences with an explicit state machine.** A desk is allocated when booked and taken when checked in. Holds, waitlists, approvals, linked bookings and event tickets are first-class, and check-in records its method.
+- **Model bookings as series plus occurrences with an explicit state machine.** A desk is allocated when booked and taken when checked in. Holds, waitlists, approvals and linked bookings are first-class, and check-in records its method.
 - **Make everything observable.** Every state change writes a `DomainEvent` and an `AuditEntry` in the same transaction. Webhook deliveries are recorded per attempt and can be redelivered. Every connector pass is a `SyncRun` with its issues.
 - **Keep secrets and personal data on a short leash.** Credentials live in a vault and the model holds only references, with expiry and rotation tracked. Occupancy signals and audit entries carry a retention policy that deletes or anonymises them on schedule.
 - **Treat vendor sync as connectors.** Skedda, deskbird and Robin have no layout write API, and Envoy's desk positions are create-only. Each target is a `Connector` with `ConnectorMapping`s: push where the vendor allows it, and export or CSV elsewhere.

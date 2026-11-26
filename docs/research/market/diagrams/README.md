@@ -9,8 +9,8 @@ the infraweave diagrams. Each column groups entities:
 - teal: allocation (common model only)
 - pink: bookings and policy (in the common model, Bookings)
 - amber container: rules and availability (common model only)
-- slate, dashed: people and integration (in the common model, People & access)
-- orange: integration, and coral: events & history (common model only)
+- slate, dashed: people and integration (in the common model, Users & RBAC)
+- orange: integration, and coral: system events & history (common model only)
 
 Amber cards are enums. Grey dashed cards and lines are inferred rather than documented. In
 the common model, grey dashed cards are spaceweave-owned, because no surveyed vendor offers
