@@ -45,7 +45,7 @@ Source: [`diagrams/integration-architecture.drawio`](diagrams/integration-archit
 
 | Integration | Direction | Protocol | Owner | Purpose |
 |---|---|---|---|---|
-| Microsoft Entra ID sign-in | in | OIDC / SAML, Conditional Access | Web app & API | Staff and admin sign-in; tokens held server-side |
+| Microsoft Entra ID sign-in | in | OIDC / SAML, Conditional Access | Web app & API | Staff and admin sign-in; tokens held server-side (see [identity](identity.md)) |
 | Microsoft Entra ID provisioning | in (push) | SCIM 2.0 | SCIM endpoint | User and group create, update, deactivate, delete |
 | HR system (e.g. Workday) | in (pulled) | REST or file feed | Directory & HR sync | Teams, managers, usual office, leaver dates, which Entra often lacks |
 | Public-holiday calendars | in (pulled) | ICS or API | Directory & HR sync | Closures per country and office |
@@ -115,7 +115,7 @@ Sources: [Webex: enable room booking for shared-mode devices](https://help.webex
 | Occupancy sensors (e.g. Butlr, VergeSense) | in | Vendor webhooks or API polling | Signal ingest | Vacancy evidence for release |
 | Badge and access control (e.g. HID, Genetec, Paxton) | in | Vendor events | Signal ingest | Badge-in counts as check-in |
 | Wi-Fi presence (e.g. Cisco Spaces, Meraki) | in | Vendor API | Signal ingest | Office-level presence |
-| Drawing sources | in | Graph files (SharePoint, OneDrive), IWMS API (Planon, Archibus), upload | Floor-plan processing | Where the DWG, DXF or PDF actually lives |
+| Drawings | in | Upload from the local file system through the web UI, the CLI or the REST API | Floor-plan processing | DWG, DXF or PDF. There is no SharePoint, OneDrive or IWMS connector; other systems use the REST API |
 
 Sensors are optional. Check-in works without them.
 
@@ -128,10 +128,10 @@ Sensors are optional. Check-in works without them.
 | Database | Azure Database for PostgreSQL Flexible Server | Cloud SQL for PostgreSQL | State, job queue, outbox |
 | Object storage | Blob Storage | Cloud Storage | Drawings, renders, exports, archives |
 | Secrets | Key Vault | Secret Manager | Graph app credentials, webhook signing secrets; read through workload identity, no static keys |
-| Registry | Azure Container Registry | Artifact Registry | Signed images from CI |
+| Registry | Azure Container Registry | Artifact Registry | Signed images and Helm charts from CI, in the UK region |
 | Observability | Azure Monitor | Google Cloud Observability | OTLP from every pod through an in-cluster OpenTelemetry Collector; Grafana or Datadog also work |
 | SIEM | Microsoft Sentinel | Google Security Operations | Sign-in, admin and API audit |
-| Disaster recovery | Geo-replica, geo-redundant storage | Cross-region replica, dual-region storage | Warm standby in a second region |
+| Disaster recovery | Geo-redundant backups or a replica, and geo-replicated storage, in UK West | Three zones in europe-west2, the only UK region; a second region would be outside the UK | See [deployment](deployment.md) |
 
 ## How the services fit together
 

@@ -168,7 +168,7 @@ Standards such as IMDF or IFC are not part of the domain. An indoor-map export m
 | Entity | Purpose | Closest vendor equivalents |
 |---|---|---|
 | **Organisation** | Tenant and data-residency boundary, with its brand | Skedda Venue; Officely Account/Organisation; Envoy Company; Seatsurfing organizations |
-| **Brand** | The organisation's visual identity: display name, logo (light and dark), favicon and app icon, primary and accent colours (contrast checked to WCAG AA). Drafted and previewed, then published | Skedda's white-labelled PWA per venue; branding was not otherwise covered by the survey |
+| **Brand** | The organisation's visual identity: display name, logo (light and dark), favicon and app icon, primary and accent colours (contrast checked to WCAG AA). Drafted and previewed, then published; a replaced version is kept as superseded | Skedda's white-labelled PWA per venue; branding was not otherwise covered by the survey |
 
 The brand appears wherever the organisation's people meet spaceweave:
 - the web and mobile-web app;
@@ -225,7 +225,7 @@ deliberately, after a preview, because a bad logo or unreadable colours reach ev
 | **Vehicle** | Plate, type (standard, EV, accessible), permit | Clearooms vehicles and bay types; Envoy parking amenities |
 | **Visit** | A guest attached to a host | Envoy Entries/Invites; Robin Visit; Officely Visit; Eptura Engage Visitor |
 | **Hold** | A short reservation that expires | Officely Hold |
-| **WaitlistEntry** | A place in the one first-come, first-served queue: for a resource, a group, a kind with labels, or a `SpaceRequest` the run could not place. Self-service and allocation share it | Officely Waitlist Entry |
+| **WaitlistEntry** | A place in the one first-come, first-served queue: for a resource, a group, a kind with labels, or a `SpaceRequest` the run could not place. Self-service and allocation share it. A self-service entry is offered freed space with a reply window, then the offer passes to the next; an allocation entry is placed by a top-up run | Officely Waitlist Entry |
 | **Approval** | Gates a request-only booking for an approver role | Officely Approval; Robin request-only spaces; Archie `requires_approval`; LibreBooking `requires_approval` |
 | **CheckIn** | Method (QR, Wi-Fi, app, badge, sensor, kiosk, auto), time and source. Auto-release is an event | Robin Confirmation; Skedda and Clearooms check-in methods |
 
