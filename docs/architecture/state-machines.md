@@ -21,9 +21,9 @@ The states and transitions of the entities whose lifecycle matters most. They ma
 - **No-show and released both return the resource to supply.** The waitlist is offered it, or the next
   top-up run places someone in it.
 
-## SpaceRequest
+## BookingIntent
 
-![SpaceRequest lifecycle](diagrams/state-machine-space-request.drawio.svg)
+![BookingIntent lifecycle](diagrams/state-machine-booking-intent.drawio.svg)
 
 - A request is for a kind of space, never a specific one. Order is `requested_at`: first come, first served.
 - `grouped` → `queued` is a shortfall, or a required companion that isn't secured. The request then

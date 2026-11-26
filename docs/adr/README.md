@@ -10,3 +10,4 @@ To write a new record, copy [0000-template.md](0000-template.md) to the next fre
 |---|---|---|
 | [0000](0000-template.md) | Template for new decision records | — |
 | [0010](0010-own-desk-booking-and-release-instead-of-licensing-microsoft-places.md) | Own desk booking, check-in and release in spaceweave instead of licensing Microsoft Places | Accepted |
+| [0011](0011-model-bookable-kinds-as-capability-compositions.md) | Model bookable kinds as registered compositions of capabilities over one base resource | Accepted |

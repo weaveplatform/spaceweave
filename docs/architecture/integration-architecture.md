@@ -84,7 +84,7 @@ made in spaceweave appears on the panel through the mailbox.
 
 What this asks of spaceweave:
 - **Every panelled room or event space is calendar-backed.** It has an Exchange room
-  mailbox, and `KindProfile.calendar_backed` is set, so Calendar sync owns it.
+  mailbox, and its kind has the `calendar_backed` capability, so Calendar sync owns it.
 - **Panel bookings are external bookings.** They arrive through sync with
   `source: calendar`, and spaceweave's rules (hours, closures, approvals) still apply when it
   reconciles them.

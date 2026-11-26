@@ -14,7 +14,7 @@ Source: [`diagrams/personal-data-flow.drawio`](diagrams/personal-data-flow.drawi
 |---|---|---|---|---|
 | Identity | Entra ID through SCIM | `Person`, `Group` | Sign-in, ownership, seating near your team | While active; pseudonymised after the leaver period |
 | HR attributes | HR feed | `Person` attributes | Seating groups, offboarding | As identity |
-| Bookings | The person, an assistant, the calendar, allocation runs | `BookingOccurrence`, `SpaceRequest`, `WaitlistEntry`, `CheckIn` | The service itself | Identifiable for 13 months, then anonymised for utilisation |
+| Bookings | The person, an assistant, the calendar, allocation runs | `BookingOccurrence`, `BookingIntent`, `WaitlistEntry`, `CheckIn` | The service itself | Identifiable for 13 months, then anonymised for utilisation |
 | Presence | Sensors, badge readers, Wi-Fi | `OccupancySignal` | Confirming check-in, releasing unused desks | Raw signals 30 days; aggregates kept |
 | Collaboration inference (opt-in) | Exchange calendars: who meets whom, never subjects or bodies | `CollaborationInferenceSignal` | Seating collaborators near each other | Refreshed, not accumulated; deleted on opt-out |
 | Audit | Every change | `AuditEntry`, `DomainEvent` | Security, accountability | 2 years, append-only |

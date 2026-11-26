@@ -79,7 +79,7 @@ Allocation works like booking a hotel room. People ask for a *kind* of space, ne
 specific one, and a weekly run decides who sits where. The engine is generic, and desks are
 its first use.
 
-**Two booking modes side by side.** Each kind has a `booking_mode` on its `KindProfile`,
+**Two booking modes side by side.** Each kind has a default `booking_mode` in its `KindDefinition`, which can be
 set per selector, such as desks at one venue: `self_service` or `allocated`. One venue can run both at
 once, for example allocated team floors alongside a self-service hot-desk zone. Rooms, event
 spaces, lockers and bike racks are self-service. Parking can be allocated later without any
@@ -89,7 +89,7 @@ change to the model.
 
 Source: [`../architecture/diagrams/space-allocation-lifecycle.drawio`](../../architecture/diagrams/space-allocation-lifecycle.drawio)
 
-1. **Request.** A `SpaceRequest` names the kind (a desk, for now), the dates, part of day
+1. **Request.** A `BookingIntent` names the kind (a desk, for now), the dates, part of day
    and venue, and what the space must have as labels: must-have (`height-adjustable`,
    `accessible`) and nice-to-have (`quiet`, `window`). It can also say "sit near my collaborators" or
    name people, and list companions it also needs (a parking bay, a locker, a bike rack).
@@ -195,18 +195,17 @@ deliberately, after a preview, because a bad logo or unreadable colours reach ev
 ### Bookable
 | Entity | Purpose | Closest vendor equivalents |
 |---|---|---|
-| **BookableResource** | The thing people book: stable key, kind (desk, room, parking bay, bike rack, locker, event space, equipment, other), capacity mode (whole, per seat or pooled), position or footprint, containing `Space`, status | Skedda Asset; deskbird Resource/Room; Officely Resource; Envoy Space/Desk; Robin Desk (Seat); Archie Area; Eptura Engage Resource. Lockers: Robin (multi-day, optional check-in), Officely `type=locker`, Eptura personal-space type. Bike racks: no surveyed vendor documents them |
-| **KindProfile** | Booking mode (`self_service` or `allocated`, per selector, such as desks at one venue) and the capability flags behind each kind: calendar-backed, per-seat, check-in or approval required, vehicle required, accessible. Overridable per resource | Robin's scheduling config is separate from type; Envoy rooms must be calendar resources; Clearooms parking bays (EV, Blue Badge, permit) |
-| **Label** | A tag people see and filter by: name, colour, icon, optional label set (Environment, Equipment). It replaces a separate attribute concept: with no value it is a plain tag (`quiet`, `standing`), and with a typed value it is a fact (`screens: 2`). Shown as badges on the floor-plan map, on the resource card, in filters and to assistants; rules can target labels | Skedda tags/type; deskbird equipment; Seatsurfing typed attributes; Robin seat_amenities |
-| **ResourceLink** | Rooms that combine, depend on or contain one another | Archie `area_booking_dependencies` and event-space sub-rooms |
-| **Inventory** | Counted add-on stock with a per-booking cap | Skedda add-on `quantity` / `maxQuantityPerBooking` |
+| **BookableResource** | The thing people book: stable key, kind (fixed for its life), `attributes` holding the kind's fields with a schema version, position or footprint, containing `Space`, status, accessible. Settings resolve resource override → selector scope → kind default ([ADR 0011](../../adr/0011-model-bookable-kinds-as-capability-compositions.md)) | Skedda Asset; deskbird Resource/Room; Officely Resource; Envoy Space/Desk; Robin Desk (Seat); Archie Area; Eptura Engage Resource. Lockers: Robin (multi-day, optional check-in), Officely `type=locker`, Eptura personal-space type. Bike racks: no surveyed vendor documents them |
+| **KindDefinition** | A kind registered in code (desk, room, parking bay, locker, bike rack, event space, equipment, other, and more over time): the capabilities it composes, its own fields as a versioned JSON Schema, its default settings (`booking_mode`, check-in, approval), and the system labels derived from its fields | Robin's scheduling config is separate from type; Envoy rooms must be calendar resources; Clearooms parking bays (EV, Blue Badge, permit) |
+| **Capability** | Behaviour written once and reused by kinds, each with its own fields: `seated`, `calendar_backed`, `vehicle_bound`, `timed_access`, `combinable` (parts that block one another), `quantity` (counted stock), `check_in` | Archie `area_booking_dependencies` and event-space sub-rooms; Skedda add-on `quantity`; Clearooms parking bays (EV, Blue Badge, permit) |
+| **Label** | A tag people see and filter by: name, colour, icon, optional label set (Environment, Equipment). It replaces a separate attribute concept: with no value it is a plain tag (`quiet`, `standing`), and with a typed value it is a fact (`screens: 2`). Shown as badges on the floor-plan map, on the resource card, in filters and to assistants; rules can target labels. System labels are read-only and derived from kind fields (`seats`, `ev-charging`), so labels are the one search language | Skedda tags/type; deskbird equipment; Seatsurfing typed attributes; Robin seat_amenities |
 
 ### Space Allocation
 | Entity | Purpose | Closest vendor equivalents |
 |---|---|---|
 | **AllocationCycle** | A venue's weekly allocation cycle for the kinds it allocates (desks first): horizon (next week), request cutoff, run time, daily top-up runs, and the freeze on published placements | Envoy WorkSchedules and deskbird scheduling statuses collect intent; no cycle entity documented |
-| **SpaceRequest** | One person's request for a kind of space (desks first): dates, part of day, venue, must-have and nice-to-have labels, optional sit-near, companions (parking bay, locker, bike rack), each required or optional, and a timestamp for first come, first served. Never a specific resource | Envoy WorkSchedule; deskbird scheduling status (intent only, without desk kind) |
-| **CollaborationInferenceSignal** *(opt-in)* | How strongly two people work together, inferred from shared meetings; off unless the organisation opts in. Declared collaborators are on the `SpaceRequest` (sit near), not here | Not covered by the survey |
+| **BookingIntent** | One person's request for a kind of space (desks first): dates, part of day, venue, must-have and nice-to-have labels, optional sit-near, companions (parking bay, locker, bike rack), each required or optional, and a timestamp for first come, first served. Never a specific resource | Envoy WorkSchedule; deskbird scheduling status (intent only, without desk kind) |
+| **CollaborationInferenceSignal** *(opt-in)* | How strongly two people work together, inferred from shared meetings; off unless the organisation opts in. Declared collaborators are on the `BookingIntent` (sit near), not here | Not covered by the survey |
 | **SeatingGroup** | One date's cluster of people to seat together: basis (org team, delivery team, declared, inferred), size, combined label needs, target level or zone | Not covered by the survey |
 | **AllocationPlan** | The output of one run (weekly or top-up) for a date: the policy version used, a score, unmet preferences; draft → published → superseded | Robin assignment drafts; Robin space and move planning |
 | **Placement** | One line of a plan: person → resource, seating group, labels met and unmet, and an explanation. Placed only if required companions are secured. Publishing creates the booking and links its companions | Not covered by the survey |
@@ -225,7 +224,7 @@ deliberately, after a preview, because a bad logo or unreadable colours reach ev
 | **Vehicle** | Plate, type (standard, EV, accessible), permit | Clearooms vehicles and bay types; Envoy parking amenities |
 | **Visit** | A guest attached to a host | Envoy Entries/Invites; Robin Visit; Officely Visit; Eptura Engage Visitor |
 | **Hold** | A short reservation that expires | Officely Hold |
-| **WaitlistEntry** | A place in the one first-come, first-served queue: for a resource, a selector (scope, kind and labels), or a `SpaceRequest` the run could not place. Self-service and allocation share it. A self-service entry is offered freed space with a reply window, then the offer passes to the next; an allocation entry is placed by a top-up run | Officely Waitlist Entry |
+| **WaitlistEntry** | A place in the one first-come, first-served queue: for a resource, a selector (scope, kind and labels), or a `BookingIntent` the run could not place. Self-service and allocation share it. A self-service entry is offered freed space with a reply window, then the offer passes to the next; an allocation entry is placed by a top-up run | Officely Waitlist Entry |
 | **Approval** | Gates a request-only booking for an approver role | Officely Approval; Robin request-only spaces; Archie `requires_approval`; LibreBooking `requires_approval` |
 | **CheckIn** | Method (QR, Wi-Fi, app, badge, sensor, kiosk, auto), time and source. Auto-release is an event | Robin Confirmation; Skedda and Clearooms check-in methods |
 
@@ -296,7 +295,7 @@ With the split, each relation reads in one direction:
 
 - **Treat identity across revisions as the core contract.** Give every space and bookable resource a stable key, and publish revisions through `RevisionMapping`. Make splits, merges and removals review items. This is what lets a revised drawing flow through without breaking bookings, and no vendor documents it.
 - **Keep floor plans in their place.** The drawing yields `Space`s and positioned `BookableResource`s. Walls, doors and windows are render layers only. Groupings that aren't on the drawing are either a `Neighbourhood` (where a team sits, dated, with no settings of its own) or a `Selector` (a query over scope, kind and labels), so a resource inherits settings along one physical path only. One drawing can then feed any vendor's flatter model.
-- **Drive behaviour from capabilities, not kind names.** Keep the kind enum for projection (Skedda category + Type, Envoy `DESK | ROOM`, Officely `type`), but let `KindProfile` flags decide check-in, approval, calendar backing and vehicles.
+- **Drive behaviour from capabilities, not kind names.** Keep the kind enum for projection (Skedda category + Type, Envoy `DESK | ROOM`, Officely `type`), but let capabilities decide check-in, calendar backing, vehicles, access codes and combining, and let each kind compose them ([ADR 0011](../../adr/0011-model-bookable-kinds-as-capability-compositions.md)).
 - **Allocate as a weekly batch, from requests for a kind of space, alongside self-service.** Group, then pack, under a versioned `AllocationPolicy`; publish placements as bookings and freeze them. Feed vendors that only have `assignedTo` (Envoy, Skedda) a flattened copy.
 - **Evaluate rules in one place.** A single ordered rule set covers allocation, booking and check-in. Quotas and entitlements hang off rules, and availability (hours, closures, capacity) is evaluated in the scope's IANA timezone.
 - **Model bookings as series plus occurrences with an explicit state machine.** A desk is allocated when booked and taken when checked in. Holds, waitlists, approvals and linked bookings are first-class, and check-in records its method.
