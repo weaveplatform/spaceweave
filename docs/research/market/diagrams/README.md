@@ -11,6 +11,7 @@ the infraweave diagrams. Each column groups entities:
 - amber container: rules and availability (common model only)
 - slate, dashed: people and integration (in the common model, Users & RBAC)
 - orange: integration, and coral: system events & history (common model only)
+- lime: organisation & branding (common model only)
 
 Amber cards are enums. Grey dashed cards and lines are inferred rather than documented. In
 the common model, grey dashed cards are spaceweave-owned, because no surveyed vendor offers
@@ -23,7 +24,7 @@ leaving its source, so labels are never stacked on a shared line.
 
 ## Synthesis
 
-- [common-domain-model](../../architecture/diagrams/common-domain-model.drawio.svg): the merged, booking-first model in eight pillars. It now lives in `docs/research/architecture/diagrams/`.
+- [common-domain-model](../../architecture/diagrams/common-domain-model.drawio.svg): the merged, booking-first model in nine pillars. It now lives in `docs/research/architecture/diagrams/`.
 
 ## Vendors
 

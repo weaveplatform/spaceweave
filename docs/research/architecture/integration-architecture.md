@@ -11,7 +11,8 @@ There are two forms of the same architecture:
   cloud services below.
 - **Two pages:** a system context (spaceweave as one box) and a containers view (the
   services inside it and how they are wired). Both pages are in one editable file,
-  [`integration-architecture-2-page.drawio`](diagrams/integration-architecture-2-page.drawio).
+  [`integration-architecture-2-page.drawio`](diagrams/integration-architecture-2-page.drawio), with a
+  stacked rendering in [`integration-architecture-2-page.drawio.svg`](diagrams/integration-architecture-2-page.drawio.svg).
 
 ## Single view
 
@@ -65,9 +66,39 @@ Source: [`diagrams/integration-architecture.drawio`](diagrams/integration-archit
 |---|---|---|---|---|
 | Web and mobile web | in | HTTPS, OIDC session | Web app & API | Staff and admin UI |
 | Teams app, Outlook add-in | in | App manifests calling the public API with the user's token | Web app & API | Book where people already work |
-| Room displays and kiosks | in | Public API, device credential | Web app & API | Room status, check-in, QR codes |
+| spaceweave displays and kiosks | in | Public API, device credential | Web app & API | spaceweave's own room and desk screens: status, check-in, QR codes |
 | Scripts, SDKs, Terraform, workflow tools | in | REST + OpenAPI, OAuth2 client credentials | Web app & API | Automation and infrastructure as code |
 | AI assistants (Claude, Microsoft Copilot, ChatGPT) | in | MCP over streamable HTTP, the user's OAuth grant | MCP server | Assistant booking and admin, with published skills |
+
+### Room panels
+
+Third-party room panels never call spaceweave. They read and write the room's **Exchange
+room mailbox**, and spaceweave's two-way calendar sync keeps that mailbox and spaceweave in
+step. A booking made on a panel reaches spaceweave as a Graph change notification; a booking
+made in spaceweave appears on the panel through the mailbox.
+
+| Panel | Where | Calendar path | Notes |
+|---|---|---|---|
+| Cisco Room Navigator, in room booking mode | Meeting rooms | Webex Hybrid Calendar, configured in Control Hub against Exchange Online | Shared-mode rooms need a resource mailbox of type Room. Hybrid Calendar relies on meeting comments, so Exchange must not strip them. A standalone Navigator needs RoomOS 11.3 or later |
+| Crestron scheduling panels (TSS / TSW) | Event spaces | Microsoft Graph to Exchange Online, or through Crestron Fusion | One mailbox per room. Set the panel's time zone before enabling scheduling |
+
+What this asks of spaceweave:
+- **Every panelled room or event space is calendar-backed.** It has an Exchange room
+  mailbox, and `KindProfile.calendar_backed` is set, so Calendar sync owns it.
+- **Panel bookings are external bookings.** They arrive through sync with
+  `source: calendar`, and spaceweave's rules (hours, closures, approvals) still apply when it
+  reconciles them.
+- **Check-in on a panel** (Cisco's room-in-use, Crestron's check-in) is visible to spaceweave
+  only as the calendar changes. Treating it as a `CheckIn` would need each vendor's own API
+  (the Webex device or workspace APIs, Crestron Fusion), which is not in scope yet.
+- **The mix of hardware stays the customer's choice.** Because the panels meet spaceweave
+  only at the mailbox, swapping Crestron for Cisco or for anything else that reads Exchange
+  changes nothing in spaceweave.
+
+Sources: [Webex: enable room booking for shared-mode devices](https://help.webex.com/en-us/article/nzp31jb/Enable-room-booking-for-shared-mode-Board-and-Room-Series-devices);
+[Webex: Room Navigator as a standalone device](https://help.webex.com/iq6aw6/);
+[Crestron room scheduling panels operations guide](https://de.crestron.com/getmedia/302bea62-d755-4073-819a-48e33644c244/mg_og_crestron_room_scheduling_panels);
+[Crestron Fusion with Exchange Online](https://help.crestron.com/fusion/Content/Topics/Setup/Configuring-Crestron-Fusion-Rooms-for-Exchange-Online.htm).
 
 ### Outbound integration
 
