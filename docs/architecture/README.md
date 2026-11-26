@@ -6,7 +6,7 @@ editable `.drawio` source next to its `.drawio.svg` in [`diagrams/`](diagrams/).
 
 | Document | What it covers |
 |---|---|
-| [Domain model](../market/domain-model.md) | The nine pillars and their entities ([diagram](diagrams/common-domain-model.drawio.svg)), and how space allocation works ([diagram](diagrams/space-allocation-lifecycle.drawio.svg)) |
+| [Domain model](../research/market/domain-model.md) | The nine pillars and their entities ([diagram](diagrams/common-domain-model.drawio.svg)), and how space allocation works ([diagram](diagrams/space-allocation-lifecycle.drawio.svg)) |
 | [Integration architecture](integration-architecture.md) | Every system-to-system integration: single view, system context and containers |
 | [Network and trust boundaries](network.md) | Edge, private origin, private endpoints, fixed egress, trust boundaries TB1–TB4 |
 | [Identity and Conditional Access](identity.md) | Each kind of caller, its Entra registration and credential, the Conditional Access policy that applies (or why none does), and what spaceweave checks itself |

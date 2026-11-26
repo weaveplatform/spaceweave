@@ -29,6 +29,9 @@ Source: [`diagrams/network-trust-boundaries.drawio`](diagrams/network-trust-boun
   each inbound card names the check that covers it instead (see [identity](identity.md)).
 - **Data services are private.** PostgreSQL, object storage and secrets are reached through private
   endpoints, and their public access is turned off.
+- **The allocation solver has no egress.** Its pods run on their own node pool, which scales up for each
+  allocation cycle and back to zero after it, and they reach only PostgreSQL through its private
+  endpoint (see [deployment](deployment.md#node-pools-and-the-allocation-burst)).
 - **Fixed egress.** Workers call out through a NAT gateway with reserved addresses, so HR systems,
   sensor vendors and webhook subscribers can allow-list spaceweave.
 

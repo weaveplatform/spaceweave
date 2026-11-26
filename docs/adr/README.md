@@ -9,4 +9,4 @@ To write a new record, copy [0000-template.md](0000-template.md) to the next fre
 | # | Decision | Status |
 |---|---|---|
 | [0000](0000-template.md) | Template for new decision records | — |
-| [0001](0001-own-desk-booking-and-release-instead-of-licensing-microsoft-places.md) | Own desk booking, check-in and release in spaceweave instead of licensing Microsoft Places | Accepted |
+| [0010](0010-own-desk-booking-and-release-instead-of-licensing-microsoft-places.md) | Own desk booking, check-in and release in spaceweave instead of licensing Microsoft Places | Accepted |

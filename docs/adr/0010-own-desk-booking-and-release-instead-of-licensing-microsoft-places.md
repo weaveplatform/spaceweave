@@ -1,4 +1,4 @@
-# 0001: Own desk booking, check-in and release in spaceweave instead of licensing Microsoft Places
+# 0010: Own desk booking, check-in and release in spaceweave instead of licensing Microsoft Places
 
 Status: Accepted
 
@@ -14,7 +14,7 @@ about who has which desk.
 
 - spaceweave is deployed for one organisation on Microsoft 365. Entra ID handles sign-in, Exchange
   Online holds room mailboxes, and Teams and Outlook are where people already work (see the
-  [integration architecture](../research/architecture/integration-architecture.md)).
+  [integration architecture](../architecture/integration-architecture.md)).
 - **Most of Places is no longer paid for.** Since 1 April 2026 these are included in ordinary Microsoft
   365 and Teams plans (E1/E3/E5, Business, F1/F3):
   - work plans and "who's in the office";
@@ -39,7 +39,7 @@ about who has which desk.
   - spaceweave's signal ingest already treats sensor vacancy as evidence for release.
 - **Places floor maps accept only IMDF.** DWG isn't accepted, and every update replaces the whole map.
   spaceweave produces its own floor maps (see the
-  [floor-plan pipeline](../research/architecture/floor-plan-pipeline.md)).
+  [floor-plan pipeline](../architecture/floor-plan-pipeline.md)).
 
 ### Places features and their licences
 
@@ -193,7 +193,7 @@ experience, and desks don't appear in Places Finder.
   - room release cancels part of someone's meeting, so the organiser notice and the audit trail have to
     be clear.
 - **Privacy:** reading work plans and presence location is personal data about where people are. It's
-  added to the [personal data](../research/architecture/personal-data.md) DPIA, with sensor and badge
+  added to the [personal data](../architecture/personal-data.md) DPIA, with sensor and badge
   data.
 - **Follow-up:**
   - the tenant tests listed under Constraints;
@@ -275,6 +275,6 @@ Planned:
   [extensibility prerequisites](https://learn.microsoft.com/en-us/microsoft-365/copilot/extensibility/prerequisites);
   [MCP plugins](https://learn.microsoft.com/en-us/microsoft-365/copilot/extensibility/build-mcp-plugins)
 - spaceweave research:
-  [integration architecture](../research/architecture/integration-architecture.md#room-panels);
-  [identity and Conditional Access](../research/architecture/identity.md);
-  [personal data](../research/architecture/personal-data.md)
+  [integration architecture](../architecture/integration-architecture.md#room-panels);
+  [identity and Conditional Access](../architecture/identity.md);
+  [personal data](../architecture/personal-data.md)

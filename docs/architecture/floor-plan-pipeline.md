@@ -2,7 +2,7 @@
 
 How a drawing becomes a published floor plan without breaking the bookings that depend on it. The
 reasoning is in the domain model, in
-[why floor plans need stable identity](../market/domain-model.md#why-floor-plans-need-stable-identity).
+[why floor plans need stable identity](../research/market/domain-model.md#why-floor-plans-need-stable-identity).
 
 ![Floor-plan pipeline](diagrams/floor-plan-pipeline.drawio.svg)
 

@@ -50,6 +50,7 @@ API threats are cross-referenced to the OWASP API Security Top 10 (2023).
 | T15 | T | A tampered or unsigned image deployed | TB4 | Signed images and admission control (see [supply chain](supply-chain.md)) |
 | T16 | T | Forged or replayed webhooks sent to subscribers | TB4 | Standard Webhooks HMAC signature over id, timestamp and body; subscribers check the timestamp and drop seen ids; secrets rotated |
 | T17 | E | An admin session taken over and used to publish a plan, change policy or export personal data | TB1 | A separate admin registration with its own Conditional Access policy: phishing-resistant MFA, a compliant device and a short sign-in frequency; step-up through an authentication context for sensitive actions, checked through the `acrs` claim; every admin change audited (T8) |
+| T18 | D | An allocation cycle that starves other workloads, or doesn't finish in time for review and publish | TB3 | Solver pods run only on their own tainted node pool, with a maximum node count and resource requests and limits, so serving and sync pods are never short; each venue and date is a separate job, retried on failure without duplicating results; an alert fires when a venue and date has no draft plan by the review deadline |
 
 ## Where Conditional Access stops
 

@@ -1,7 +1,7 @@
 # Lifecycle state machines
 
 The states and transitions of the entities whose lifecycle matters most. They match the
-[common domain model](../market/domain-model.md) and the
+[common domain model](../research/market/domain-model.md) and the
 [space allocation lifecycle](diagrams/space-allocation-lifecycle.drawio.svg). All pages are in one editable file,
 [`diagrams/state-machines.drawio`](diagrams/state-machines.drawio).
 

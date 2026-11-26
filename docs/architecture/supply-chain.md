@@ -1,7 +1,7 @@
 # CI/CD and supply chain
 
 How code becomes a running pod. The quality gate follows the repository conventions in
-[`CLAUDE.md`](../../../CLAUDE.md):
+[`CLAUDE.md`](../../CLAUDE.md):
 - golangci-lint is the only linter, and it blocks;
 - coverage must be at least 95% in total and 90% per package;
 - builds run with `GOWORK=off`;

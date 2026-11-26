@@ -24,7 +24,7 @@ leaving its source, so labels are never stacked on a shared line.
 
 ## Synthesis
 
-- [common-domain-model](../../architecture/diagrams/common-domain-model.drawio.svg): the merged, booking-first model in nine pillars. It now lives in `docs/research/architecture/diagrams/`.
+- [common-domain-model](../../../architecture/diagrams/common-domain-model.drawio.svg): the merged, booking-first model in nine pillars. It now lives in `docs/research/architecture/diagrams/`.
 
 ## Vendors
 

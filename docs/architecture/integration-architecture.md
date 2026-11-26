@@ -55,7 +55,7 @@ Source: [`diagrams/integration-architecture.drawio`](diagrams/integration-archit
 | Integration | Direction | Protocol | Owner | Purpose |
 |---|---|---|---|---|
 | Exchange Online room mailboxes and calendars | two-way | Microsoft Graph REST, delta queries, change notifications | Calendar sync | Room booking sync; delegate grants feed `Delegation` |
-| Microsoft Places | two-way | Graph Places API; work hours and locations | Calendar sync | Writes buildings, floors and rooms to the Places directory; reads planned office days and work location. Desks stay in spaceweave, so no desk licences (see [ADR 0001](../../adr/0001-own-desk-booking-and-release-instead-of-licensing-microsoft-places.md)) |
+| Microsoft Places | two-way | Graph Places API; work hours and locations | Calendar sync | Writes buildings, floors and rooms to the Places directory; reads planned office days and work location. Desks stay in spaceweave, so no desk licences (see [ADR 0010](../adr/0010-own-desk-booking-and-release-instead-of-licensing-microsoft-places.md)) |
 | Microsoft Teams | out | Graph / Bot Framework, Adaptive Cards | Notifications | Booking raised, waitlist offer, no-show warning |
 | Email | out | Graph sendMail or an SMTP relay | Notifications | Default channel, guest invites |
 | Web push | out | Web Push (VAPID) | Notifications | Mobile-web nudges, such as a check-in reminder |
@@ -123,7 +123,7 @@ Sensors are optional. Check-in works without them.
 
 | Component | Azure | GCP | Used for |
 |---|---|---|---|
-| Hosting | AKS | GKE | Serving pods (web app & API, MCP, SCIM) and worker pods |
+| Hosting | AKS | GKE | Serving pods (web app & API, MCP, SCIM), worker pods, and allocation solver pods on a node pool that scales to zero between cycles |
 | Edge | Front Door + WAF | Cloud Load Balancer + Cloud Armor | Every inbound HTTPS call, including SCIM pushes and callbacks; DNS and TLS |
 | Database | Azure Database for PostgreSQL Flexible Server | Cloud SQL for PostgreSQL | State, job queue, outbox |
 | Object storage | Blob Storage | Cloud Storage | Drawings, renders, exports, archives |
@@ -142,6 +142,14 @@ Sensors are optional. Check-in works without them.
   export is never sent for a change that rolled back, and never lost for one that committed.
 - **Worker pods claim jobs from PostgreSQL** (`SKIP LOCKED`) and own the outbound
   integrations: calendar sync, notifications, webhook dispatch, exports, signal processing,
-  floor-plan processing and the allocation scheduler.
+  floor-plan processing and the allocation and release scheduler. They are small and always on.
+- **Allocation solver pods are a second kind of worker.**
+  - What they do: group, then pack, the booking intents for an allocation cycle.
+  - How work arrives: at cut-off the scheduler queues one solver job per venue and date, and the solver
+    pods claim them from PostgreSQL in the same way.
+  - Where they run: their own node pool, which scales up from zero when solver jobs are queued and back
+    to zero once the cycle is done, so a cycle never competes with serving or sync work.
+  - What they reach: PostgreSQL only, with no egress. The details are in
+    [deployment](deployment.md#node-pools-and-the-allocation-burst).
 - **No message broker is needed** at this scale. The optional event bus is an outbound
   integration for customers, not internal plumbing.

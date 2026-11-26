@@ -5,9 +5,9 @@ this survey. It is analysis, not sourced fact. Each vendor mapping below points 
 §12 "Data model" section of that vendor's profile, where every field is cited. Eptura's
 mapping uses its profile, which was validated last.
 
-![common-domain-model data model](../architecture/diagrams/common-domain-model.drawio.svg)
+![common-domain-model data model](../../architecture/diagrams/common-domain-model.drawio.svg)
 
-Source: [`../architecture/diagrams/common-domain-model.drawio`](../architecture/diagrams/common-domain-model.drawio). The per-vendor diagrams are in [`diagrams/`](diagrams/).
+Source: [`../architecture/diagrams/common-domain-model.drawio`](../../architecture/diagrams/common-domain-model.drawio). The per-vendor diagrams are in [`diagrams/`](diagrams/).
 
 ## What the survey shows
 
@@ -85,9 +85,9 @@ once, for example allocated team floors alongside a self-service hot-desk zone. 
 spaces, lockers and bike racks are self-service. Parking can be allocated later without any
 change to the model.
 
-![Space allocation lifecycle](../architecture/diagrams/space-allocation-lifecycle.drawio.svg)
+![Space allocation lifecycle](../../architecture/diagrams/space-allocation-lifecycle.drawio.svg)
 
-Source: [`../architecture/diagrams/space-allocation-lifecycle.drawio`](../architecture/diagrams/space-allocation-lifecycle.drawio)
+Source: [`../architecture/diagrams/space-allocation-lifecycle.drawio`](../../architecture/diagrams/space-allocation-lifecycle.drawio)
 
 1. **Request.** A `SpaceRequest` names the kind (a desk, for now), the dates, part of day
    and venue, and what the space must have as labels: must-have (`height-adjustable`,
