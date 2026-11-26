@@ -55,7 +55,7 @@ Source: [`diagrams/integration-architecture.drawio`](diagrams/integration-archit
 | Integration | Direction | Protocol | Owner | Purpose |
 |---|---|---|---|---|
 | Exchange Online room mailboxes and calendars | two-way | Microsoft Graph REST, delta queries, change notifications | Calendar sync | Room booking sync; delegate grants feed `Delegation` |
-| Microsoft Places | two-way | Graph Places API | Calendar sync | Rooms and desks known to Outlook and Teams |
+| Microsoft Places | two-way | Graph Places API; work hours and locations | Calendar sync | Writes buildings, floors and rooms to the Places directory; reads planned office days and work location. Desks stay in spaceweave, so no desk licences (see [ADR 0001](../../adr/0001-own-desk-booking-and-release-instead-of-licensing-microsoft-places.md)) |
 | Microsoft Teams | out | Graph / Bot Framework, Adaptive Cards | Notifications | Booking raised, waitlist offer, no-show warning |
 | Email | out | Graph sendMail or an SMTP relay | Notifications | Default channel, guest invites |
 | Web push | out | Web Push (VAPID) | Notifications | Mobile-web nudges, such as a check-in reminder |
